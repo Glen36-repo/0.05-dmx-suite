@@ -2,6 +2,7 @@
 
     dmx-suite run --sim                     simulator: fake MIDI + log output + console
     dmx-suite run --rig full                live: real MIDI ports + the rig's outputs
+    dmx-suite app [--sim]                   desktop app window (needs the `desktop` extra)
     dmx-suite midi-ports
     dmx-suite midi-monitor                  live MIDI list with what each message triggers
     dmx-suite check                         validate every show file
@@ -16,6 +17,7 @@ import argparse
 import shlex
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from .engine import Engine
@@ -266,7 +268,30 @@ def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path
 # --------------------------------------------------------------------------- commands
 
 
-def cmd_run(args: argparse.Namespace) -> int:
+@dataclass
+class Session:
+    """A running engine with its MIDI inputs and web server (shared by the console and the desktop app)."""
+
+    app: App
+    show: object
+    router: MidiRouter
+    fake: FakeMidiIn
+    web: object | None = None
+    real: MidiInputs | None = None
+
+    @property
+    def engine(self) -> Engine:
+        return self.app.engine
+
+    def stop(self) -> None:
+        if self.real:
+            self.real.close()
+        if self.web:
+            self.web.stop()
+        self.engine.stop()
+
+
+def start_session(args: argparse.Namespace, out=print) -> Session:
     show = load_show(args.shows, args.rig, args.look, args.midi)
     if args.sim:
         drivers = [LogDriver()] + ([make_driver({"driver": "node_serial", "port": "sim"})] if args.sim_node else [])
@@ -277,47 +302,56 @@ def cmd_run(args: argparse.Namespace) -> int:
             d.link.health.expect(show.rig.nodes)
     state_path = None if args.sim else args.shows / ".state.json"
     app = App(show, drivers, state_path, log_dir=args.shows.parent / "logs", rig=args.rig, look=args.look, midi=args.midi)
-    engine, ctl, router = app.engine, app.ctl, app.router
+    ctl, router = app.ctl, app.router
     resumed = False if args.fresh else ctl.restore()  # laptop restarted mid-gig: carry on
     if resumed:
-        print("resumed:", ctl.describe())
+        out("resumed:", ctl.describe())
     elif args.setlist:
         ctl.load_setlist(args.setlist)
     elif args.show:
         ctl.select_show(args.show, args.set)
     elif args.scene:
         ctl.select_scene(args.scene)
-    web = None
-    if not args.no_web:
-        from .web.server import WebServer
+    session = Session(app, show, router, FakeMidiIn(router.handle_mido))
+    try:
+        if not args.no_web:
+            from .web.server import WebServer
 
-        web = WebServer(app, "0.0.0.0" if args.lan else "127.0.0.1", args.port)
-        web.start()
-        print(f"browser UI: http://localhost:{web.port}/")
-        if args.lan:
-            print(f"from a phone on the same network: http://<this laptop's IP>:{web.port}/?t={web.token}")
-    fake = FakeMidiIn(router.handle_mido)
-    real = None
-    if not args.sim:
-        real = MidiInputs(args.midi_port or show.rig.midi_inputs or None, router.handle_mido)
-        app.midi_inputs = real
-        print("MIDI in:", ", ".join(real.open) or "none yet (plug in and it connects by itself)")
-    engine.start()
+            session.web = WebServer(app, "0.0.0.0" if args.lan else "127.0.0.1", args.port)
+            session.web.start()
+            out(f"browser UI: http://localhost:{session.web.port}/")
+            if args.lan:
+                out(f"from a phone on the same network: http://<this laptop's IP>:{session.web.port}/?t={session.web.token}")
+        if not args.sim:
+            session.real = MidiInputs(args.midi_port or show.rig.midi_inputs or None, router.handle_mido)
+            app.midi_inputs = session.real
+            out("MIDI in:", ", ".join(session.real.open) or "none yet (plug in and it connects by itself)")
+        session.engine.start()
+    except BaseException:
+        session.stop()
+        raise
+    return session
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    session = start_session(args)
     try:
         if not args.headless and (args.sim or sys.stdin.isatty()):
-            console(engine, router, fake, show.midimap_path, show, ctl)
+            console(session.engine, session.router, session.fake, session.show.midimap_path, session.show, session.app.ctl)
         else:
             while True:
                 time.sleep(1)
     except KeyboardInterrupt:
         pass
     finally:
-        if real:
-            real.close()
-        if web:
-            web.stop()
-        engine.stop()
+        session.stop()
     return 0
+
+
+def cmd_app(args: argparse.Namespace) -> int:
+    from .desktop import run_desktop
+
+    return run_desktop(args)
 
 
 def cmd_midi_ports(_: argparse.Namespace) -> int:
@@ -374,19 +408,25 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--midi", default="default", help="MIDI map name")
         p.add_argument("--midi-port", action="append", help="MIDI input port (repeat; default all)")
 
-    p = sub.add_parser("run", help="run the engine")
-    show_args(p)
-    p.add_argument("--sim", action="store_true", help="simulator: fake MIDI, log output, no hardware")
-    p.add_argument("--sim-node", action="store_true", help="with --sim, also drive the simulated node")
-    p.add_argument("--scene", help="scene to start with (default: the static look)")
-    p.add_argument("--show", help="show to start with, e.g. band")
-    p.add_argument("--set", help="set within the show, e.g. mid")
-    p.add_argument("--setlist", help="start a setlist at song 1")
-    p.add_argument("--fresh", action="store_true", help="don't resume what was playing before a restart")
-    p.add_argument("--port", type=int, default=8505, help="browser UI port")
-    p.add_argument("--lan", action="store_true", help="let phones on the network open the UI (needs the token link)")
-    p.add_argument("--no-web", action="store_true", help="no browser UI")
-    p.add_argument("--headless", action="store_true", help="no console; run until stopped (e.g. as a service)")
+    def run_args(p: argparse.ArgumentParser) -> None:
+        show_args(p)
+        p.add_argument("--sim", action="store_true", help="simulator: fake MIDI, log output, no hardware")
+        p.add_argument("--sim-node", action="store_true", help="with --sim, also drive the simulated node")
+        p.add_argument("--scene", help="scene to start with (default: the static look)")
+        p.add_argument("--show", help="show to start with, e.g. band")
+        p.add_argument("--set", help="set within the show, e.g. mid")
+        p.add_argument("--setlist", help="start a setlist at song 1")
+        p.add_argument("--fresh", action="store_true", help="don't resume what was playing before a restart")
+        p.add_argument("--port", type=int, default=8505, help="browser UI port")
+        p.add_argument("--lan", action="store_true", help="let phones on the network open the UI (needs the token link)")
+        p.add_argument("--no-web", action="store_true", help="no browser UI")
+        p.add_argument("--headless", action="store_true", help="no console; run until stopped (e.g. as a service)")
+
+    p = sub.add_parser("run", help="run the engine (console)")
+    run_args(p)
+    p = sub.add_parser("app", help="desktop app: the lighting UI in its own window, with a tray icon")
+    run_args(p)
+    p.add_argument("--smoke-test", type=float, metavar="S", help=argparse.SUPPRESS)  # build check: quit after S s
 
     sub.add_parser("midi-ports", help="list MIDI inputs")
     p = sub.add_parser("midi-monitor", help="live MIDI list with what each message triggers")
@@ -458,6 +498,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return {
             "run": cmd_run,
+            "app": cmd_app,
             "midi-ports": cmd_midi_ports,
             "midi-monitor": cmd_midi_monitor,
             "check": cmd_check,
