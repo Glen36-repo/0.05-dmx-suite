@@ -145,3 +145,30 @@ def test_pixel_bars_are_one_object_each(shot):
             label = boxes(page, f"{host} [data-id={bid}] .name")[0]
             assert abs((label["x"] + label["w"] / 2) - (o["x"] + o["w"] / 2)) < 2  # centred under its bar
             assert label["y"] >= o["y"] + o["h"] - 1
+
+
+def test_names_never_overlap(shot):
+    page, *_ = shot
+    for name, host in (("layout", "#layout-grid"), ("live", "#live-grid")):
+        go(page, name)
+        page.wait_for_selector(f"{host} [data-id=wash_l] .name")
+        labels = [b for b in boxes(page, f"{host} .name") if b["w"]]
+        cells = boxes(page, f"{host} .cell")
+        clash = [(a["id"], b["id"]) for i, a in enumerate(labels) for b in labels[i + 1:] if overlap(a, b, 0.5)]
+        assert clash == [], f"{name}: {clash}"
+        on_lights = [(a["id"], c["id"]) for a in labels for c in cells if c["id"] != a["id"] and overlap(a, c, 0.5)]
+        assert on_lights == [], f"{name}: {on_lights}"
+        tips = page.eval_on_selector_all(f"{host} [data-id] > title", "ts => ts.map(t => t.textContent)")
+        assert any(t.startswith("uking_l") for t in tips)  # full id on hover
+
+
+def test_place_labels_falls_back_to_short_names(ui):
+    page, *_ = ui
+    out = page.evaluate("""async () => {
+      const { placeLabels, shortName } = await import('/static/js/grid.js');
+      const it = (id, x) => ({ id, icon: [x - 0.4, 0, x + 0.4, 0.8], full: id, short: shortName(id) });
+      return [shortName('uking_l'), placeLabels([it('wash_l', 0), it('uking_l', 1), it('uking_r', 2), it('wash_r', 3)])];
+    }""")
+    short, spots = out
+    assert short == "UK L"
+    assert any(s["short"] or s["leader"] for s in spots.values())

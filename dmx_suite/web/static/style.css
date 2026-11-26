@@ -171,8 +171,9 @@ body.space-held .grid-host.edit .lightgrid { cursor: grab; }
 .lightgrid .fx.sel .outline { stroke: var(--accent); stroke-width: 2.5; }
 .lightgrid .hz { fill: var(--muted); font-size: 8px; font-weight: 700; pointer-events: none; }
 .lightgrid .mark { fill: color-mix(in srgb, var(--text) 45%, transparent); pointer-events: none; }
-.lightgrid .name { fill: var(--muted); font-size: 9px; pointer-events: none; }
-.lightgrid.no-names .name { display: none; }
+.lightgrid .name { fill: var(--muted); font-size: 9px; pointer-events: none; paint-order: stroke; stroke: #000; stroke-width: 3px; stroke-linejoin: round; }
+.lightgrid.no-names .name, .lightgrid.no-names .leader { display: none; }
+.lightgrid .leader { stroke: color-mix(in srgb, var(--muted) 60%, transparent); stroke-width: 1; pointer-events: none; }
 .lightgrid .beam { stroke-width: 4; stroke-linecap: round; opacity: .8; }
 .lightgrid .beam.dark { stroke-dasharray: 4 6; stroke-width: 2; opacity: .5; }
 .lightgrid.edit .fx { cursor: pointer; }

@@ -32,6 +32,55 @@ export function cellOffsets(n, shape = "row", cols = 0) {
   return [...Array(n)].map((_, i) => [i - (n - 1) / 2, 0]);
 }
 
+// ---------------------------------------------------------------- labels
+
+const CH_W = 0.23, LABEL_H = 0.42; // label size in cells (9 px text on a 24 px cell)
+
+// a short name for a crowded spot: "uking_l" -> "UK L", "bar_3" -> "BA 3", "mh_a" -> "MH A"
+export function shortName(id) {
+  const parts = String(id).split(/[_\s-]+/).filter(Boolean);
+  if (parts.length < 2) return String(id).slice(0, 5);
+  return `${parts[0].slice(0, 2).toUpperCase()} ${parts.slice(1).join("").slice(0, 3).toUpperCase()}`;
+}
+
+const hits = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+
+/** Where each light's name goes so that no two names and no name and light overlap.
+ * items: [{id, icon: [x0, y0, x1, y1] (cells), full, short}]. Tries under the light, then a little
+ * lower, then beside; then the short name (full id on hover); last resort, further down with a leader
+ * line. Returns {id: {x (centre), y (top), text, short, leader}}. Pure, so it's tested on its own. */
+export function placeLabels(items) {
+  const out = {};
+  const icons = items.map((it) => it.icon);
+  const placed = [];
+  const order = items.slice().sort((a, b) => a.icon[1] - b.icon[1] || a.icon[0] - b.icon[0]);
+  const box = (cx, top, text) => { const w = text.length * CH_W; return [cx - w / 2, top, cx + w / 2, top + LABEL_H]; };
+  const free = (b, it) => !placed.some((p) => hits(p, b)) && !icons.some((ic) => ic !== it.icon && hits(ic, b));
+  for (const it of order) {
+    const [x0, , x1, y1] = it.icon, cx = (x0 + x1) / 2, top = y1 + 0.05;
+    const spots = (text) => {
+      const w = text.length * CH_W;
+      return [[cx, top], [cx, top + 0.45], [cx - w / 2 - 0.3, top], [cx + w / 2 + 0.3, top], [cx, top + 0.9]];
+    };
+    let done = null;
+    for (const [text, short] of [[it.full, false], [it.short, true]]) {
+      for (const [x, y] of spots(text)) {
+        const b = box(x, y, text);
+        if (free(b, it)) { done = { x, y, text, short, leader: Math.abs(x - cx) > 0.01 || y > top + 0.01 }; placed.push(b); break; }
+      }
+      if (done) break;
+    }
+    if (!done) { // crowded: go further down until there's room, with a line back to the light
+      let y = top + 1.35;
+      while (!free(box(cx, y, it.short), it) && y < top + 8) y += 0.45;
+      done = { x: cx, y, text: it.short, short: true, leader: true };
+      placed.push(box(cx, y, it.short));
+    }
+    out[it.id] = done;
+  }
+  return out;
+}
+
 function rotated([x, y], deg) {
   const a = (deg * Math.PI) / 180;
   return [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
@@ -133,14 +182,16 @@ export class LightGrid {
     const ys = this.cellsOf(id).map(([, y]) => y);
     const label = svg("text", { x: p.x * C, y: (Math.max(...ys) + 0.95) * C, class: "name", "text-anchor": "middle" });
     label.textContent = id;
-    g.append(label);
+    const tip = svg("title");
+    tip.textContent = f.type ? `${id} (${f.type})` : id; // full id on hover, whatever the label shows
+    g.append(tip, label);
     const beam = f.moves ? svg("line", { class: "beam" }) : null;
     if (old) {
       old.g.replaceWith(g);
       if (old.beam) old.beam.remove();
     } else this.gLights.append(g);
     if (beam) this.gBeams.append(beam);
-    this.items[id] = { g, cells, beam };
+    this.items[id] = { g, cells, beam, label };
   }
 
   // the box round what's on it, in cells: tight round the lights when only showing or picking them
@@ -184,6 +235,30 @@ export class LightGrid {
   }
 
   get fitted() { return !this.view; }
+
+  // the box a light takes up (cells), segments and outline included
+  iconBox(id) {
+    const f = this.fixtures[id], pts = this.cellsOf(id), r = (f.pixels || 1) > 1 ? 0.5 : SIZE / 2;
+    const xs = pts.map(([x]) => x), ys = pts.map(([, y]) => y);
+    return [Math.min(...xs) - r, Math.min(...ys) - r, Math.max(...xs) + r, Math.max(...ys) + r];
+  }
+
+  layoutLabels() {
+    if (!this.showNames) return;
+    const ids = Object.keys(this.items).filter((id) => this.items[id].label);
+    const spots = placeLabels(ids.map((id) => ({ id, icon: this.iconBox(id), full: id, short: shortName(id) })));
+    for (const id of ids) {
+      const it = this.items[id], s = spots[id], icon = this.iconBox(id);
+      it.label.textContent = s.text;
+      it.label.setAttribute("x", s.x * C);
+      it.label.setAttribute("y", (s.y + LABEL_H * 0.8) * C);
+      it.label.classList.toggle("short", s.short);
+      it.g.querySelector(".leader")?.remove();
+      if (s.leader) {
+        it.g.insertBefore(svg("line", { class: "leader", x1: ((icon[0] + icon[2]) / 2) * C, y1: icon[3] * C, x2: s.x * C, y2: s.y * C }), it.label);
+      }
+    }
+  }
 
   fitView() {
     this.view = null;
@@ -281,7 +356,7 @@ export class LightGrid {
       this.root.prepend(defs);
     }
   }
-  setNames(on) { this.showNames = on; this.applyView(); }
+  setNames(on) { this.showNames = on; this.fit(); this.applyView(); }
   setBeams(on) { this.showBeams = on; this.fit(); this.applyView(); }
 
   // ---------------------------------------------------------------- live colours + beams
