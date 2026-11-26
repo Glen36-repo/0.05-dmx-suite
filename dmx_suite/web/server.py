@@ -241,7 +241,7 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             except (StoreError, ConfigError, ValueError, KeyError) as e:
                 msg = f"missing {e}" if isinstance(e, KeyError) else str(e)
                 self._error(400, msg)
-            except (BrokenPipeError, ConnectionResetError):
+            except ConnectionError:  # client went away (closed tab or window; Windows reports it as aborted)
                 pass
             except Exception:  # never let a UI bug take the server down mid-gig
                 log.exception("API error")

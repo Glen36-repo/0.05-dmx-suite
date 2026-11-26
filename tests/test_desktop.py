@@ -218,3 +218,22 @@ def test_icon_only_passed_off_windows(tray, monkeypatch):
         wv = FakeWebview()
         desktop.Desktop(app_args("--smoke-test", "0"), wv, start_session).run()
         assert wv.icon == expected
+
+
+def test_closed_window_connection_is_not_an_error(caplog):
+    """Closing the window drops its live-update stream; Windows reports that as ConnectionAbortedError."""
+    import urllib.request
+
+    session = start_session(app_args())
+    try:
+        def gone():
+            raise ConnectionAbortedError(10053, "aborted")
+
+        session.app.snapshot = gone
+        try:
+            urllib.request.urlopen(desktop.ui_url(session.web.port) + "api/events", timeout=2).read()
+        except OSError:
+            pass
+        assert "API error" not in caplog.text
+    finally:
+        session.stop()
