@@ -255,7 +255,8 @@ def main(argv: list[str] | None = None) -> int:
     from .cli import main as cli_main
 
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"app", "run", "check", "midi-ports", "midi-monitor", "mcp", "claude-setup", "addresses", "import-ofl"}
+    commands = {"app", "run", "check", "midi-ports", "midi-monitor", "mcp", "claude-setup", "addresses", "import-ofl",
+                "export-ofl", "pack", "unpack", "update-check"}
     if not any(a in commands for a in argv):
         # global options (--shows X) go before the command, the rest (e.g. --sim) after it
         head = argv[:2] if argv[:1] == ["--shows"] else [a for a in argv[:1] if a.startswith("--shows=")]

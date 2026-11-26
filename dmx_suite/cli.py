@@ -514,6 +514,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mode", help="OFL mode name (needed if the fixture has several)")
     p.add_argument("--key", help="type key to use in fixtures.yaml")
     p.add_argument("--kind", choices=[k.value for k in Kind], help="override the guessed kind")
+    p = sub.add_parser("export-ofl", help="a fixture type as Open Fixture Library JSON, to share")
+    p.add_argument("type", help="type key in fixtures.yaml, e.g. mhl36")
+    p.add_argument("-o", "--output", type=Path, help="file to write (default: print it)")
     p = sub.add_parser("pack", help="save a show folder as one .dms show file")
     p.add_argument("folder", type=Path)
     p.add_argument("file", type=Path)
@@ -555,6 +558,25 @@ def cmd_addresses(args: argparse.Namespace) -> int:
     patch = load_patch(args.shows / "fixtures.yaml")
     rig = load_rig(args.shows / "rigs" / f"{args.rig}.yaml", patch)
     print(format_report(*patch_report(patch, rig)))
+    return 0
+
+
+def cmd_export_ofl(args: argparse.Namespace) -> int:
+    import json
+
+    from .ofl import type_to_ofl
+    from .versions import read_doc
+
+    types = read_doc(args.shows / "fixtures.yaml", "fixtures").get("types") or {}
+    if args.type not in types:
+        print(f"no fixture type {args.type!r}; have: {', '.join(types)}")
+        return 1
+    text = json.dumps(type_to_ofl(args.type, types[args.type], time.strftime("%Y-%m-%d")), indent=2) + "\n"
+    if args.output:
+        args.output.write_text(text, encoding="utf-8")
+        print(f"wrote {args.output}: check it against the manual before sharing")
+    else:
+        print(text, end="")
     return 0
 
 
@@ -662,6 +684,7 @@ def main(argv: list[str] | None = None) -> int:
             "addresses": cmd_addresses,
             "import-ofl": cmd_import_ofl,
             "pack": cmd_pack,
+            "export-ofl": cmd_export_ofl,
             "unpack": cmd_unpack,
             "update-check": cmd_update_check,
         }[args.cmd](args)
