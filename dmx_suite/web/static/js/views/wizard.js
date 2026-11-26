@@ -48,7 +48,10 @@ function nav(onNext) {
     } }, t(step === STEPS.length - 1 ? "wizard.finish" : "wizard.next")));
 }
 
+let renderId = 0; // a slow check (port scan) mustn't draw over a newer step
+
 async function render() {
+  const mine = ++renderId;
   const name = STEPS[step];
   const body = el("div", { class: "wizard-body" });
   const head = el("div", {}, el("p", { class: "muted", text: t("wizard.step", { n: step + 1, of: STEPS.length }) }),
@@ -144,6 +147,7 @@ async function render() {
     };
   }
 
+  if (mine !== renderId) return;
   dialog().replaceChildren(el("form", { method: "dialog", class: "wizard", onsubmit: (e) => e.preventDefault() }, head, body, nav(next)));
 }
 
