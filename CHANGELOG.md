@@ -2,6 +2,17 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (Connect to Claude)
+
+### Added
+- Setup page: Connect to Claude, with a checklist for a new laptop, whether Claude Desktop and Claude Code are connected to this show, Connect / Update / Disconnect, and when Claude last checked in. The status strip's Claude light opens it.
+- Claude Code is connected too (`~/.claude.json`), not only Claude Desktop.
+
+### Fixed
+- Alert banners no longer cover the status strip.
+- The setup wizard no longer redraws over the next step when the port scan answers late.
+- The Scenes page ignores taps made while it's still loading.
+
 ## Unreleased (v3, release V3.5)
 
 ### Added

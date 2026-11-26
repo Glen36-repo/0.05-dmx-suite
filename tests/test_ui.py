@@ -3,6 +3,7 @@
 Skipped when Playwright or a browser isn't available. CI installs both.
 """
 
+import json
 import os
 import shutil
 import time
@@ -829,3 +830,25 @@ def test_ride_presets_and_reroll(ui):
     page.once("dialog", lambda d: d.accept("my_look"))
     page.click("#ride-save-preset")
     page.wait_for_selector("#ride-presets [data-preset=my_look]")
+
+
+# ------------------------------------------------------------------ Connect to Claude
+
+
+def test_connect_to_claude_from_setup(ui, monkeypatch, tmp_path):
+    page, app, root, _ = ui
+    for k in ("APPDATA", "LOCALAPPDATA"):
+        monkeypatch.setenv(k, str(tmp_path / k))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "APPDATA" / "Claude").mkdir(parents=True)
+    page.click("#health .tile[data-key='claude:Claude']")  # the status bar tile opens the section
+    page.wait_for_selector("#page-setup.on #claude-connect .claude-steps")
+    assert "Claude Desktop: not connected" in page.inner_text("#claude-connect")
+    page.click("#claude-connect-btn")
+    page.wait_for_function("document.querySelector('#claude-connect').textContent.includes('Claude Desktop: connected')")
+    cfg = json.loads((tmp_path / "APPDATA" / "Claude" / "claude_desktop_config.json").read_text())
+    assert cfg["mcpServers"]["dmx-suite"]["args"][-1] == "mcp"
+    assert page.is_disabled("#claude-connect-btn")
+    page.click("#claude-disconnect-btn")
+    page.wait_for_function("document.querySelector('#claude-connect').textContent.includes('Claude Desktop: not connected')")

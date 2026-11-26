@@ -173,7 +173,7 @@ def test_devices_list(app):
     kinds = [d["kind"] for d in app.devices()]
     assert kinds[:2] == ["engine", "output"] and "claude" in kinds and "screens" in kinds
     claude = next(d for d in app.devices() if d["kind"] == "claude")
-    assert claude["state"] == "idle" and claude["detail"] == "not connected"
+    assert claude["state"] == "idle" and claude["detail"].startswith("not set up")
 
 
 def test_claude_states(app):

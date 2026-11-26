@@ -2,6 +2,7 @@
 import { api, attempt, cmd } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
+import { openClaude } from "./claude.js";
 import { live, onConnection, onState } from "../state.js";
 
 let lastNewBanner = null;
@@ -56,7 +57,8 @@ function render(s) {
   const short = (d) => (d.kind === "output" || d.kind === "midi" ? d.detail.split(" · ")[0] : d.detail);
   $("#health").replaceChildren(
     ...s.devices.map((d) =>
-      el("div", { class: "tile", title: `${d.name}: ${d.detail}`, "data-key": `${d.kind}:${d.name}` },
+      el("div", { class: "tile" + (d.kind === "claude" ? " link" : ""), title: `${d.name}: ${d.detail}`, "data-key": `${d.kind}:${d.name}`,
+        onclick: d.kind === "claude" ? openClaude : undefined },
         el("span", { class: `dot ${d.state}${d.active ? " active" : ""}`, "aria-label": d.state }),
         el("span", { text: d.name }),
         el("span", { class: "muted", text: d.state === "ok" && d.kind !== "claude" ? short(d) : d.detail }))),
@@ -78,7 +80,8 @@ function alertAction(action, id, extra = {}) {
 
 function renderAlerts(ac) {
   if (!ac) return;
-  // banners overlay the top of the page: controls never move under a finger
+  // banners overlay the top of the page, just under the status strip: controls never move under a finger
+  $("#banners").style.top = Math.round($("#health").getBoundingClientRect().bottom) + "px";
   $("#banners").replaceChildren(...ac.banners.map((b) => el("div", { class: `banner ${b.severity}`, role: "alert", "data-alert": b.id },
     el("span", { class: "msg", text: `${b.device}: ${b.message}` }),
     ...(b.severity === "critical"

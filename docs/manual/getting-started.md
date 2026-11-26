@@ -38,3 +38,19 @@ dmx-suite update-check
 ```
 
 It only checks; installing a new version is up to you. Show files from an older version are upgraded automatically the first time the new version runs, and the originals are kept in `.backups`.
+
+## Connect to Claude (optional)
+
+Claude Desktop or Claude Code on the laptop can read and change your show in plain words ("make a slow blue scene with the heads on the kit", "five moody scenes for the slow songs"). Everything Claude changes is checked against the rules like your own changes, backed up and undoable, and gig lock stops it.
+
+On the **Setup** page, **Connect to Claude** shows a checklist for a new laptop:
+
+1. Install 0.05 DMX Suite (the Claude tools come with it)
+2. Install Claude Desktop or Claude Code and open it once
+3. Press **Connect**
+4. Restart Claude: 0.05 DMX Suite then shows in its connectors list
+
+Under the checklist, each Claude app on the laptop says whether it's connected to this show. **Update** points it at the show you have open now; **Disconnect** takes the 0.05 tools out again. Your other Claude settings are kept, and the previous settings file is saved next to it as `.bak`. The **Claude** light in the status strip shows whether Claude is connected and when it last checked in; tap it to open this section. Connecting can only be done on the laptop itself, not from a phone, and Claude can't connect or disconnect itself.
+
+The installer's Claude option and `dmx-suite claude-setup` connect Claude Desktop the same way.
+

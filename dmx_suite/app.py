@@ -302,6 +302,34 @@ class App:
             c["calls"] += 1
             c["last_call"], c["last_call_at"] = call, now
 
+    # ------------------------------------------------------------------ Connect to Claude (Setup page)
+
+    def claude_shows(self) -> Path:
+        """What Claude's tools open: the .dms show file when running one, else the show folder."""
+        return Path(self.project.dms) if self.project is not None else Path(self.files.root)
+
+    def claude_status(self, fresh: bool = False) -> dict[str, Any]:
+        """Each Claude app on this computer and whether it has the 0.05 tools for this show; cached
+        30 s (the status bar asks often), fresh after Connect / Disconnect."""
+        from . import claude_setup
+
+        now = time.time()
+        cached = getattr(self, "_claude_status", None)
+        if not fresh and cached is not None and now - cached[0] < 30:
+            st = cached[1]
+        else:
+            st = claude_setup.status(self.claude_shows())
+            self._claude_status = (now, st)
+        c = self.clients.get("claude")
+        return {**st, "last_seen": c["last"] if c else None, "last_call": c["last_call"] if c else None,
+                "calls": c["calls"] if c else 0}
+
+    def claude_connect(self, connect: bool = True) -> dict[str, Any]:
+        from . import claude_setup
+
+        changed = claude_setup.connect(self.claude_shows()) if connect else claude_setup.disconnect()
+        return {"ok": True, "changed": changed, "status": self.claude_status(fresh=True)}
+
     def engine_fps(self) -> float:
         start, frames0, rate = self._fps
         now = time.monotonic()
@@ -349,8 +377,16 @@ class App:
         c = self.clients.get("claude")
         now = time.time()
         if c is None or now - c["last"] > 75:
-            out.append({"kind": "claude", "name": "Claude", "state": "idle",
-                        "detail": "not connected" if c is None else f"last seen {_ago(now - c['last'])} ago"})
+            if c is None:
+                try:
+                    regs = [t["registered"] for t in self.claude_status()["targets"] if t["installed"]]
+                except Exception:  # a config we can't read: say "not connected" rather than fail the status bar
+                    regs = []
+                detail = ("set up: open Claude to use it" if "current" in regs
+                          else "not set up: Setup > Connect to Claude")
+            else:
+                detail = f"last seen {_ago(now - c['last'])} ago"
+            out.append({"kind": "claude", "name": "Claude", "state": "idle", "detail": detail})
         else:
             busy = c["last_call_at"] is not None and now - c["last_call_at"] < 60
             detail = f"{c['last_call']} {_ago(now - c['last_call_at'])} ago" if busy else "connected"

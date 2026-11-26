@@ -377,6 +377,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     "problems": rig.point_problems()})
             if path == "/api/alerts":
                 return self._json(200, app.alerts_view())
+            if path == "/api/claude":  # Connect to Claude (Setup page)
+                if who == "claude":
+                    raise ApiError(403, "not available to Claude")
+                return self._json(200, app.claude_status(fresh=q.get("fresh") == "1"))
             if path == "/api/fx":  # FX banks for this rig (v3.3)
                 return self._json(200, app.fx_catalogue())
             if path == "/api/presets":  # presets (v3.5): starters + the show's own
@@ -692,6 +696,13 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 step = body.get("step")
                 msg = app.preview_scene(scene, float(body.get("seconds", 10)), None if step is None else int(step))
                 return self._json(200, {"ok": True, "message": msg})
+            if path in ("/api/claude/connect", "/api/claude/disconnect") and method == "POST":
+                if not self._local():  # it changes this computer's Claude settings: only from this computer
+                    raise ApiError(403, "connect Claude from the laptop itself")
+                try:
+                    return self._json(200, app.claude_connect(path.endswith("/connect")))
+                except (OSError, ValueError) as e:
+                    raise ApiError(400, f"couldn't change the Claude settings: {e}") from e
             if path == "/api/alerts" and method == "POST":  # banners: dismiss, minimise, snooze, mute, quiet
                 ac, a = app.alert_center, str(body.get("action", ""))
                 try:
