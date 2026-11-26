@@ -8,6 +8,7 @@ import { $, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
 import { t } from "../i18n.js";
 import { onShow } from "../nav.js";
+import { copyLook, layerFor, pasteLayers } from "../paste.js";
 import { live, onCatalogue, onState, refreshCatalogue } from "../state.js";
 
 const SPREAD_KEYS = ["mapping", "direction", "angle", "groups_of"];
@@ -335,8 +336,48 @@ function buildTabs(cat) {
   }, g === "all" ? t("groups.all") : g)));
 }
 
+// ---------------------------------------------------------------- copy / paste a look
+
+const CLIP = "dmx-suite.look";
+let clip = null;
+try {
+  clip = JSON.parse(localStorage.getItem(CLIP) || "null");
+} catch {}
+
+function copy() {
+  // the layer being edited, else the one lighting the first selected light
+  const src = current >= 0 ? doc.layers[current] : layerFor(doc.layers, [...grid.selected][0], expand);
+  if (!src) return toast(t("scenes.nothing_to_copy"), true);
+  clip = copyLook(src);
+  try {
+    localStorage.setItem(CLIP, JSON.stringify(clip));
+  } catch {}
+  toast(t("scenes.copied", { what: describe(src) }));
+}
+
+function paste() {
+  if (!clip) return toast(t("scenes.nothing_copied"), true);
+  const ids = [...grid.selected];
+  if (!ids.length) return toast(t("scenes.select_first"), true);
+  const layers = pasteLayers(clip, ids, selectionNames(), live.cat.fixtures, fx.effects);
+  if (!layers.length) return toast(t("scenes.paste_none"), true);
+  const at = current >= 0 ? current + 1 : doc.layers.length;
+  doc.layers.splice(at, 0, ...layers);
+  current = at + layers.length - 1;
+  toast(t("scenes.pasted", { n: layers.length }));
+  changed();
+}
+
 export function init() {
   grid = new LightGrid($("#scene-grid"), { select: true, onChange: updateSelection });
+  $("#look-copy").onclick = copy;
+  $("#look-paste").onclick = paste;
+  document.addEventListener("keydown", (ev) => {
+    if (!$("#page-scenes").classList.contains("on") || !(ev.ctrlKey || ev.metaKey) || ev.target.matches("input, select, textarea")) return;
+    const k = ev.key.toLowerCase();
+    if (k === "c") { ev.preventDefault(); copy(); }
+    else if (k === "v") { ev.preventDefault(); paste(); }
+  });
   $("#scene-pick").onchange = (e) => open(e.target.value);
   $("#scene-new").onclick = () => open("");
   $("#scene-save").onclick = save;

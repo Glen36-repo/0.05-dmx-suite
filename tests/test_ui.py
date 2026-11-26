@@ -406,3 +406,35 @@ def test_undo_a_scene_edit(ui):
     page.keyboard.press("Control+y")  # redo from any page
     page.wait_for_function("document.querySelector('#toast').textContent.startsWith('Redone')")
     assert (root / "scenes" / "ui_undo.yaml").exists()
+
+
+def test_paste_maps_a_look_by_what_each_light_can_do(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.wait_for_selector("#scene-group-tabs [data-group=movers]")
+    look = {"colour": "red", "position": "drum_kit", "gobo": "dots", "effect": "sweep"}
+    layers = page.evaluate("""async (look) => {
+        const m = await import('/static/js/paste.js');
+        const cat = await (await fetch('/api/catalogue')).json();
+        const fx = (await (await fetch('/api/effects')).json()).effects;
+        return m.pasteLayers(m.copyLook({fixtures: ['movers'], mute: false, ...look}),
+            ['mh_a', 'mh_b', 'uking_l', 'bar_1'], ['mh_a', 'mh_b', 'uking_l', 'bar_1'], cat.fixtures, fx);
+    }""", look)
+    by = {tuple(ly["fixtures"]): ly for ly in layers}
+    assert by[("mh_a", "mh_b")] == {"fixtures": ["mh_a", "mh_b"], **look}  # movers take everything
+    # the colour-only head and the bar can do the same: one layer, colour only
+    assert by[("uking_l", "bar_1")] == {"fixtures": ["uking_l", "bar_1"], "colour": "red"}
+    assert len(layers) == 2
+
+
+def test_copy_and_paste_in_the_scene_builder(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.click("#scene-group-tabs [data-group=washes]")
+    page.click("#layer-add")
+    page.click("#look-copy")
+    page.wait_for_selector("#toast:not(.hidden)")
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.keyboard.press("Control+v")
+    page.wait_for_function("document.querySelectorAll('#layers li').length === 2")
+    assert "bars" in page.inner_text("#layers li >> nth=1")

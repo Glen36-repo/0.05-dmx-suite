@@ -445,6 +445,7 @@ class App:
             "positions": sorted(f.palettes.positions),
             "fixtures": [{"id": fx.id, "kind": fx.kind.value, "type": fx.type.name, "colour_only": fx.type.colour_only,
                           "moves": fx.type.has("pan") and not fx.type.colour_only, "pixels": fx.type.pixels,
+                          "gobo": fx.type.has("gobo"), "wheel": fx.type.has("colour_wheel"),
                           "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range}
                          for fx in self.engine.rig.fixtures],
             "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot, "shape": p.shape, "cols": p.cols}

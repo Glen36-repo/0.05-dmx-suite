@@ -393,5 +393,14 @@
  "history.undone": "Undone: {note}",
  "history.redone": "Redone: {note}",
  "history.by_you": "you",
- "history.by_claude": "Claude"
+ "history.by_claude": "Claude",
+ "scenes.copy": "Copy look",
+ "scenes.copy_tip": "Copy the layer being edited, or the look of the first selected light (Ctrl+C)",
+ "scenes.paste": "Paste to selection",
+ "scenes.paste_tip": "Paste the copied look onto the selected lights; position and gobo only go where they fit (Ctrl+V)",
+ "scenes.copied": "Copied {what}",
+ "scenes.nothing_to_copy": "Pick a layer, or a light that a layer lights",
+ "scenes.nothing_copied": "Copy a look first",
+ "scenes.paste_none": "None of the selected lights can take that look",
+ "scenes.pasted": "Pasted as {n} layer(s)"
 }
