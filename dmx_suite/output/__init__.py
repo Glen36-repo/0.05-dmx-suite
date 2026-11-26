@@ -38,6 +38,7 @@ def driver_id(name: Any) -> Any:
 
 
 def make_driver(cfg: dict[str, Any]) -> OutputDriver:
+    asked = dict(cfg)
     cfg = dict(cfg)
     name = driver_id(cfg.pop("driver", None))
     if name not in DRIVERS:
@@ -47,7 +48,7 @@ def make_driver(cfg: dict[str, Any]) -> OutputDriver:
     if "universe" in cfg and "universe" not in inspect.signature(DRIVERS[name]).parameters:
         cfg.pop("universe")  # drivers that send every universe (node, log, null) or map them (Art-Net, sACN)
     drv = DRIVERS[name](**cfg)
-    drv.cfg = {"driver": name, **cfg}  # what the rig asked for (routing table)
+    drv.cfg = {**asked, "driver": name}  # what the rig asked for, alias and device included (routing table)
     return drv
 
 

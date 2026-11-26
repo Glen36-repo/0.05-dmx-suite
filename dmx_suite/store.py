@@ -72,6 +72,7 @@ class ShowStore:
         self.root = Path(root)
         self._lock = threading.Lock()
         self._locked = locked or (lambda: False)  # gig lock check (callable)
+        self._local = threading.local()
         self.undo_stack: list[Change] = []
         self.redo_stack: list[Change] = []
         self._next_id = 1
@@ -598,8 +599,21 @@ class ShowStore:
             changes[p] = self.text_for(p, d)
         return self.apply(changes, f"rename point {old} -> {new}")
 
+    @contextmanager
+    def recovery(self) -> Iterator[None]:
+        """Mid-gig recovery (v4): swapping a missing interface for a plugged-in one is allowed under gig
+        lock. Only the gig lock is lifted, for this thread and this change; any other reason a write is
+        refused (the show file open elsewhere) still applies."""
+        self._local.recovering = True
+        try:
+            yield
+        finally:
+            self._local.recovering = False
+
     def _guard(self) -> None:
         why = self._locked()  # True (gig lock) or a reason, e.g. the show file is open elsewhere
+        if why is True and getattr(self._local, "recovering", False):
+            return
         if why:
             raise LockedError(why if isinstance(why, str) else "gig lock is on: show files can't be changed")
 

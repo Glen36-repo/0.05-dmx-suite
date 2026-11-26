@@ -373,8 +373,78 @@ class App:
                    for i, o in enumerate(rig.outputs) if o.get("device") and o["device"] not in ids]
         missing += [{"midi_out": True, "device": o["device"], "alias": o.get("alias"), "label": device_label(o["device"])}
                     for o in rig.midi_outputs if o["device"] not in ids]
+        ports_in = [d["port"].lower() for d in found if d["kind"] == "midi_in"]
+        missing += [{"midi_in": True, "device": f"midi-in:{n}", "alias": a, "label": n}
+                    for n, a in rig.midi_aliases.items() if not any(n.lower() in p for p in ports_in)]
         return {"devices": rows, "missing": missing if self.registry is not None else [], "new": new,
                 "scanning": self.registry is not None}
+
+    def rebuild_outputs(self, outputs: list[dict[str, Any]]) -> list[str]:
+        """Swap the DMX outputs for these, live: new drivers open first, then take over between frames,
+        then the old ones close. The simulator's outputs (not made from the rig) are left alone."""
+        from .cli import resolve_output
+        from .output import make_driver
+
+        if any(d.cfg is None for d in self.engine.drivers):
+            return ["simulator: outputs aren't rebuilt (no hardware)"]
+        new = []
+        try:
+            for o in outputs:
+                new.append(make_driver(resolve_output(o, self.registry) if self.registry is not None else dict(o)))
+        except Exception as e:
+            for d in new:
+                d.close()
+            raise ValueError(f"outputs not changed: {e}") from e
+        for d in new:
+            if isinstance(d, NodeSerialDriver):
+                d.link.health.expect(self.engine.rig.nodes)
+                d.link.health.listeners.append(self._health_event)
+                d.on_connect = self.setup_node
+        with self.engine.lock:
+            old, self.engine.drivers = self.engine.drivers, new
+        for d in old:
+            try:
+                d.close()
+            except Exception:  # noqa: BLE001 - an unplugged port may not close cleanly
+                log.debug("closing an old output failed", exc_info=True)
+        self.engine.output()  # the new outputs get a frame now, not on the next tick
+        return [f"outputs rebuilt: {len(new)} live"]
+
+    def replace_device(self, missing: str, use: str) -> dict[str, Any]:
+        """Mid-gig recovery: a configured interface has gone (missing), use this plugged-in one instead.
+        Same universe, alias and settings; allowed under gig lock (only this change)."""
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        d = self.registry.get(use) if self.registry is not None else None
+        if d is None:
+            raise ValueError(f"{use} isn't plugged in")
+        changed = False
+        for o in data.get("outputs") or []:
+            if o.get("device") == missing:
+                if use.startswith("usb:"):
+                    o["device"] = use
+                else:  # no serial number: it can only be kept by its port
+                    o.pop("device", None)
+                o["port"] = d["port"]
+                if d.get("driver") in ("usb_dmx_open", "usb_dmx_pro") and o.get("driver") in ("usb_dmx_open", "usb_dmx_pro"):
+                    o["driver"] = d["driver"]  # an Open DMX standing in for a Pro (or the other way)
+                changed = True
+        ins = data.get("midi_inputs") or []
+        for i, x in enumerate(ins):
+            if isinstance(x, dict) and x.get("device") == missing and use.startswith("midi-in:"):
+                ins[i] = {**x, "device": use}
+                changed = True
+        outs = data.get("midi_outputs") or []
+        for x in outs:
+            if x.get("device") == missing and use.startswith("midi-out:"):
+                x["device"] = use
+                changed = True
+        if not changed:
+            raise ValueError(f"nothing in rig {rig_name} uses {missing}")
+        with self.store.recovery():
+            bid = self.store.put("rig", rig_name, data, f"use {d['name']} instead of {missing}")
+        notes = self.reload()
+        return {"backup": bid, "notes": notes}
 
     def set_device(self, dev_id: str, alias: str | None = None, universe: int | None = None, driver: str | None = None,
                    use: bool = True) -> dict[str, Any]:
@@ -691,9 +761,13 @@ class App:
         sig = self._rig_sig()
         if sig != getattr(self, "_loaded_sig", None) and hasattr(self, "_loaded_sig"):
             old_rig = self.files.rig
-            if (new.rig.outputs, new.rig.midi_inputs, new.rig.osc) != (old_rig.outputs, old_rig.midi_inputs, old_rig.osc):
-                notes.append("output, MIDI input and OSC changes take effect after a restart")
-                new.rig.outputs, new.rig.midi_inputs, new.rig.osc = old_rig.outputs, old_rig.midi_inputs, old_rig.osc
+            if new.rig.osc != old_rig.osc:
+                notes.append("OSC changes take effect after a restart")
+                new.rig.osc = old_rig.osc
+            if new.rig.outputs != old_rig.outputs:  # v4: outputs are rebuilt live (USB interfaces reopen)
+                notes += self.rebuild_outputs(new.rig.outputs)
+            if new.rig.midi_inputs != old_rig.midi_inputs and self.midi_inputs is not None:
+                self.midi_inputs.wanted = [w for w in new.rig.midi_inputs if w]  # its 2 s rescan opens them
             self.engine.swap_rig(new.rig, new.look)
             self.autopilot.cfg = new.rig.autopilot
             self.autopilot.energy.cfg = new.rig.autopilot

@@ -40,8 +40,17 @@ export async function loadFound(force = false) {
       el("td", {}, alias), el("td", {}, use), el("td", {}, save));
   }));
   if (!v.scanning) $("#found").replaceChildren(el("tr", {}, el("td", { colspan: 5, class: "muted", text: t("setup.no_scan") })));
-  $("#found-missing").replaceChildren(...v.missing.map((m) => el("li", { "data-missing": m.device },
-    t("setup.missing", { name: m.alias || m.label, label: m.label }))));
+  // a missing device: pick a plugged-in one of the same sort to take over (works under gig lock)
+  const sameSort = (m) => v.devices.filter((d) => (m.midi_in ? d.kind === "midi_in" : m.midi_out ? d.kind === "midi_out" : d.kind === "serial"));
+  $("#found-missing").replaceChildren(...v.missing.map((m) => {
+    const pick = el("select", { "data-replace": m.device }, el("option", { value: "" }, t("setup.use_instead")),
+      ...sameSort(m).map((d) => el("option", { value: d.id }, d.alias ? `${d.alias} (${d.name})` : d.name)));
+    pick.onchange = async () => {
+      if (pick.value && await attempt(() => api("POST", "/api/devices/replace", { missing: m.device, use: pick.value }),
+        t("setup.replaced_device", { name: m.alias || m.label }))) loadFound(true);
+    };
+    return el("li", { "data-missing": m.device }, t("setup.missing", { name: m.alias || m.label, label: m.label }), " ", pick);
+  }));
 }
 
 async function nodeAction(n) {

@@ -727,6 +727,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/layout" and method == "PUT":
                 bid = app.save_layout(body.get("layout") or {})
                 return self._json(200, {"ok": True, "backup": bid})
+            if path == "/api/devices/replace" and method == "POST":  # mid-gig recovery: allowed under gig lock
+                r = app.replace_device(str(body.get("missing", "")), str(body.get("use", "")))
+                return self._json(200, {"ok": True, **r})
             if path == "/api/devices/set" and method == "POST":
                 uni = body.get("universe")
                 r = app.set_device(str(body.get("id", "")), body.get("alias"), None if uni in (None, "") else int(uni),

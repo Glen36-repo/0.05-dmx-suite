@@ -277,6 +277,8 @@
  "setup.device_saved": "{name} saved",
  "setup.no_scan": "Simulator: no hardware is scanned.",
  "setup.missing": "Missing: {name} ({label})",
+ "setup.use_instead": "Use this instead…",
+ "setup.replaced_device": "{name}: now on the new interface",
  "setup.unstable": "no serial number: kept by its port",
  "setup.theme": "Theme (this screen's laptop)",
  "setup.density": "Button size",

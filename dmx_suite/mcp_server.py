@@ -296,7 +296,7 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
                    alias: str = "") -> str:
         """Change output `index` (from list_outputs; -1 adds one): driver (usb_dmx_open, usb_dmx_pro, node,
         artnet, sacn), port (COM3), universe (0-15), alias (e.g. Stage DMX). With mac: set a wireless node's
-        universe instead. Not during gig lock. Output changes apply after a restart until v4's live rebuild."""
+        universe instead. Not during gig lock. Applied live: the outputs are rebuilt between frames."""
         return t.set_output(index, driver, port, universe, mac, alias)
 
     @tool

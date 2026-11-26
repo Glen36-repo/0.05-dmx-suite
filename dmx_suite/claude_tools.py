@@ -386,7 +386,7 @@ class DmxTools:
         given = (("driver", driver), ("port", port), ("universe", universe), ("alias", alias))
         changes = {k: v for k, v in given if v not in ("", None)}
         r = self._live("POST", "/api/routing/output", {"index": index, "set": changes})
-        notes = "; ".join(r.get("notes") or [])
+        notes = "; ".join(r.get("notes") or [])  # outputs are rebuilt live
         return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
 
     def list_devices(self) -> str:
