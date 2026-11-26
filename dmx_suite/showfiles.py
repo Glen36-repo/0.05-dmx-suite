@@ -8,6 +8,7 @@ from pathlib import Path
 from .auto import generate
 from .busk import Panel, parse_panels
 from .fixtures import ConfigError, Patch, load_patch
+from .layout import layout_warnings
 from .look import INTENSITY_RULE1, Look, load_look
 from .midi.map import MidiMap, load_map, validate, where_of
 from .midi.named import Inputs, load_inputs
@@ -208,6 +209,7 @@ def check_all(root: str | Path) -> list[str]:
         pal = None
     for rk, rig in rigs.items():
         problems += [f"warning: rigs/{rk}.yaml {w}" for w in rig.point_problems()]
+        problems += [f"warning: rigs/{rk}.yaml {w}" for w in layout_warnings(rig)]
     try:
         from .quality import load_rules
 

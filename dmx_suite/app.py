@@ -338,6 +338,16 @@ class App:
             self._fps = (now, self.engine.frames_sent, rate)
         return rate
 
+    def layout_problems(self) -> list[dict[str, Any]]:
+        """Overlapping / touching lights on the running rig's layout (worked out once per rig)."""
+        from .layout import layout_problems
+
+        rig = self.engine.rig
+        key = (id(rig), repr(rig.layout), len(rig.fixtures))  # a reload may change the layout in place
+        if getattr(self, "_lp_cache", (None,))[0] != key:
+            self._lp_cache = (key, layout_problems(rig))
+        return self._lp_cache[1]
+
     def devices(self) -> list[dict[str, Any]]:
         """Everything outside the engine, for the status bar: kind, name, state (ok/warn/bad/sim/idle), detail."""
         out: list[dict[str, Any]] = []
@@ -362,6 +372,12 @@ class App:
                                   f"{self.show_problem['problem']}"})
         for d in self.engine.drivers:
             out.append(d.state())
+        lp = self.layout_problems()
+        if lp:
+            pairs = ", ".join(f"{p['a']}/{p['b']}" for p in lp[:4]) + (" ..." if len(lp) > 4 else "")
+            n_over = sum(1 for p in lp if p["kind"] == "overlap")
+            what = f"{n_over} in the same place" if n_over else f"{len(lp)} touching"
+            out.append({"kind": "layout", "name": "Layout", "state": "warn", "detail": f"{what}: {pairs} (Layout page)"})
         for msg in self.node_problems():
             out.append({"kind": "node", "name": "0.05 node", "state": "warn", "detail": msg})
         if self.midi_inputs is not None:
@@ -1366,6 +1382,7 @@ class App:
                          for fx in self.engine.rig.fixtures],
             "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot, "shape": p.shape, "cols": p.cols}
                        for fid, p in full_layout(self.engine.rig).items()},
+            "layout_problems": self.layout_problems(),
             "rig_name": self.names[0],
             "rigs": sorted(p.stem for p in (self.files.root / "rigs").glob("*.yaml")),
             "groups": self.engine.rig.patch.groups(),

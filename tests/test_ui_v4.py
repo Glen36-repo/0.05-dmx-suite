@@ -189,3 +189,22 @@ def test_haze_is_a_corner_indicator_not_a_light(shot):
     app.engine.haze_toggle_manual()
     page.wait_for_function("document.querySelector('#live-grid .hz-text').textContent.includes('manual')")
     page.wait_for_selector("#live-grid .haze-ind.on")
+
+
+def test_layout_page_lists_overlaps_live(shot):
+    page, *_ = shot
+    go(page, "layout")
+    page.wait_for_selector("#layout-problems li")
+    text = page.inner_text("#layout-problems")
+    assert "mh_a and par_1 are in the same place" in text
+    page.click("#layout-problems button:has-text('mh_a and par_1')")
+    assert page.eval_on_selector_all("#layout-grid .fx.sel", "els => els.map(e => e.dataset.id).sort()") == ["mh_a", "par_1"]
+    # move par_1 away: that line goes (before saving)
+    page.keyboard.press("Escape")  # par_1 is drawn on top of mh_a: dragging that spot moves par_1 only
+    page.click("[data-tool=move]")
+    box = page.locator("#layout-grid [data-id=par_1] .cell").bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + 4 * box["height"], steps=6)
+    page.mouse.up()
+    page.wait_for_function("!document.querySelector('#layout-problems').textContent.includes('mh_a and par_1')")

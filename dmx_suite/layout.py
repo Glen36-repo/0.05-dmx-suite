@@ -52,3 +52,45 @@ def cell_positions(p: Placement, pixels: int) -> list[tuple[float, float]]:
     for x, y in cell_offsets(pixels, p.shape, p.cols):
         out.append((p.x + x * math.cos(a) - y * math.sin(a), p.y + x * math.sin(a) + y * math.cos(a)))
     return out
+
+
+# ---------------------------------------------------------------------- overlaps (v4)
+
+MIN_GAP = 0.25  # cells: lights closer than this (edge to edge) are flagged too close
+
+
+def footprint(p: Placement, pixels: int) -> tuple[float, float, float, float]:
+    """The box a light takes on the grid (x0, y0, x1, y1), segments included."""
+    cells = cell_positions(p, pixels)
+    r = 0.5 if pixels > 1 else 0.41  # a pixel bar's segments touch; a single light is a 0.82 square
+    xs, ys = [x for x, _ in cells], [y for _, y in cells]
+    return min(xs) - r, min(ys) - r, max(xs) + r, max(ys) + r
+
+
+def layout_problems(rig: Rig, min_gap: float = MIN_GAP) -> list[dict[str, object]]:
+    """Lights whose places overlap or nearly touch. Spatial effects (mapping: spatial, linear wave,
+    radial, gradient, bars, noise, split) use these places, so two lights in one spot always show the
+    same part of an effect. Haze machines aren't on the stage and are left out."""
+    lay = full_layout(rig)
+    boxes = [(f.id, footprint(lay[f.id], f.type.pixels)) for f in rig.fixtures
+             if f.id in lay and f.kind != Kind.HAZE]
+    out: list[dict[str, object]] = []
+    for i, (a, ba) in enumerate(boxes):
+        for b, bb in boxes[i + 1:]:
+            gap = max(bb[0] - ba[2], ba[0] - bb[2], bb[1] - ba[3], ba[1] - bb[3])  # < 0: they overlap
+            if gap < 0:
+                out.append({"a": a, "b": b, "kind": "overlap", "gap": round(gap, 2)})
+            elif gap < min_gap:
+                out.append({"a": a, "b": b, "kind": "close", "gap": round(gap, 2)})
+    return sorted(out, key=lambda p: p["kind"] != "overlap")  # the worst first
+
+
+def layout_warnings(rig: Rig) -> list[str]:
+    out = []
+    for p in layout_problems(rig):
+        if p["kind"] == "overlap":
+            out.append(f"layout: {p['a']} and {p['b']} are in the same place; spatial effects show them the same - "
+                       "move one on the Layout page")
+        else:
+            out.append(f"layout: {p['a']} and {p['b']} touch; leave a gap so they read as two lights")
+    return out

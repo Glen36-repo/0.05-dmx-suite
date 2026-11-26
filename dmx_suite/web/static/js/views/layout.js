@@ -9,7 +9,16 @@ import { live, onCatalogue, onState, refreshCatalogue } from "../state.js";
 let grid;
 let group = "all"; // the group tab showing
 
+function showProblems() {
+  const ps = grid.problems();
+  $("#layout-problems").replaceChildren(...ps.map((p) => el("li", { class: p.kind },
+    el("button", { class: "link", onclick: () => grid.select([p.a, p.b]) },
+      t(p.kind === "overlap" ? "layout.problem_overlap" : "layout.problem_close", { a: p.a, b: p.b })))));
+  $("#layout-problems-head").classList.toggle("hidden", !ps.length);
+}
+
 function updateSelection() {
+  showProblems();
   const n = grid.selected.size;
   const ids = [...grid.selected];
   $("#layout-sel").textContent = n

@@ -282,6 +282,20 @@ export class LightGrid {
     return [Math.min(...xs) - r, Math.min(...ys) - r, Math.max(...xs) + r, Math.max(...ys) + r];
   }
 
+  // lights in the same place or touching (same test as layout.layout_problems on the server)
+  problems(minGap = 0.25) {
+    const ids = Object.keys(this.items), out = [];
+    const bx = Object.fromEntries(ids.map((id) => [id, this.iconBox(id)]));
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = bx[ids[i]], b = bx[ids[j]];
+        const gap = Math.max(b[0] - a[2], a[0] - b[2], b[1] - a[3], a[1] - b[3]);
+        if (gap < minGap - 1e-9) out.push({ a: ids[i], b: ids[j], kind: gap < -1e-9 ? "overlap" : "close" });
+      }
+    }
+    return out.sort((x, y) => (x.kind === "overlap" ? 0 : 1) - (y.kind === "overlap" ? 0 : 1));
+  }
+
   layoutLabels() {
     if (!this.showNames) return;
     const ids = Object.keys(this.items).filter((id) => this.items[id].label);
