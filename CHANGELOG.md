@@ -2,6 +2,35 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v4: stage view, Layout / Patch, routing, Monitor, step editor)
+
+Scope and decisions: `docs/V4-SCOPE.md`. Show file format 6 (old files upgrade once, with backups).
+
+### Added
+- Layout / Patch page: full width, universe tabs, Stage and Addresses views (each light's channels and the value going out on every channel, from what the interface really sent), a fixture list with inline address / universe edits checked for clashes, the routing table and a status strip; Print and PNG patch sheet.
+- Stage view: zooms to fit the rig (wheel zoom, pan, Fit); a pixel bar is one outlined object; names never overlap (nudged, short name, leader line; full id on hover); the haze machine is a corner indicator, not a square among the lights.
+- Warnings for lights in the same place or touching (show check, status bar, alerts, the Layout page): spatial effects use where the lights are.
+- ARRANGE panel: Align / Distribute / Shape / Rotate (step, angle, flip) / Pixels (shape, reverse order) as grouped icon buttons, disabled with the reason when they can't be used, shortcuts; Redo and Revert to saved.
+- Universe routing: every output has `universe:`; one universe can go out several outputs; problems flagged both ways; outputs change live (no restart).
+- Devices by what they report (product, serial number, VID:PID; MIDI port names), kept by serial number so a new COM port doesn't matter; your own names; missing and new device notices; **Use this instead** for a missing interface works under gig lock.
+- Monitor page: DMX out (the frame an interface sent, per channel with names, flags for no frames / all zero), MIDI in (each event with the named input and what it did, filters, heat map, rates, Learn), MIDI out (log, test send).
+- Step editor: step list, stage and programmer; set vs tracked per value; Record / Record over / as new step / Update step; Live or blind; play, loop a range, tap; undo / redo; YAML panel; problems pinned to their step.
+- Single pixels of a bar in the scene editor (click, shift, ctrl, shift-drag, lasso, double-click, helpers), written as `bar_1:px1-4`, `bars:px1,8`, `bars:odd`; saved pixel groups.
+- Haze settings per mode (pulse has its own level), live, saved per rig; Test; haze presets (and MIDI `haze_preset`).
+- Show and scene buttons as aligned grids in a fixed order; a Starter / generated section.
+- Button size setting: Compact (new default) or Comfortable; MASTER, BLACKOUT, haze boost, moods and pads stay big.
+- Claude: get_layout, set_layout, save_layout_position, delete_fixture, list_outputs, set_output, list_devices, set_device, monitor_dmx, monitor_midi, add_step, update_step, move_step, delete_step, save_haze_settings; set_haze takes settings; preview_scene can hold a step; save_input takes device_info.
+
+### Changed
+- **Ride** is now **Autopilot** (its controls are **Feel**); **Busk** is now **Override**. Old file keys, MIDI actions and API routes still work; files are written with the new ones (`feel:`, `override`, `autopilot_fx`, `feel_speed` ...). `panels.yaml` keeps its name.
+- Driver ids say what the interface does: `usb_dmx_open`, `usb_dmx_pro`, `node` (`enttec_open`, `enttec_pro`, `node_serial` still load). The status bar no longer names a brand.
+- Reloading the rig keeps the haze mode the band picked.
+
+### Fixed
+- Renaming a group also renames it in step scenes' `set:` and in pixel selections.
+- Haze machines no longer stretch where a spatial effect runs.
+- `save_input` over Claude needs the device and keeps it (tested through the MCP layer); if Claude Desktop still drops it, reconnect it (Setup > Connect to Claude > Update) and restart Claude Desktop.
+
 ## Unreleased (UI tidy)
 
 ### Changed

@@ -272,6 +272,10 @@ Planned 26/11/2026; full scope and release list in `docs/V3-SCOPE.md`. A light s
 4. **V3.4 Autopilot:** energy and moods, Ride page, between songs, control priority, decision log
 5. **V3.5 Generator:** presets, scene and show generator, look review page, Claude tools
 
+## v4 (stage view, Layout / Patch, routing, Monitor, step editor)
+
+Brief 27/11/2026, built 26/11/2026 as one release on `v4-stage-layout`; full scope, decisions and open items in `docs/V4-SCOPE.md`. Zoom-to-fit stage view with outlined pixel bars, non-overlapping names and haze as an indicator; overlap warnings; a full-page Layout / Patch page with an address map of live values; explicit universe routing; devices by USB identity; a Monitor page; a real step editor with per-segment selection; haze settings; UI density; Ride -> Autopilot, Busk -> Override.
+
 ## Decisions and open questions
 
 Decided 26/11/2026:
@@ -439,6 +443,11 @@ Decided 26/11/2026 (v3):
 | Generator (V3.5) | `generator.py`, seeded (default: the time). Styles limit items, palettes by tag and ride feel (rock, ballad, acoustic, opera, dance). Picks pass the quality rules, contrast with the one before and skip repeats; re-roll keeps locked parts (move, colour, drum, palette, ride); more-like-this keeps the FX and varies palette and ride. Shows: one set `song`, a scene per distinct section, step hold = hold_s x length / 2 with a 2 s fade. Per song: intro/verse/chorus/verse/chorus/outro, 8 bars of 4/4 at the song's BPM (30 s without). Everything written in one checked store change; existing files refused unless overwrite. Capture: a Ride/autopilot look as its composed layers (same frame as live), anything else as a still of every light |
 | Connect to Claude (Setup page) | `claude_setup.py`: Claude Desktop configs (standard and Store) and Claude Code `~/.claude.json`, entry `dmx-suite` = the console exe (`dmx-suite.exe` beside the windowed one) or Python, `--shows <the open .dms or folder> mcp`. Status per app: installed, registered no/current/other, which show. Connect writes only to apps that have been opened; Disconnect removes the entry; others kept, `.bak` beside. API `/api/claude` (status, cached 30 s), `/api/claude/connect|disconnect` from this computer only, never with Claude's token. Status bar Claude tile opens the section |
 | File format 5 (V3.1) | No single-file changes; `ShowStore.upgrade` runs `migrate.py` once on a format-4 folder: raw mappings -> named inputs (GM drum names on ch 10, one input per message across every map), tempo kick note -> a kick-role input, palette positions -> rig points. Golden frames and a MIDI replay are identical before and after |
+| v4 renames (format 6) | `ride` -> `feel`, `bank_ride` -> `bank_feel`, MIDI `busk` -> `override`, `ride_fx` / `ride_palette` -> `autopilot_fx` / `autopilot_palette`, `ride_<x>` -> `feel_<x>`; old names read, new written; `panels.yaml` kept |
+| v4 routing | Every output has `universe:` (missing = 0 + warning; the format 6 step doesn't add it); drivers `usb_dmx_open` / `usb_dmx_pro` / `node` (old ids alias); outputs rebuilt live |
+| v4 devices | Known by `usb:VID:PID:SERIAL` (else `port:COMx`, flagged), MIDI by port name; "use this instead" allowed under gig lock, nothing else; Claude can't make the swap |
+| v4 Monitor | Shows the selected interface's last-sent frame, never the engine's unless chosen and labelled; no frames = no values |
+| v4 pixel selection | `fid:px..`, `group:px..`, `odd/even/firstN/lastN`, pixel groups in `fixtures.yaml` (not the rig); colour only (rule 1) |
 
 Open:
 

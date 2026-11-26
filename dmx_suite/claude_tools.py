@@ -82,6 +82,23 @@ SHOW (shows/<name>.yaml): sets; each set has `steps` [{scene, repeats N | hold_s
   energy: low|mid|high, head_mix: [matching, white, contrast], patterns: [all, heads_only,
   bars_only, kit], movement: [random, sweep, static], flash, fades} with `step_s`.
   (Old files with `scenes` + `step_s` still load.) Layers may time effects in `beats`.
+STAGE AND PATCH (v4): get_layout / set_layout place lights on the stage plan ({x, y} in 25 cm cells from
+  the top left, back of the stage at the top; rot degrees; z height in metres; reverse for a bar mounted
+  backwards). Spatial effects use these places, so lights in one place show the same part of an effect:
+  get_layout lists overlaps and touching lights - spread them. delete_fixture takes a light out of the
+  patch and every rig.
+ROUTING AND DEVICES (v4): list_outputs = which universe goes out which interface (USB DMX by device
+  identity, Art-Net/sACN, the 0.05 node link, each wireless node) with fps, frames, errors, last frame and
+  an all-zero flag, plus problems (a universe with lights but no output ...). set_output changes one output
+  (applied live). list_devices / set_device: what's plugged in as each device reports itself (product,
+  serial, VID:PID, COM port; MIDI port names), aliases, and what each is used for.
+FAULT-FINDING (v4): "software running, rig dark": list_outputs, then monitor_dmx (the frame an interface
+  really sent: no frames / all zero / values per channel with names), then check MASTER, blackout, grand
+  master. "Pedal does nothing": monitor_midi (each event, the named input it matched, what it did or
+  'unmapped'); fix the input with save_input.
+HAZE SETTINGS (v4): set_haze / save_haze_settings tune the haze controller only (level, pulse_level,
+  pulse_on_s, pulse_every_s, boost_level, boost_s, boost_cooldown_s, max_on_s, rest_s, auto_off_min,
+  default_mode, presets [{name, mode, level}]). Scenes and shows still never set haze (rule 5).
 OVERRIDE PANELS (panels.yaml; "busk" before v4): panels of widgets (colour, flash, solo, effect, go, fader, haze)
   played by hand over the show; Override sits above the show and the autopilot (control priority).
   MIDI action `override` (panel, widget); `busk` still works.

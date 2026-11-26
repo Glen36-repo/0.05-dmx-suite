@@ -69,3 +69,28 @@ profile:
 ```
 
 The safety rules apply under every profile (see [Safety and troubleshooting](troubleshooting.md)).
+
+## Haze settings
+
+The Live page's HAZE section has **Haze settings** (fold it open). It shows which rig you're editing and has a block per mode:
+
+- **Manual**: the level (%).
+- **Pulse**: its own pulse level, how long each puff lasts and how often (with the duty: "1 s every 61 s ≈ 2 %").
+- **Boost**: the boost level, how long a press lasts (0 = while the footswitch is held) and the cooldown before the next one.
+- **Safety**: the longest the machine may run without a break, the rest after it, switching off after a number of minutes, and the mode at start.
+
+Changes apply straight away; **Save to rig** writes them to the rig file's `haze:` block, **Revert** goes back to what's saved. **Test** runs one cycle of a mode now (max on and rest still apply; not under gig lock).
+
+Named **haze presets** (e.g. Haze 4 Med = manual 41 %) go in the rig file and are picked from the list next to the haze buttons or from MIDI (`haze_preset`):
+
+```yaml
+haze:
+  level: 41
+  pulse_level: 30
+  pulse_on_s: 1
+  pulse_every_s: 61
+  presets:
+    - {name: Haze 4 Med, mode: manual, level: 41}
+```
+
+This only sets up the haze controller: scenes and shows still never set haze.
