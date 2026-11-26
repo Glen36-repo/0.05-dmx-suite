@@ -73,8 +73,12 @@ def test_enttec_pro_missing_at_start_then_plugged_in():
     d.send(0, bytes(512))
     assert not plug.writes
     plug.present = True
-    time.sleep(0.06)
-    d.send(0, bytes(512))
+
+    def plugged_in():  # resends until the reopen timer allows a retry (Windows clocks tick ~16 ms)
+        d.send(0, bytes(512))
+        return bool(plug.writes)
+
+    assert wait_for(plugged_in)
     assert len(plug.writes) == 1 and d.state()["state"] == "ok"
 
 
