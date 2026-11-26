@@ -57,9 +57,14 @@ int main() {
   hex("ack_req", out, encode(out, MSG_ACK, ack, 3));
   uint8_t ch[2] = {11, 7};
   hex("set_channel", out, encode(out, MSG_SET_CHANNEL, ch, 2));
-  bool has_req; uint8_t req;
-  printf("request_len %d%d%d %d\n", request_len(23, 23, ch, has_req, req), request_len(24, 23, ch, has_req, req),
-         request_len(25, 23, ch, has_req, req), (int)has_req);
+  bool has_req = false;
+  uint8_t req = 0;
+  // one call per statement: the order printf's arguments are worked out in isn't fixed
+  int exact = request_len(23, 23, ch, has_req, req);
+  int plus_one = request_len(24, 23, ch, has_req, req);
+  int plus_two = request_len(25, 23, ch, has_req, req);
+  int exact_has_req = (request_len(23, 23, ch, has_req, req), (int)has_req);
+  printf("request_len %d%d%d %d\n", exact, plus_one, plus_two, exact_has_req);
 
   // fallback look: parse then render at several times
   uint16_t addrs[] = {1, 4, 100};

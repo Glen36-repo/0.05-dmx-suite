@@ -49,7 +49,7 @@ def test_encoders_match(firmware_output):
 def test_v11_messages_match(firmware_output):
     assert firmware_output["ack_req"] == p.ack_msg(p.MsgType.ASSIGN, p.AckCode.OK, 42).hex()
     assert firmware_output["set_channel"] == p.set_channel(11, req=7).hex()
-    assert firmware_output["request_len"] == "110 0"  # exact, +1 (with an id), +2 refused; the last had none
+    assert firmware_output["request_len"] == "110 0"  # exact, +1 (with an id), +2 refused; exact has no id
     base = bytearray(512)
     base[9] = 255
     look = p.FallbackLook(1500, 6, 200, [1, 4, 100], bytes(base))
