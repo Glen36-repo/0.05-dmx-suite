@@ -65,3 +65,12 @@ v2 (general release; details in `docs/SCOPE.md`):
 - R7 Fixture model and editor, OFL import/export, setup wizard, starter shows
 - R8 Node and firmware fixes
 - R9 Rehearsal sign-off on the real rig
+
+v3 (auto show "Ride"; details in `docs/V3-SCOPE.md`):
+- V3.1 Named MIDI inputs, head position points, colour wheel + palette editor, alerts/banners
+- V3.2 Step scenes (move dark/lit)
+- V3.3 Classification, FX banks, ride controls, look quality rules, rig scaling
+- V3.4 Autopilot, Ride page, between songs, control priority, decision log
+- V3.5 Generator, look review page, presets, Claude MCP tools
+
+Haze is never touched by the autopilot, presets, generator or Flash FX. Every v3 feature gets rule tests under both profiles (`tests/rulecheck.py`).

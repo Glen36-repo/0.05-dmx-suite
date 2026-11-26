@@ -14,7 +14,7 @@ The band 0.05 is the reference setup: it replaces their Daslight 5 and LR512, an
 - Laptop talks straight to the CoreS3 node by USB serial; node handles DMX out and wireless to the receivers
 - Simple enough for one person to maintain, edit and fix at a gig
 
-Out of scope: video, timecode and audio-reactive BPM (v1 and v2); macOS/Linux builds.
+Out of scope: video, timecode and audio-reactive BPM (v1, v2 and v3: v3 energy comes from MIDI only); macOS/Linux builds.
 
 ## Rig and I/O
 
@@ -262,6 +262,16 @@ Planned 26/11/2026. One release per branch, hardening and features side by side;
 8. **R8 Node and firmware:** per-universe radio sequence, fallback and blackout on every universe, fallback pushed by the app, firmware version check, CoreS3 screen, node LED and identify
 9. **R9 Rehearsal sign-off:** the open items below that need the real rig
 
+## v3 (auto show "Ride")
+
+Planned 26/11/2026; full scope and release list in `docs/V3-SCOPE.md`. A light show from any rig with no programming: the engine picks looks from FX banks and changes them to the band's MIDI, and the user rides it with a few big controls. Stacked branches on top of v2 R8, each with tests including rule tests under both profiles.
+
+1. **V3.1 Foundations:** named MIDI inputs and devices, head position points, colour wheel and palette editor, alerts and banners
+2. **V3.2 Step scenes:** hand-programmed steps with step/fade times, heads move dark or lit
+3. **V3.3 FX and ride:** auto classification, Move/Colour/Flash/drum FX banks, ride controls, look quality rules, rig size scaling
+4. **V3.4 Autopilot:** energy and moods, Ride page, between songs, control priority, decision log
+5. **V3.5 Generator:** presets, scene and show generator, look review page, Claude tools
+
 ## Decisions and open questions
 
 Decided 26/11/2026:
@@ -396,6 +406,19 @@ Decided 26/11/2026 (v2):
 | Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
 | Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
 | MASTER-exempt fixtures | Fixture ids, groups or a kind name (`kick` = every kick-kind fixture, as v1); they ignore MASTER and drum flashes and use the rig's `kick_colour` when the scene leaves them off. Under "generic" nothing is exempt and a kick-kind light is an ordinary light (auto shows use it like a wash) |
+
+Decided 26/11/2026 (v3):
+
+| Item | Decision |
+| --- | --- |
+| v3 releases | V3.1 foundations (named inputs, head points, colour wheel/palettes, alerts), V3.2 step scenes, V3.3 FX banks/ride/quality/scaling (+ classification), V3.4 autopilot/between songs/priority/decision log (+ Ride page), V3.5 generator/review/presets/Claude tools. Stacked branches on v2 R8; v2 to main by one PR |
+| v3 energy | MIDI only (drum MIDI, pedals, MIDI Clock); read from named-input roles, so any MIDI device can drive it. No audio input |
+| Strobe limit (v3) | Still none (v2 decision kept): strobe, lightning and Flash FX run at the rate set |
+| Haze (v3) | Never touched by the autopilot, presets, generator or Flash FX; rule 5 tested against every v3 feature |
+| Heads moving (v3) | Autopilot, generator and Move FX always move dark. Step scenes may glide lit (`move: lit`); the profile sets the default (0.05 band dark, Generic lit) |
+| Moods (v3) | Low / Mid / High drive the autopilot; v1/v2 LOW/MID/HIGH show sets keep loading and running unchanged |
+| Head points (v3) | Named points per rig config with description, tags, optional stage position and per-head pan/tilt as 0-1 of the range (16-bit via fine channels) |
+| Rule tests (v3) | `tests/rulecheck.py` runs every new feature under both profiles and checks every rule on every frame |
 
 Open:
 
