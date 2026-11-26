@@ -568,7 +568,8 @@ def test_rig_settings_and_switch(ui):
 def test_setup_wizard_first_run(ui):
     page, app, root, _ = ui
     page.wait_for_function("document.querySelector('#wizard').textContent.includes('How do your lights connect?')")
-    page.check("#wizard input[type=radio] >> nth=-1")  # simulator
+    page.check("#wizard input[type=radio] >> nth=-1")  # simulator (last, after any ports this computer has)
+    page.wait_for_function("[...document.querySelectorAll('#wizard input[type=radio]')].pop().checked")
     page.click("#wizard-next")
     page.wait_for_function("document.querySelector('#wizard').textContent.includes('Which lights')")
     page.locator("#wizard tr:has-text('StarColor') input").fill("2")
@@ -627,6 +628,7 @@ def test_banners_overlay_without_moving_controls(ui):
 def test_colour_wheel_sets_a_layer_colour(ui):
     page, app, root, _ = ui
     go(page, "scenes")
+    page.wait_for_selector("#scene-show-colour .swatches", state="attached")  # the builder has loaded
     page.click("#scene-group-tabs [data-group=bars]")
     page.click("#layer-add")
     page.click("#layer-form .wheel-btn >> nth=0")
