@@ -46,7 +46,9 @@ class App:
         self.router = MidiRouter(self.engine, files.midimap, self.monitor, self.ctl)
         self.router.busk = self.busk  # MIDI / OSC action `busk`
         self.gig_lock = False
-        self.store = ShowStore(files.root, lambda: self.gig_lock)
+        self.project: Any = None  # package.DmsProject when running a .dms show file
+        self.on_restart: Any = None  # restart the app on another show file (set by the cli)
+        self.store = ShowStore(files.root, self._store_locked)
         self.log_dir = log_dir
         self.alerts: list[dict[str, Any]] = []  # node dropped / weak, newest last
         self.show_problem: dict[str, str] | None = None  # running the last good show files (cli start-up)
@@ -77,6 +79,25 @@ class App:
             self._lock_path.write_text("on" if on else "off")
         if on:
             self.engine.end_preview()
+
+    def _store_locked(self) -> bool | str:
+        if self.gig_lock:
+            return True
+        if self.project is not None and self.project.read_only:
+            return f"{self.project.name} is open on another computer: read-only here"
+        return False
+
+    def attach_project(self, project: Any) -> None:
+        """Run on a .dms: every saved change is packed back into it."""
+        self.project = project
+        self.store.after_commit = project.save
+
+    def project_info(self) -> dict[str, Any] | None:
+        p = self.project
+        if p is None:
+            return None
+        return {"name": p.name, "path": str(p.dms), "read_only": p.read_only, "error": p.save_error,
+                "notes": list(p.notes)}
 
     def require_unlocked(self, what: str) -> None:
         if self.gig_lock:
@@ -153,6 +174,11 @@ class App:
         else:
             out.append({"kind": "engine", "name": "Engine", "state": ("ok" if fps >= 35 else "warn") if running else "warn",
                         "detail": f"{fps:.0f} fps" if running else "not running"})
+        p = self.project
+        if p is not None:
+            state = "bad" if p.save_error else "warn" if p.read_only or p.recovered else "ok"
+            detail = p.save_error or "; ".join(p.notes) or p.name
+            out.append({"kind": "files", "name": "Show file", "state": state, "detail": detail})
         if self.show_problem:
             out.append({"kind": "files", "name": "Show files", "state": "bad",
                         "detail": f"running the last good version (backup {self.show_problem['backup']}): "
@@ -409,6 +435,7 @@ class App:
             "busk": self._busk_state(),
             "fault": {"message": e.fault, "count": e.faults} if e.fault else None,
             "show_problem": self.show_problem,
+            "project": self.project_info(),
             "blackout": e.blackout,
             "gig_lock": self.gig_lock,
             "grand": e.masters.grand.target,

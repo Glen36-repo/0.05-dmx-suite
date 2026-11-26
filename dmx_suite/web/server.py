@@ -31,6 +31,7 @@ from ..access import Access, lan_addresses
 from ..access import claude_token as default_claude_token
 from ..app import App
 from ..fixtures import ConfigError
+from ..paths import app_token_file
 from ..setup import patch_report
 from ..store import LockedError, StoreError
 from .feed import HEARTBEAT_S, LiveFeed
@@ -43,6 +44,7 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
          ".json": "application/json; charset=utf-8"}
 DEFAULT_PORT = 8505
 # what Claude's token may change (everything else is the people at the laptop's call)
+MAX_UPLOAD = 20 * 1024 * 1024
 CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/claude/haze", "/api/nodes/assign", "/api/validate/scene",
                  "/api/undo/claude")
 SESSION_COOKIE = "dmx_session"
@@ -153,7 +155,7 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
 
 
 def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any = None,
-                 feed: LiveFeed | None = None) -> type[BaseHTTPRequestHandler]:
+                 feed: LiveFeed | None = None, app_token: str = "") -> type[BaseHTTPRequestHandler]:
     live = feed or LiveFeed(app.snapshot)
 
     class Handler(BaseHTTPRequestHandler):
@@ -206,6 +208,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return "claude"
             if self._local() and not access.pin_local and _same(tok, token):
                 return "ui"
+            if self._local() and _same(tok, app_token):  # another copy of the app on this computer
+                return "ui"
             s = self._session()
             return "ui" if s is not None and _same(tok, s.csrf) else None
 
@@ -234,6 +238,12 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
 
         def _error(self, status: int, msg: str) -> None:
             self._json(status, {"ok": False, "error": msg})
+
+        def _raw_body(self, limit: int) -> bytes:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > limit:
+                raise ApiError(413, "file too large")
+            return self.rfile.read(n) if n else b""
 
         def _body(self) -> dict[str, Any]:
             n = int(self.headers.get("Content-Length") or 0)
@@ -342,6 +352,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.store.backups())
             if path == "/api/undo":
                 return self._json(200, app.store.history())
+            if path == "/api/project":
+                return self._json(200, self._project_info())
+            if path == "/api/project/download":
+                return self._download()
             if path.startswith("/api/store/"):
                 parts = path.split("/")[3:]
                 if len(parts) == 1:
@@ -385,6 +399,98 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if access.lan != was and on_lan is not None:
                 on_lan(access.lan)  # listen on the network, or localhost only (after this reply)
             return {"ok": True, **self._access_status()}
+
+        # ---------------------------------------------------------------- .dms show files
+
+        def _project_info(self) -> dict[str, Any]:
+            return {"project": app.project_info(), "folder": str(app.files.root),
+                    "recent": settings.load().get("recent", []), "local": self._local()}
+
+        def _switch(self, target: Path) -> dict[str, Any]:
+            """Restart the app on another show file (the lights go dark for a moment)."""
+            from ..package import read_manifest
+
+            app.require_unlocked("opening another show file")
+            read_manifest(target)  # refuse a bad or newer file before stopping anything
+            settings.add_recent(str(target))
+            if app.on_restart is None:
+                raise ApiError(409, "this copy of the app can't switch show files; restart it with the file")
+            app.on_restart(target)
+            return {"ok": True, "restarting": True, "file": str(target)}
+
+        def _project(self, action: str, b: dict) -> dict[str, Any]:
+            from ..package import DmsError, create, is_dms, pack
+            from ..paths import bundled_shows
+
+            if not self._local():
+                raise PermissionError("open and save show files on the laptop (phones can download and upload)")
+            raw = str(b.get("path") or "").strip()
+            if not raw:
+                raise ApiError(400, "no file picked")
+            target = Path(raw).expanduser()
+            if not target.is_absolute():
+                raise ApiError(400, "give the full path of the show file")
+            if not is_dms(target):
+                target = target.with_suffix(".dms")
+            if action == "open":
+                if not target.exists():
+                    raise ApiError(404, f"no show file {target}")
+                return self._switch(target)
+            if action == "new":
+                app.require_unlocked("starting a new show file")
+                create(target, bundled_shows())
+                return self._switch(target)
+            if action == "save_as":
+                if target.exists() and not b.get("overwrite"):
+                    raise ApiError(409, f"{target.name} already exists")
+                if app.project is not None:
+                    app.project.save_as(target)
+                else:  # a plain show folder: save it as a .dms and carry on with that
+                    pack(app.files.root, target)
+                    settings.add_recent(str(target))
+                    return {"ok": True, "saved": str(target), "restart_to_use": True, **self._project_info()}
+                settings.add_recent(str(target))
+                return {"ok": True, "saved": str(target), **self._project_info()}
+            raise DmsError(f"unknown show file action {action!r}")
+
+        def _download(self) -> None:
+            import tempfile
+
+            from ..package import pack
+
+            name = app.project.name if app.project else f"{app.files.root.name}.dms"
+            with tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp) / "show.dms"
+                pack(app.files.root, out)
+                data = out.read_bytes()
+            safe = "".join(c for c in name if c.isalnum() or c in " ._-()") or "show.dms"
+            self._send(200, data, "application/octet-stream",
+                       {"Content-Disposition": f'attachment; filename="{safe}"'})
+
+        def _upload(self) -> dict[str, Any]:
+            """A .dms from a phone or browser: kept next to the open show file (or show folder), then opened."""
+            import tempfile
+
+            from ..package import is_dms, unpack
+
+            data = self._raw_body(MAX_UPLOAD)
+            name = Path(parse_qs(urlparse(self.path).query).get("name", ["upload.dms"])[0]).name
+            name = "".join(c for c in name if c.isalnum() or c in " ._-()").strip() or "upload.dms"
+            if not is_dms(name):
+                name += ".dms"
+            with tempfile.TemporaryDirectory() as tmp:  # check it fully before keeping it
+                f = Path(tmp) / "check.dms"
+                f.write_bytes(data)
+                unpack(f, Path(tmp) / "shows")
+            folder = app.project.dms.parent if app.project else app.files.root.parent
+            folder.mkdir(parents=True, exist_ok=True)
+            target = folder / name
+            n = 2
+            while target.exists():
+                target = folder / f"{Path(name).stem} ({n}).dms"
+                n += 1
+            target.write_bytes(data)
+            return self._switch(target)
 
         def _login(self, b: dict) -> None:
             try:
@@ -451,6 +557,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._error(401, "missing or wrong X-DMX-Token (sign in again)")
             if who == "claude" and not path.startswith(CLAUDE_WRITES):
                 return self._error(403, "not available to Claude")
+            if path == "/api/project/upload" and method == "POST":
+                return self._json(200, self._upload())
             body = self._body()
             with app.store.acting(who):  # undo remembers who made each change
                 return self._dispatch(method, path, body)
@@ -458,6 +566,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
         def _dispatch(self, method: str, path: str, body: dict) -> None:
             if path == "/api/access" and method == "POST":
                 return self._json(200, self._access_change(body))
+            if path.startswith("/api/project/") and method == "POST":
+                return self._json(200, self._project(path.rsplit("/", 1)[1], body))
             if path in ("/api/undo", "/api/redo", "/api/undo/claude") and method == "POST":
                 if path == "/api/redo":
                     done = app.store.redo()
@@ -579,7 +689,9 @@ class WebServer:
         self.follow = host is None
         self.host = self._wanted() if host is None else host
         self.feed = LiveFeed(app.snapshot)  # one snapshot a tick, shared by every screen
-        self.handler = make_handler(app, self.token, self.access, self.claude_token, self.lan_changed, self.feed)
+        self.app_token = secrets.token_urlsafe(24)  # for a second launch of the app on this computer
+        self.handler = make_handler(app, self.token, self.access, self.claude_token, self.lan_changed, self.feed,
+                                    self.app_token)
         self.httpd = self._serve(self.host, port)
         self.thread: threading.Thread | None = None
         self._swap = threading.Lock()
@@ -599,6 +711,14 @@ class WebServer:
     def start(self) -> None:
         app_stopping.clear()
         self.feed.start()
+        if self.follow:  # the real app (not a test server): a second launch can hand over a file
+            try:
+                p = app_token_file()
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"{self.port} {self.app_token}", encoding="utf-8")
+                p.chmod(0o600)
+            except OSError:
+                log.warning("couldn't write the app token file")
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="web", daemon=True)
         self.thread.start()
 

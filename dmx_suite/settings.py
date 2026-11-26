@@ -14,7 +14,8 @@ from .paths import data_dir
 log = logging.getLogger(__name__)
 
 THEMES = Path(__file__).parent / "web" / "static" / "themes"
-DEFAULTS: dict[str, Any] = {"theme": "neutral"}
+DEFAULTS: dict[str, Any] = {"theme": "neutral", "recent": []}
+RECENT = 8
 
 
 def path() -> Path:
@@ -42,6 +43,14 @@ def save(changes: dict[str, Any]) -> dict[str, Any]:
     tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
     os.replace(tmp, p)
     return data
+
+
+def add_recent(path: str) -> list[str]:
+    """Remember a show file opened on this laptop (newest first)."""
+    recent = [p for p in load().get("recent", []) if isinstance(p, str) and p.lower() != path.lower()]
+    recent = [path, *recent][:RECENT]
+    save({"recent": recent})
+    return recent
 
 
 def themes() -> dict[str, dict[str, str]]:

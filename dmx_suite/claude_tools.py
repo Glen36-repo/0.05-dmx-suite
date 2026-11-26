@@ -104,10 +104,20 @@ def _yaml(text: str | dict, what: str) -> dict:
 
 class DmxTools:
     def __init__(self, shows: Path | None = None, url: str | None = None, token: str | None = None) -> None:
+        from .package import DmsProject, is_dms, work_dir
+
         self.shows = Path(shows or default_shows())
         self.url = (url or os.environ.get("DMX_SUITE_URL") or DEFAULT_URL).rstrip("/")
         self._token = token
+        # a .dms show file: Claude reads its own unpacked copy, refreshed when the file changes
+        self.project = None
+        if is_dms(self.shows):
+            self.project = DmsProject(self.shows, work_dir(self.shows, "-claude"), lock=False)
+            self.project.open()
+            self.shows = self.project.work
         self.local = ShowStore(self.shows, giglock_on)  # the app's gig lock binds offline edits too
+        if self.project is not None:
+            self.local.after_commit = self.project.save
         self.call_label: str | None = None  # which Claude tool is running, for the status bar
 
     # ------------------------------------------------------------------ transport
@@ -172,8 +182,29 @@ class DmxTools:
             notes = "; ".join(r.get("notes") or [])
             return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
         except Offline:
-            bid = local()
+            bid = self._offline(local)
             return f"saved to the show files (backup {bid}); the engine isn't running"
+
+    def refresh(self) -> None:
+        """Pick up a .dms show file saved by the app since the last call."""
+        if self.project is not None:
+            self.project.refresh()
+
+    def _offline(self, change: Any) -> Any:
+        """An edit with the app closed; a .dms show file is locked while it's written."""
+        if self.project is None:
+            return change()
+        from .package import drop_lock, take_lock
+
+        other = take_lock(self.project.dms)
+        if other is not None:
+            raise StoreError(f"{self.project.name} is open on {other.get('host', '?')}: start the app there "
+                             "and make the change through it")
+        try:
+            self.project.refresh()
+            return change()
+        finally:
+            drop_lock(self.project.dms)
 
     # ------------------------------------------------------------------ read
 
@@ -281,7 +312,7 @@ class DmxTools:
             r = self._call("POST", "/api/undo/claude", {})
             c = r["change"]
         except Offline:
-            c = self.local.undo()
+            c = self._offline(self.local.undo)
         return f"undone: {c['note']} ({', '.join(c['files'])})"
 
     def preview_scene(self, scene: str, seconds: float = 10) -> str:

@@ -13,6 +13,7 @@ made it ("ui" or "claude"), so Claude can undo its own last change without touch
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import tempfile
@@ -30,6 +31,8 @@ from .fixtures import ConfigError, Kind
 from .showfiles import check_all
 from .versions import FORMAT, FormatError, kind_of, needs_upgrade, show_files, stamped, upgrade
 from .yamlio import plain_dump, update_text
+
+log = logging.getLogger(__name__)
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 FOLDERS = {"scene": "scenes", "show": "shows", "setlist": "setlists", "rig": "rigs", "look": "looks", "midi": "midi"}
@@ -72,6 +75,7 @@ class ShowStore:
         self.redo_stack: list[Change] = []
         self._next_id = 1
         self._actor = threading.local()
+        self.after_commit: Callable[[], None] | None = None  # e.g. pack the working copy into its .dms
 
     @contextmanager
     def acting(self, who: str) -> Iterator[None]:
@@ -158,8 +162,9 @@ class ShowStore:
             return self._commit(changes, f"upgrade to file format {FORMAT}: {', '.join(names)}"), names
 
     def _guard(self) -> None:
-        if self._locked():
-            raise LockedError("gig lock is on: show files can't be changed")
+        why = self._locked()  # True (gig lock) or a reason, e.g. the show file is open elsewhere
+        if why:
+            raise LockedError(why if isinstance(why, str) else "gig lock is on: show files can't be changed")
 
     def _validate(self, changes: dict[Path, str | None]) -> None:
         """Apply changes to a scratch copy and check the whole folder. Raises with every problem."""
@@ -199,6 +204,11 @@ class ShowStore:
                 tmp = path.with_suffix(".tmp")
                 tmp.write_text(text, encoding="utf-8")
                 tmp.replace(path)
+        if self.after_commit is not None:
+            try:
+                self.after_commit()
+            except Exception:  # the change is made; the owner reports the failed save (e.g. a .dms)
+                log.exception("after-save step failed")
         return bdir.name
 
     def apply(self, changes: dict[Path, str | None], note: str) -> str:

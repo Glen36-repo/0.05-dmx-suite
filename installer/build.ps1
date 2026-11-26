@@ -32,6 +32,13 @@ $p = Start-Process -FilePath "dist\dmx-suite\0.05 DMX Suite.exe" -PassThru -Wait
 Get-Content (Join-Path $env:TEMP "dmx-suite-smoke\logs\desktop.log") -ErrorAction SilentlyContinue
 if ($p.ExitCode -ne 0) { throw "desktop app smoke test failed (exit $($p.ExitCode))" }
 
+# and on a .dms show file (one file for the whole show)
+$smokeDms = Join-Path $env:TEMP "dmx-suite-smoke\smoke.dms"
+& dist\dmx-suite\dmx-suite.exe pack shows $smokeDms; Check "pack a .dms"
+& dist\dmx-suite\dmx-suite.exe --shows $smokeDms check; Check ".dms show file check"
+& dist\dmx-suite\dmx-suite.exe --shows $smokeDms app --sim --fresh --port 8597 --smoke-test 10
+Check "desktop app smoke test (.dms)"
+
 $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
 if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
 & $iscc "/DAppVersion=$version" installer\dmx-suite.iss; Check "Inno Setup"

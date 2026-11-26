@@ -438,3 +438,24 @@ def test_copy_and_paste_in_the_scene_builder(ui):
     page.keyboard.press("Control+v")
     page.wait_for_function("document.querySelectorAll('#layers li').length === 2")
     assert "bars" in page.inner_text("#layers li >> nth=1")
+
+
+def test_show_file_section_upload_and_download(ui, tmp_path):
+    from dmx_suite.package import pack
+
+    page, app, root, _ = ui
+    restarts = []
+    app.on_restart = restarts.append
+    go(page, "files")
+    page.wait_for_selector("#project-now code")
+    assert str(root) in page.inner_text("#project-now")  # a plain show folder
+    with page.expect_download() as dl:
+        page.click("#project-download")
+    assert dl.value.suggested_filename.endswith(".dms")
+    (tmp_path / "phone").mkdir()
+    f = tmp_path / "phone" / "Phone.dms"
+    pack(root, f)
+    page.on("dialog", lambda d: d.accept())
+    page.set_input_files("#project-upload", str(f))
+    page.wait_for_selector("body.restarting")
+    assert restarts and restarts[0].name == "Phone.dms"

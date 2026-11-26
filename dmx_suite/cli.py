@@ -14,8 +14,11 @@
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 import shlex
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +39,8 @@ from .showfiles import ShowFiles, check_all, load_show
 from .store import ShowStore
 
 # --------------------------------------------------------------------------- on-screen rig (text)
+
+log = logging.getLogger(__name__)
 
 
 def rig_view(engine: Engine) -> str:
@@ -295,7 +300,16 @@ class Session:
 
 
 def start_session(args: argparse.Namespace, out=print) -> Session:
-    _, upgraded = ShowStore(args.shows).upgrade()  # older show files -> current format, originals backed up
+    project = getattr(args, "project", None)
+    for note in project.notes if project else []:
+        out(note)
+    upgrader = ShowStore(args.shows, (lambda: project.read_only) if project else None)
+    if project and not project.read_only:
+        upgrader.after_commit = project.save
+    try:
+        _, upgraded = upgrader.upgrade()  # older show files -> current format, originals backed up
+    except Exception:  # read-only: run the upgraded copy in memory only
+        upgraded = []
     if upgraded:
         out(f"show files upgraded to the current format (originals in .backups): {', '.join(upgraded)}")
     problem = None
@@ -324,6 +338,8 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     state_path = None if args.sim else move_old_state(args.shows)  # app data, not the (OneDrive) show folder
     app = App(show, drivers, state_path, log_dir=log_dir(), rig=args.rig, look=args.look, midi=args.midi)
     app.show_problem = problem
+    if project is not None:
+        app.attach_project(project)
     ctl, router = app.ctl, app.router
     resumed = False if args.fresh else ctl.restore()  # laptop restarted mid-gig: carry on
     if resumed:
@@ -335,6 +351,7 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     elif args.scene:
         ctl.select_scene(args.scene)
     session = Session(app, show, router, FakeMidiIn(router.handle_mido))
+    app.on_restart = _restarter(session)
     try:
         if not args.no_web:
             from .access import Access, lan_addresses
@@ -497,6 +514,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mode", help="OFL mode name (needed if the fixture has several)")
     p.add_argument("--key", help="type key to use in fixtures.yaml")
     p.add_argument("--kind", choices=[k.value for k in Kind], help="override the guessed kind")
+    p = sub.add_parser("pack", help="save a show folder as one .dms show file")
+    p.add_argument("folder", type=Path)
+    p.add_argument("file", type=Path)
+    p = sub.add_parser("unpack", help="unpack a .dms show file into a new folder")
+    p.add_argument("file", type=Path)
+    p.add_argument("folder", type=Path)
     return ap
 
 
@@ -535,15 +558,90 @@ def cmd_addresses(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pack(args: argparse.Namespace) -> int:
+    from .package import pack
+
+    pack(args.folder, args.file)
+    print(f"saved {args.folder} as {args.file}")
+    return 0
+
+
+def cmd_unpack(args: argparse.Namespace) -> int:
+    from .package import unpack
+
+    if args.folder.exists() and any(args.folder.iterdir()):
+        print(f"{args.folder} isn't empty: pick a new folder")
+        return 1
+    m = unpack(args.file, args.folder)
+    print(f"unpacked {args.file} (saved by {m.get('app', '?')}) into {args.folder}")
+    return 0
+
+
 def cmd_import_ofl(args: argparse.Namespace) -> int:
     print(import_ofl(args.file, args.mode, args.key, args.kind), end="")
     return 0
 
 
 def resolve_shows(args: argparse.Namespace) -> argparse.Namespace:
-    """Fill in the show folder when --shows wasn't given (see paths.default_shows)."""
+    """Fill in the show folder when --shows wasn't given (see paths.default_shows). A .dms show
+    file is opened through its working copy: locked and saved back for `run` / `app`, a throw-away
+    copy for one-off reads; the MCP server handles it itself."""
+    from .package import DmsProject, is_dms, unpack_to_temp
+
     args.shows = default_shows() if args.shows is None else prepare(args.shows)
+    args.project = None
+    args.dms_path = args.shows if is_dms(args.shows) else None
+    if is_dms(args.shows) and args.cmd == "app" and _app_running(args):
+        return args  # a copy is already running: the desktop hands the file to it
+    if is_dms(args.shows) and args.cmd not in ("mcp", "claude-setup", "pack", "unpack"):
+        if args.cmd in ("run", "app"):
+            args.project = DmsProject(args.shows)
+            args.project.open()
+            args.shows = args.project.work
+        else:
+            args.shows = unpack_to_temp(Path(args.shows))
     return args
+
+
+def _app_running(args: argparse.Namespace) -> bool:
+    from .desktop import running_ui
+
+    return running_ui(getattr(args, "port", 8505), timeout=0.5)
+
+
+def restart_argv(shows: Path) -> list[str]:
+    """This process's command line with `--shows` set to another show file."""
+    orig = list(getattr(sys, "orig_argv", [sys.executable, *sys.argv]))
+    start = len(orig) - len(sys.argv) + 1  # where this program's own arguments begin
+    args = orig[start:]
+    out, skip = [], False
+    for i, a in enumerate(args):
+        if skip:
+            skip = False
+            continue
+        if a == "--shows" and i + 1 < len(args):
+            skip = True
+            continue
+        if a.startswith("--shows="):
+            continue
+        out.append(a)
+    return orig[:start] + ["--shows", str(shows)] + out
+
+
+def _restarter(session: Session) -> Any:
+    def restart(shows: Path) -> None:
+        def go() -> None:
+            time.sleep(0.5)  # let the reply reach the page
+            argv = restart_argv(shows)
+            log.info("restarting on %s", shows)
+            session.stop()
+            if session.app.project is not None:
+                session.app.project.close()
+            os.execv(argv[0] if Path(argv[0]).is_absolute() else sys.executable, argv)
+
+        threading.Thread(target=go, name="restart", daemon=True).start()
+
+    return restart
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -563,6 +661,8 @@ def main(argv: list[str] | None = None) -> int:
             "claude-setup": cmd_claude_setup,
             "addresses": cmd_addresses,
             "import-ofl": cmd_import_ofl,
+            "pack": cmd_pack,
+            "unpack": cmd_unpack,
             "update-check": cmd_update_check,
         }[args.cmd](args)
     except ConfigError as e:

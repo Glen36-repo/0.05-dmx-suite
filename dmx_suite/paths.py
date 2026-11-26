@@ -60,10 +60,22 @@ def seed_shows(target: Path, source: Path | None = None) -> bool:
 
 
 def prepare(shows: Path) -> Path:
-    """Installed app: fill a new show folder with the starter shows. From source: leave it."""
+    """Installed app: a new show folder or .dms show file starts from the starter shows. From
+    source: leave it."""
     if frozen():
-        seed_shows(shows)
+        if Path(shows).suffix.lower() == ".dms":
+            if not Path(shows).exists():
+                from .package import create
+
+                create(Path(shows), bundled_shows())
+        else:
+            seed_shows(shows)
     return shows
+
+
+def app_token_file() -> Path:
+    """The running app's token for its own other copies (a second launch hands over a show file)."""
+    return data_dir() / "run" / "app_token"
 
 
 def default_shows() -> Path:

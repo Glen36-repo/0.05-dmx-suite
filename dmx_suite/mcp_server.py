@@ -34,6 +34,7 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         def wrapper(*args, **kwargs):
             t.call_label = fn.__name__
             try:
+                t.refresh()  # a .dms show file the app saved since the last call
                 return fn(*args, **kwargs)
             finally:
                 t.call_label = None

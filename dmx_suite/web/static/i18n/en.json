@@ -402,5 +402,22 @@
  "scenes.nothing_to_copy": "Pick a layer, or a light that a layer lights",
  "scenes.nothing_copied": "Copy a look first",
  "scenes.paste_none": "None of the selected lights can take that look",
- "scenes.pasted": "Pasted as {n} layer(s)"
+ "scenes.pasted": "Pasted as {n} layer(s)",
+ "project.title": "Show file",
+ "project.folder": "A show folder (not a .dms file):",
+ "project.read_only": "read-only: open on another computer",
+ "project.open": "Open…",
+ "project.save_as": "Save as…",
+ "project.new": "New from starter show…",
+ "project.download": "Download",
+ "project.upload": "Upload and open…",
+ "project.path_placeholder": "full path of the show file, e.g. C:\\Users\\me\\OneDrive\\Music\\Gig.dms",
+ "project.go": "OK",
+ "project.cancel": "Cancel",
+ "project.recent": "Recent show files",
+ "project.confirm_switch": "Open {name}? The lights go dark for a few seconds while the app restarts on it.",
+ "project.restarting": "Opening the show file…",
+ "project.overwrite": "{name} already exists. Replace it?",
+ "project.saved": "Saved as {name}",
+ "project.saved_folder": "Saved as {name}; open it to keep working in that file"
 }

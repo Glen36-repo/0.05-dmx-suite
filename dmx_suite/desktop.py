@@ -87,6 +87,51 @@ def make_tray(on_open: Callable[[], None], on_blackout: Callable[[], None], is_b
     return pystray.Icon("dmx-suite", image, TITLE, menu)
 
 
+class Bridge:
+    """Called from the page (window.pywebview.api): native file dialogs for show files."""
+
+    def __init__(self, desktop: Desktop) -> None:
+        self._desktop = desktop
+
+    def pick(self, mode: str, suggested: str = "") -> str | None:
+        import webview
+
+        w = self._desktop.window
+        kinds = ("Show files (*.dms)",)
+        dialog = getattr(webview, "FileDialog", None)
+        if mode == "save":
+            kind = dialog.SAVE if dialog else webview.SAVE_DIALOG
+            got = w.create_file_dialog(kind, save_filename=suggested or "show.dms", file_types=kinds)
+        else:
+            kind = dialog.OPEN if dialog else webview.OPEN_DIALOG
+            got = w.create_file_dialog(kind, file_types=kinds)
+        if not got:
+            return None
+        return str(got[0] if isinstance(got, (list, tuple)) else got)
+
+
+def hand_over(port: int, shows: Any) -> bool:
+    """Another copy is running: ask it to open this show file instead. True if it took it."""
+    import json as _json
+
+    from .package import is_dms
+    from .paths import app_token_file
+
+    if not is_dms(shows):
+        return False
+    try:
+        saved_port, token = app_token_file().read_text(encoding="utf-8").split()
+        if int(saved_port) != port:
+            return False
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/project/open", method="POST",
+                                     data=_json.dumps({"path": str(Path(shows).resolve())}).encode(),
+                                     headers={"Content-Type": "application/json", "X-DMX-Token": token})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status == 200
+    except (OSError, ValueError):
+        return False
+
+
 class Desktop:
     """Owns the window, the tray and (unless another copy is running) the engine session."""
 
@@ -136,7 +181,10 @@ class Desktop:
     def create(self) -> int:
         """Set up the window (and engine). Returns the exit code to use after the window closes."""
         port = self.args.port
-        if running_ui(port):  # already open: another window on the running engine
+        if running_ui(port):  # already open: hand it the show file (double-clicked), or another window on it
+            dms = getattr(self.args, "dms_path", None)
+            if dms is not None and hand_over(port, dms):
+                time.sleep(3)  # it restarts on the file
             self.window = self.webview.create_window(TITLE, ui_url(port), **WINDOW)
             return 0
         try:
@@ -148,7 +196,7 @@ class Desktop:
             log.exception("start-up failed")
             self.window = self.webview.create_window(TITLE, html=error_page("Couldn't start", str(e)), **WINDOW)
             return 1
-        self.window = self.webview.create_window(TITLE, ui_url(self.session.web.port), **WINDOW)
+        self.window = self.webview.create_window(TITLE, ui_url(self.session.web.port), js_api=Bridge(self), **WINDOW)
         self.window.events.closing += self.on_closing
         self.tray = make_tray(self.open, self.blackout, self.is_blackout, self.quit)
         return 0
