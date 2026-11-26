@@ -19,9 +19,17 @@
   <button id="master" class="toggle master" data-i18n="top.master"></button>
   <button id="blackout" class="toggle danger" data-i18n="top.blackout"></button>
   <button class="lock" id="giglock" data-i18n="top.giglock" data-i18n-title="top.giglock_tip"></button>
+  <button class="bell" id="bell" data-i18n-title="alerts.bell_tip"><span aria-hidden="true">🔔</span><span id="bell-count"></span></button>
 </header>
 <div class="health" id="health" data-i18n-title="top.health_tip"></div>
-<div class="banner hidden" id="banner" role="alert"></div>
+<div class="banners" id="banners" aria-live="assertive"></div>
+<div class="alerts-panel hidden" id="alerts-panel">
+  <div class="row"><h2 data-i18n="alerts.title"></h2><span class="grow"></span>
+    <label class="row"><input type="checkbox" id="alerts-quiet"><span data-i18n="alerts.quiet"></span></label>
+    <button id="alerts-close" class="mini">✕</button></div>
+  <p class="muted" data-i18n="alerts.help"></p>
+  <ul class="alerts-list" id="alerts-list"></ul>
+</div>
 
 <div class="shell">
   <nav class="menu" id="menu" aria-label="Pages">
@@ -33,6 +41,7 @@
     <button data-page="busk"><span class="ic">◍</span><span class="lbl" data-i18n="menu.busk"></span></button>
     <button data-page="fixtures"><span class="ic">⊞</span><span class="lbl" data-i18n="menu.fixtures"></span></button>
     <button data-page="heads"><span class="ic">✥</span><span class="lbl" data-i18n="menu.heads"></span></button>
+    <button data-page="palettes"><span class="ic">◐</span><span class="lbl" data-i18n="menu.palettes"></span></button>
     <button data-page="midi"><span class="ic">♪</span><span class="lbl" data-i18n="menu.midi"></span></button>
     <button data-page="setup"><span class="ic">⚙</span><span class="lbl" data-i18n="menu.setup"></span></button>
     <button data-page="files"><span class="ic">▤</span><span class="lbl" data-i18n="menu.files"></span></button>
@@ -237,17 +246,57 @@
     <!-- HEADS -->
     <section id="page-heads" class="page">
       <p class="muted" data-i18n="heads.help"></p>
-      <div class="heads" id="heads"></div>
       <div class="row wrap">
+        <button id="fine" data-i18n="heads.fine" data-i18n-title="heads.fine_tip"></button>
         <button data-cmd="release_positions" data-i18n="heads.release_all"></button>
-        <input id="posname" maxlength="40" data-i18n-placeholder="heads.position_placeholder">
-        <button id="savepos" data-i18n="heads.save_position"></button>
       </div>
-      <div class="row wrap" id="positions"></div>
+      <div class="focus-bar row wrap hidden" id="focus"></div>
+      <div class="heads" id="heads"></div>
+      <h2 data-i18n="heads.store_title"></h2>
+      <div class="row wrap">
+        <input id="point-name" maxlength="40" data-i18n-placeholder="heads.position_placeholder">
+        <input id="point-desc" class="wide" data-i18n-placeholder="heads.desc_placeholder">
+        <input id="point-tags" data-i18n-placeholder="heads.tags_placeholder">
+        <select id="point-x"></select><select id="point-y"></select><select id="point-z"></select>
+        <button id="point-store" data-i18n="heads.save_position"></button>
+      </div>
+      <h2 data-i18n="heads.points"></h2>
+      <div class="row wrap"><button id="point-walk" data-i18n="heads.walk"></button></div>
+      <div id="point-problems"></div>
+      <ul class="point-list" id="point-list"></ul>
+    </section>
+
+    <!-- PALETTES -->
+    <section id="page-palettes" class="page">
+      <p class="muted" data-i18n="palettes.help"></p>
+      <h2 data-i18n="palettes.title"></h2>
+      <div class="row wrap">
+        <input id="palette-new-name" maxlength="40" data-i18n-placeholder="palettes.new_placeholder">
+        <button id="palette-new" data-i18n="palettes.new"></button>
+        <label class="button-like"><span data-i18n="palettes.import"></span><input type="file" id="palette-import" accept=".json,application/json" class="hidden-file"></label>
+      </div>
+      <div id="palette-list"></div>
+      <h2 data-i18n="palettes.named"></h2>
+      <p class="muted" data-i18n="palettes.named_help"></p>
+      <div class="row wrap">
+        <input id="colour-new-name" maxlength="40" data-i18n-placeholder="palettes.colour_placeholder">
+        <button id="colour-new" data-i18n="palettes.new_colour"></button>
+      </div>
+      <ul class="named-colours" id="named-colours"></ul>
     </section>
 
     <!-- MIDI -->
     <section id="page-midi" class="page">
+      <h2 data-i18n="midi.inputs"></h2>
+      <p class="muted" data-i18n="midi.inputs_help"></p>
+      <div class="row wrap">
+        <input id="device-new-id" maxlength="40" data-i18n-placeholder="midi.device_placeholder">
+        <button id="device-new" data-i18n="midi.add_device"></button>
+        <select id="profile-pick"></select>
+      </div>
+      <div id="input-edit"></div>
+      <div id="inputs"></div>
+      <h2 data-i18n="midi.monitor"></h2>
       <div class="row wrap">
         <button id="midi-pause" data-i18n="midi.pause"></button>
         <button id="midi-clear" data-i18n="midi.clear"></button>
@@ -255,7 +304,7 @@
       </div>
       <table class="monitor"><thead><tr>
         <th data-i18n="midi.col_time"></th><th data-i18n="midi.col_port"></th><th data-i18n="midi.col_ch"></th>
-        <th data-i18n="midi.col_type"></th><th>#</th><th data-i18n="midi.col_value"></th><th data-i18n="midi.col_triggered"></th>
+        <th data-i18n="midi.col_type"></th><th>#</th><th data-i18n="midi.col_value"></th><th data-i18n="midi.col_named"></th><th data-i18n="midi.col_triggered"></th>
       </tr></thead><tbody id="monitor"></tbody></table>
       <h2 data-i18n="midi.learn"></h2>
       <div class="row wrap">
@@ -267,7 +316,7 @@
       </div>
       <h2 data-i18n="midi.mapping"></h2>
       <table class="map"><thead><tr>
-        <th data-i18n="midi.col_input"></th><th data-i18n="midi.col_ch"></th><th>#</th><th data-i18n="midi.col_action"></th><th></th>
+        <th data-i18n="midi.col_input"></th><th data-i18n="midi.col_message"></th><th>#</th><th data-i18n="midi.col_action"></th><th></th>
       </tr></thead><tbody id="map"></tbody></table>
       <button id="map-save" data-i18n="midi.save"></button>
     </section>

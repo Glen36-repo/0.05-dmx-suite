@@ -553,6 +553,10 @@ class App:
         from .look import parse_colour
 
         c = self.files.palettes.colour(colour, "colour") if isinstance(colour, str) else parse_colour(colour, "colour")
+        try:
+            fixtures = self.engine.rig.patch.resolve(list(fixtures))  # groups and "all" too
+        except ConfigError:
+            pass
         want = hex_of({k: min(1.0, c.get(k, 0.0) + c.get("white", 0.0)) for k in ("red", "green", "blue")})
         out = []
         for fid in fixtures:
@@ -757,6 +761,8 @@ class App:
             "effects": effects.schemas(),
             "blends": list(effects.BLENDS),
             "colours": {k: hexed(c) for k, c in pal.colours.items()},
+            "palettes": {k: {"name": v["name"], "tags": v["tags"], "colours": v["colours"], "builtin": bool(v.get("builtin")),
+                             "hex": [hexed(c) for c in v["resolved"]]} for k, v in pal.sets.items()},
             "positions": sorted(pal.positions),
             "gobos": sorted(pal.gobos),
             "intensity": not self.engine.rig.profile.master_gate,  # scenes may set intensity
@@ -865,6 +871,7 @@ class App:
             "setlists": {k: {"name": s.name, "songs": [x.name for x in s.songs]} for k, s in f.setlists.items()},
             "positions": sorted(f.palettes.positions),
             "fixtures": [{"id": fx.id, "kind": fx.kind.value, "type": fx.type.name, "colour_only": fx.type.colour_only,
+                          "emitters": sorted(fx.type.emitters),
                           "moves": fx.type.has("pan") and not fx.type.colour_only, "pixels": fx.type.pixels,
                           "gobo": fx.type.has("gobo"), "wheel": fx.type.has("colour_wheel"),
                           "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range}

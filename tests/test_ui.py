@@ -589,3 +589,104 @@ def test_setup_wizard_first_run(ui):
     from dmx_suite import settings
 
     assert settings.load()["wizard"] == "done"
+
+
+# ------------------------------------------------------------------ v3.1
+
+
+class _Unplugged:
+    connected = False
+
+    def status(self):
+        return [{"name": "UM-ONE", "connected": self.connected, "port": None}]
+
+
+def test_banners_overlay_without_moving_controls(ui):
+    """A banner lies over the top of the page: no button moves under a finger (scope 18)."""
+    page, app, *_ = ui
+    box = page.locator("#menu [data-page=scenes]").bounding_box()
+    live_box = page.locator("#tap").bounding_box()
+    midi = _Unplugged()
+    app.midi_inputs = midi
+    page.wait_for_selector("#banners [data-alert='midi:MIDI UM-ONE']")
+    assert page.locator("#menu [data-page=scenes]").bounding_box() == box
+    assert page.locator("#tap").bounding_box() == live_box
+    assert int(page.inner_text("#bell-count")) >= 1
+    page.click("#banners [data-alert='midi:MIDI UM-ONE'] .x")  # dismiss
+    page.wait_for_selector("#banners [data-alert]", state="detached")
+    page.click("#bell")
+    page.wait_for_selector("#alerts-list [data-alert='midi:MIDI UM-ONE'].dismissed")
+    page.click("#alerts-list [data-alert='midi:MIDI UM-ONE'] button:has-text('Not using this today')")
+    tile = "#health .tile[data-key='midi:MIDI UM-ONE']"
+    page.wait_for_function(f"document.querySelector(\"{tile}\").classList.contains('muted-dev')")
+    assert app.alert_center.muted == {"midi:MIDI UM-ONE"}
+    midi.connected = True
+    page.wait_for_selector("#alerts-list [data-alert='midi:MIDI UM-ONE'].cleared")
+
+
+def test_colour_wheel_sets_a_layer_colour(ui):
+    page, app, root, _ = ui
+    go(page, "scenes")
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#layer-add")
+    page.click("#layer-form .wheel-btn >> nth=0")
+    page.wait_for_selector("#wheel-dialog[open]")
+    page.fill("#wheel-dialog input.hex", "#ff8000")
+    page.dispatch_event("#wheel-dialog input.hex", "change")
+    page.wait_for_selector("#wheel-dialog .wheel-fit .fit")  # what the bars make
+    page.click("#wheel-dialog button:has-text('Use this colour')")
+    page.fill("#scene-name", "Orange bars")
+    page.click("#scene-save")
+    page.wait_for_function("document.querySelector('#scene-state').textContent.includes('orange_bars')")
+    data = yaml.safe_load((root / "scenes" / "orange_bars.yaml").read_text(encoding="utf-8"))
+    assert data["layers"][0]["colour"] == "#ff8000"
+
+
+def test_palettes_page_make_and_generate(ui):
+    page, app, root, _ = ui
+    go(page, "palettes")
+    page.wait_for_selector("[data-palette=warm]")  # curated, built in
+    page.fill("#palette-new-name", "verse")
+    page.click("#palette-new")
+    page.wait_for_selector("[data-palette=verse].open")
+    page.select_option("[data-palette=verse] select", "triadic")
+    page.fill("[data-palette=verse] input[type=number]", "3")
+    page.click("[data-palette=verse] button:has-text('Generate')")
+    page.wait_for_function("document.querySelectorAll('[data-palette=verse] .pal-strip i').length === 3")
+    data = yaml.safe_load((root / "palettes.yaml").read_text(encoding="utf-8"))
+    assert len(data["palettes"]["verse"]["colours"]) == 3
+
+
+def test_inputs_learn_from_the_kit(ui):
+    page, app, root, _ = ui
+    from dmx_suite.midi.inputs import FakeMidiIn
+
+    go(page, "midi")
+    page.wait_for_selector("[data-input=snare]")
+    page.click("[data-input=snare] button:has-text('Learn')")
+    page.wait_for_function("document.querySelector('#learn-state').textContent.includes('snare')")
+    FakeMidiIn(app.router.handle_mido).note(39, 100)
+    page.wait_for_function("document.querySelector('[data-input=snare]').textContent.includes('note 39')")
+    data = yaml.safe_load((root / "inputs.yaml").read_text(encoding="utf-8"))
+    assert data["devices"]["td25"]["inputs"]["snare"]["notes"] == [39]
+    FakeMidiIn(app.router.handle_mido).note(39, 98)
+    page.wait_for_function("[...document.querySelectorAll('#monitor .input-name')].some(e => e.textContent === 'Snare')")
+
+
+def test_store_a_head_point(ui):
+    page, app, root, _ = ui
+    go(page, "heads")
+    page.wait_for_selector("[data-point=drum_kit]")
+    area = page.locator("[data-pad=mh_b] .area").bounding_box()
+    page.mouse.click(area["x"] + area["width"] * 0.25, area["y"] + area["height"] * 0.5)
+    page.fill("#point-name", "singer")
+    page.fill("#point-desc", "Lead vocal, centre front")
+    page.fill("#point-tags", "band, safe")
+    page.select_option("#point-y", "front")
+    page.click("#point-store")
+    page.wait_for_selector("[data-point=singer]")
+    data = yaml.safe_load((root / "rigs" / "full.yaml").read_text(encoding="utf-8"))
+    pt = data["positions"]["singer"]
+    assert pt["description"] == "Lead vocal, centre front" and pt["tags"] == ["band", "safe"] and pt["stage"] == {"y": "front"}
+    assert list(pt["heads"]) == ["mh_b"] and abs(pt["heads"]["mh_b"]["pan"] - 0.25) < 0.02
+    assert "not set for mh_a" in page.inner_text("[data-point=singer]")

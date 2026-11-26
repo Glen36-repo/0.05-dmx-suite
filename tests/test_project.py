@@ -124,6 +124,16 @@ def test_every_ui_text_key_exists():
     used |= {f"busk.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
     used |= {f"wizard.{s}_{x}" for s in ("interface", "lights", "profile", "starter", "pin") for x in ("title", "help")}
     used |= {f"wizard.drv_{d}" for d in ("node_serial", "enttec_open", "enttec_pro")}
+    # v3.1
+    used |= {f"alerts.state_{s}" for s in ("active", "dismissed", "minimised", "snoozed", "muted", "cleared")}
+    used |= {f"heads.stage_{k}" for k in "xyz"}
+    places = ("left", "centre", "right", "front", "middle", "back", "floor", "low", "mid", "high", "ceiling")
+    used |= {f"heads.place_{p}" for p in places}
+    used |= {f"midi.role_{r}" for r in ("kick", "snare", "tom", "cymbal", "count_in", "activity")}
+    used |= {f"midi.level_{v}" for v in ("quiet", "normal", "loud")}
+    used |= {f"midi.type_{x}" for x in ("note", "program_change", "control_change", "osc")}
+    used |= {f"palettes.scheme_{x}" for x in ("analogous", "complementary", "triadic", "split", "mono")}
+    used |= {f"wheel.{k}" for k in ("red", "green", "blue", "white", "amber", "uv")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

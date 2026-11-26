@@ -3,6 +3,7 @@
 //
 // The scene is kept as the same data the file holds ({name, layers: [{fixtures, effect, ...}]}),
 // so what's saved is exactly what was previewed. Settings at their default aren't written.
+import { openWheel } from "../colourwheel.js";
 import { api, attempt, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
@@ -157,7 +158,7 @@ function toggleKey(obj, k, v, dflt) {
 
 const dark = (hex) => /^#[0-9a-f]{6}$/i.test(hex) && parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16) < 60;
 
-function swatch(value, onPick, allowNone = true) {
+function swatch(value, onPick, allowNone = true, fixtures = []) {
   const box = el("div", { class: "swatches" });
   const draw = () => {
     box.replaceChildren(
@@ -166,8 +167,9 @@ function swatch(value, onPick, allowNone = true) {
       ...Object.entries(fx.colours).filter(([n]) => n !== "off").map(([n, hex]) => el("button", {
         class: "sw" + (value === n ? " sel" : "") + (dark(hex) ? " dark" : ""), title: n, style: `background:${hex}`, onclick: () => { value = n; onPick(value); draw(); },
       })),
-      el("input", { type: "color", title: t("scenes.custom_colour"), value: typeof value === "string" && value.startsWith("#") ? value : "#ffffff",
-                    oninput: (e) => { value = e.target.value; onPick(value); } }));
+      el("button", { class: "sw wheel-btn" + (value && !fx.colours[value] && value !== "off" ? " sel" : ""), title: t("scenes.custom_colour"),
+                     style: typeof value === "string" && value.startsWith("#") ? `background:${value}` : "",
+                     onclick: () => openWheel({ value, fixtures, names: fx.colours, onPick: (c) => { value = c; onPick(value); draw(); } }) }, "◐"));
   };
   draw();
   return box;
@@ -196,13 +198,13 @@ function paramControl(prm, ly) {
     case "bool":
       return el("input", { type: "checkbox", checked: v ?? prm.default ?? false, onchange: (e) => set(e.target.checked) });
     case "colour":
-      return swatch(v ?? prm.default, (c) => set(c), false);
+      return swatch(v ?? prm.default, (c) => set(c), false, ly.fixtures);
     case "colours": {
       const list = [...(v || ["white", "off"].slice(0, Math.max(prm.min_items || 1, 1)))];
       if (!v) set(list);
       const box = el("div", { class: "colour-list" });
       const draw = () => box.replaceChildren(...list.map((c, i) => el("div", { class: "row" },
-        swatch(c, (nc) => { list[i] = nc; set([...list]); }, false),
+        swatch(c, (nc) => { list[i] = nc; set([...list]); }, false, ly.fixtures),
         el("button", { class: "danger-text", disabled: list.length <= (prm.min_items || 1), onclick: () => { list.splice(i, 1); set([...list]); draw(); } }, "✕"))),
         el("button", { onclick: () => { list.push("white"); set([...list]); draw(); } }, t("scenes.add_colour")));
       draw();
@@ -257,7 +259,7 @@ function renderForm() {
 
   // static settings (the effect's own colour wins when it has one)
   const own = new Set((e?.params || []).map((p) => p.key));
-  if (!own.has("colour")) parts.push(field(t("scenes.colour"), swatch(ly.colour, (c) => { toggleKey(ly, "colour", c); changed(); })));
+  if (!own.has("colour")) parts.push(field(t("scenes.colour"), swatch(ly.colour, (c) => { toggleKey(ly, "colour", c); changed(); }, true, ly.fixtures)));
   if (!e?.movement) {
     parts.push(field(t("scenes.position"), el("select", { onchange: (ev) => { toggleKey(ly, "position", ev.target.value || undefined); changed(); } },
       el("option", { value: "" }, t("scenes.none")), ...fx.positions.map((p) => el("option", { value: p, selected: ly.position === p }, p)))));

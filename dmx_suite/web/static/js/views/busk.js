@@ -1,5 +1,6 @@
 // Busk page: play a panel of buttons and faders over the running show, or edit the panels.
 // Buttons act on press and let go (latches toggle on press); faders send their value.
+import { openWheel } from "../colourwheel.js";
 import { api, attempt, cmd, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
@@ -104,7 +105,16 @@ function select(options, value, onChange, blank) {
 function widgetFields(w) {
   const fixtures = () => el("input", { list: "busk-groups", value: (w.fixtures || []).join(", "), placeholder: t("busk.fixtures"),
     onchange: (e) => { w.fixtures = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); dirty(); } });
-  const colourSel = () => select(Object.keys(colours).map((c) => [c, c]), w.colour || "white", (v) => (w.colour = v));
+  const colourSel = () => {
+    const custom = typeof w.colour === "string" && w.colour.startsWith("#") || (w.colour && typeof w.colour === "object");
+    const opts = Object.keys(colours).map((c) => [c, c]);
+    const sel = select(custom ? [["", t("busk.custom_colour")], ...opts] : opts, custom ? "" : w.colour || "white", (v) => { if (v) w.colour = v; });
+    const wheel = el("button", { type: "button", class: "sw wheel-btn", title: t("scenes.custom_colour"),
+      style: custom && typeof w.colour === "string" ? `background:${w.colour}` : "",
+      onclick: () => openWheel({ value: w.colour, fixtures: w.fixtures || [], names: colours,
+        onPick: (c) => { w.colour = c; dirty(); renderEditor(); } }) }, "◐");
+    return el("span", { class: "row" }, sel, wheel);
+  };
   const scenes = Object.entries(live.cat.scenes).map(([k, n]) => [k, n]);
   switch (w.type) {
     case "colour":
