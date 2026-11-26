@@ -7,6 +7,7 @@
     dmx-suite check                         validate every show file
     dmx-suite addresses                     patch / address check
     dmx-suite import-ofl FILE [--mode M]    fixture type from an Open Fixture Library file
+    dmx-suite claude-setup                  add the 0.05 tools to Claude Desktop
 """
 
 from __future__ import annotations
@@ -25,12 +26,12 @@ from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
 from .output import LogDriver, NodeSerialDriver, make_driver
 from .ofl import import_ofl
+from .paths import default_shows, prepare
 from .setup import format_report, patch_report
 from .app import App
 from .showctl import ShowController
 from .showfiles import ShowFiles, check_all, load_show
 
-DEFAULT_SHOWS = Path(__file__).resolve().parents[1] / "shows"
 
 
 # --------------------------------------------------------------------------- on-screen rig (text)
@@ -364,7 +365,7 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="dmx-suite", description="0.05 DMX Suite")
-    ap.add_argument("--shows", type=Path, default=DEFAULT_SHOWS, help="show folder")
+    ap.add_argument("--shows", type=Path, default=None, help="show folder (default: DMX_SUITE_SHOWS, else the app's own)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def show_args(p: argparse.ArgumentParser) -> None:
@@ -394,6 +395,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("check", help="validate show files")
     sub.add_parser("mcp", help="MCP server for Claude Desktop (stdio)")
+    p = sub.add_parser("claude-setup", help="add the 0.05 tools to Claude Desktop's config")
+    p.add_argument("--config", type=Path, help="config file (default: every Claude Desktop config found)")
     p = sub.add_parser("addresses", help="patch / address check")
     p.add_argument("--rig", default="full")
     p = sub.add_parser("import-ofl", help="fixture type YAML from an Open Fixture Library JSON file")
@@ -414,6 +417,21 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_claude_setup(args: argparse.Namespace) -> int:
+    from .claude_setup import setup
+
+    try:
+        results = setup(args.shows.resolve(), [args.config] if args.config else None)
+    except (OSError, ValueError) as e:
+        print(f"couldn't update Claude Desktop config: {e}", file=sys.stderr)
+        return 1
+    for path, changed in results:
+        print(f"{'updated' if changed else 'already set'}: {path}")
+    print(f"show folder: {args.shows.resolve()}")
+    print("restart Claude Desktop to load the 0.05 tools")
+    return 0
+
+
 def cmd_addresses(args: argparse.Namespace) -> int:
     from .fixtures import load_patch
     from .rig import load_rig
@@ -429,8 +447,14 @@ def cmd_import_ofl(args: argparse.Namespace) -> int:
     return 0
 
 
+def resolve_shows(args: argparse.Namespace) -> argparse.Namespace:
+    """Fill in the show folder when --shows wasn't given (see paths.default_shows)."""
+    args.shows = default_shows() if args.shows is None else prepare(args.shows)
+    return args
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = resolve_shows(build_parser().parse_args(argv))
     try:
         return {
             "run": cmd_run,
@@ -438,6 +462,7 @@ def main(argv: list[str] | None = None) -> int:
             "midi-monitor": cmd_midi_monitor,
             "check": cmd_check,
             "mcp": cmd_mcp,
+            "claude-setup": cmd_claude_setup,
             "addresses": cmd_addresses,
             "import-ofl": cmd_import_ofl,
         }[args.cmd](args)

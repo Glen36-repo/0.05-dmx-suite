@@ -18,9 +18,9 @@ import yaml
 from .fixtures import ConfigError, load_patch
 from .palettes import load_palettes
 from .scenes import EFFECTS, parse_scene
+from .paths import default_shows
 from .store import ShowStore, StoreError
 
-DEFAULT_SHOWS = Path(__file__).resolve().parents[1] / "shows"
 DEFAULT_URL = "http://127.0.0.1:8505"
 
 GUIDE = """\
@@ -91,7 +91,7 @@ def _yaml(text: str | dict, what: str) -> dict:
 
 class DmxTools:
     def __init__(self, shows: Path | None = None, url: str | None = None, token: str | None = None) -> None:
-        self.shows = Path(shows or os.environ.get("DMX_SUITE_SHOWS") or DEFAULT_SHOWS)
+        self.shows = Path(shows or default_shows())
         self.url = (url or os.environ.get("DMX_SUITE_URL") or DEFAULT_URL).rstrip("/")
         self._token = token
         self.local = ShowStore(self.shows)
