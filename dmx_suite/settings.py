@@ -14,7 +14,7 @@ from .paths import data_dir
 log = logging.getLogger(__name__)
 
 THEMES = Path(__file__).parent / "web" / "static" / "themes"
-DEFAULTS: dict[str, Any] = {"theme": "neutral", "recent": []}
+DEFAULTS: dict[str, Any] = {"theme": "neutral", "recent": [], "wizard": ""}  # wizard: "", "done", "skipped"
 RECENT = 8
 
 
@@ -34,6 +34,8 @@ def save(changes: dict[str, Any]) -> dict[str, Any]:
     unknown = set(changes) - set(DEFAULTS)
     if unknown:
         raise ValueError(f"unknown settings {sorted(unknown)}")
+    if "wizard" in changes and changes["wizard"] not in ("", "done", "skipped"):
+        raise ValueError("wizard is done or skipped")
     if "theme" in changes and changes["theme"] not in themes():
         raise ValueError(f"no theme {changes['theme']!r}; have {', '.join(themes())}")
     data = {**load(), **changes}
@@ -43,6 +45,11 @@ def save(changes: dict[str, Any]) -> dict[str, Any]:
     tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
     os.replace(tmp, p)
     return data
+
+
+def first_run() -> bool:
+    """A new laptop: the setup wizard hasn't been finished or skipped here."""
+    return load().get("wizard") not in ("done", "skipped")
 
 
 def add_recent(path: str) -> list[str]:

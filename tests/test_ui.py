@@ -37,11 +37,15 @@ def browser():
 
 
 @pytest.fixture
-def ui(browser, tmp_path):
+def ui(browser, tmp_path, request):
     root = tmp_path / "shows"
     shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups", ".state.json", ".giglock"))
     app = App(load_show(root), [LogDriver()])
     app.engine.start()
+    if not request.node.get_closest_marker("first_run"):
+        from dmx_suite import settings
+
+        settings.save({"wizard": "skipped"})  # the setup wizard would open over every test
     web = WebServer(app, "127.0.0.1", 0, token=TOKEN)
     web.start()
     page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -554,3 +558,33 @@ def test_rig_settings_and_switch(ui):
     page.click("#fx-rig-use")
     page.wait_for_function("document.querySelector('#toast').textContent.includes('small')")
     assert app.names[0] == "small"
+
+
+# ------------------------------------------------------------------ setup wizard (v2 R7)
+
+
+@pytest.mark.first_run
+def test_setup_wizard_first_run(ui):
+    page, app, root, _ = ui
+    page.wait_for_function("document.querySelector('#wizard').textContent.includes('How do your lights connect?')")
+    page.check("#wizard input[type=radio] >> nth=-1")  # simulator
+    page.click("#wizard-next")
+    page.wait_for_function("document.querySelector('#wizard').textContent.includes('Which lights')")
+    page.locator("#wizard tr:has-text('StarColor') input").fill("2")
+    page.click("#wizard-next")
+    page.wait_for_function("document.querySelector('#wizard').textContent.includes('How should MASTER')")
+    page.check("#wizard input[type=radio] >> nth=0")  # generic
+    page.click("#wizard-next")
+    page.wait_for_function("document.querySelector('#wizard').textContent.includes('Start with a show')")
+    page.click("#wizard-next")
+    page.wait_for_function("document.querySelector('#wizard').textContent.includes('PIN for phones')")
+    page.click("#wizard-next")
+    page.wait_for_function("!document.querySelector('#wizard').open")
+    rig = yaml.safe_load((root / "rigs" / "full.yaml").read_text(encoding="utf-8"))
+    assert rig["outputs"] == [{"driver": "log"}] and rig["profile"] == "generic"
+    ids = {f["id"] for f in yaml.safe_load((root / "fixtures.yaml").read_text(encoding="utf-8"))["fixtures"]}
+    assert {"starcolor72_1", "starcolor72_2"} <= ids
+    assert (root / "shows" / "starter.yaml").exists() and app.ctl.show.key == "starter"
+    from dmx_suite import settings
+
+    assert settings.load()["wizard"] == "done"

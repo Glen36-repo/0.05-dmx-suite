@@ -289,6 +289,29 @@ class App:
             self.show_problem = None
         return notes
 
+    def make_starter(self, overwrite: bool = False) -> dict[str, Any]:
+        """Write the starter show (and its scenes) for the running rig, then play it."""
+        from .starters import starter
+        from .versions import stamped
+
+        self.require_unlocked("making the starter show")
+        scenes, show = starter(self.engine.rig)
+        changes: dict[Any, str | None] = {}
+        exists = []
+        for name, data in scenes.items():
+            p = self.store.path("scene", name)
+            exists += [p.name] if p.exists() else []
+            changes[p] = self.store.text_for(p, stamped(data))
+        p = self.store.path("show", "starter")
+        exists += [p.name] if p.exists() else []
+        changes[p] = self.store.text_for(p, stamped(show))
+        if exists and not overwrite:
+            raise ValueError(f"there's already a starter show ({', '.join(exists)}): replace it?")
+        bid = self.store.apply(changes, "starter show")
+        notes = self.reload()
+        self.ctl.select_show("starter", "calm")
+        return {"backup": bid, "scenes": sorted(scenes), "notes": notes}
+
     def save_layout(self, layout: dict[str, Any]) -> str:
         """Write the light layout into this rig's file (validated + backed up like any edit)."""
         rig_name = self.names[0]

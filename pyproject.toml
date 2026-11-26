@@ -29,6 +29,7 @@ include = ["dmx_suite*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["first_run: the browser test starts on a laptop that hasn't been through the setup wizard"]
 
 [tool.ruff]
 line-length = 130

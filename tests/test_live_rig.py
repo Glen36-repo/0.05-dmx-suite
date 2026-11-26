@@ -29,17 +29,18 @@ def _fixtures(app):
 
 def test_moving_a_fixture_applies_live(app):
     data = _fixtures(app)
-    entry = next(f for f in data["fixtures"] if f["id"] == "wash_l")
+    entry = next(f for f in data["fixtures"] if f["id"] == "mh_a")  # lit by the static look
     old = entry["address"]
     entry["address"] = 300
     app.store.put_fixture(entry)
     notes = app.reload()
     assert any("updated live" in n for n in notes) and not any("restart" in n for n in notes)
-    assert app.engine.rig.patch.fixtures["wash_l"].address == 300 != old
+    assert app.engine.rig.patch.fixtures["mh_a"].address == 300 != old
     assert app.ctl.show.key == "band" and app.ctl.set_name == "mid"  # still playing the same set
+    app.ctl.select_look()
     app.engine.set_master(True)
     frames = app.engine.output()
-    fx = app.engine.rig.patch.fixtures["wash_l"]
+    fx = app.engine.rig.patch.fixtures["mh_a"]
     assert any(frames[fx.universe][fx.address - 1:fx.address - 1 + fx.type.footprint])  # lit at the new address
 
 

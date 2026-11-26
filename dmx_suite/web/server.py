@@ -329,13 +329,18 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/effects":
                 return self._json(200, app.effects_catalogue())
             if path == "/api/settings":
-                return self._json(200, {"settings": settings.load(), "themes": settings.themes()})
+                return self._json(200, {"settings": settings.load(), "themes": settings.themes(),
+                                        "first_run": settings.first_run()})
             if path == "/api/update":  # only when the user asks (UI button); check only, nothing installed
                 from ..update import check
 
                 return self._json(200, check())
             if path == "/api/devices":
                 return self._json(200, app.devices())
+            if path == "/api/interfaces":  # setup wizard: what's plugged in
+                from ..detect import interfaces
+
+                return self._json(200, interfaces())
             if path == "/api/state":
                 return self._json(200, app.snapshot())
             if path == "/api/catalogue":
@@ -601,6 +606,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
         def _dispatch(self, method: str, path: str, body: dict) -> None:
             if path == "/api/access" and method == "POST":
                 return self._json(200, self._access_change(body))
+            if path == "/api/starter" and method == "POST":
+                return self._json(200, {"ok": True, **app.make_starter(bool(body.get("overwrite")))})
             if path == "/api/ofl/import" and method == "POST":
                 return self._json(200, self._ofl_import(body))
             if path.startswith("/api/project/") and method == "POST":

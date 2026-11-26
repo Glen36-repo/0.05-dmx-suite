@@ -14,6 +14,7 @@ import * as scenes from "./views/scenes.js";
 import * as setup from "./views/setup.js";
 import * as shows from "./views/shows.js";
 import * as top from "./views/top.js";
+import * as wizard from "./views/wizard.js";
 
 // any button with data-cmd sends that control command, with its other data-* as arguments
 document.addEventListener("click", (ev) => {
@@ -36,7 +37,7 @@ document.addEventListener("visibilitychange", wakeLock);
   wakeLock();
   await load("en");
   apply();
-  for (const view of [top, liveView, layout, scenes, shows, busk, fixtures, heads, midi, setup, files]) view.init();
+  for (const view of [top, liveView, layout, scenes, shows, busk, fixtures, heads, midi, setup, files, wizard]) view.init();
   nav.init();
   await start();
   document.body.classList.add("ready");

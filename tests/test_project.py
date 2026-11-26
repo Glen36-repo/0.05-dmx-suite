@@ -122,6 +122,8 @@ def test_every_ui_text_key_exists():
     used |= {f"shows.move_{m}" for m in ("random", "sweep", "static")}
     used |= {f"busk.type_{k}" for k in ("colour", "flash", "solo", "effect", "go", "fader", "haze")}
     used |= {f"busk.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
+    used |= {f"wizard.{s}_{x}" for s in ("interface", "lights", "profile", "starter", "pin") for x in ("title", "help")}
+    used |= {f"wizard.drv_{d}" for d in ("node_serial", "enttec_open", "enttec_pro")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

@@ -232,3 +232,13 @@ body.offline .offline-box { display: flex; }
 .grid-table input.num, input.num { width: 72px; }
 input.mini { width: 110px; }
 #fx-tab-types h3, #fx-tab-rig h3 { margin: 14px 0 4px; }
+
+/* ---------------------------------------------------------------- setup wizard */
+.wizard-dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text);
+  width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 18px 20px; }
+.wizard-dialog::backdrop { background: rgb(0 0 0 / .6); }
+.wizard h2 { margin: 2px 0 6px; }
+.wizard .check.block { display: flex; gap: 8px; margin: 6px 0; }
+.wizard-nav { margin-top: 16px; align-items: center; }
+.wizard-nav .spacer { flex: 1; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 700; }

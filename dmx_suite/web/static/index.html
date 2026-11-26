@@ -302,6 +302,8 @@
         <th data-i18n="setup.col_start"></th><th data-i18n="setup.col_end"></th><th data-i18n="setup.col_in_rig"></th><th data-i18n="setup.col_checked"></th>
       </tr></thead><tbody id="addr"></tbody></table>
       <div class="muted" id="addrnotes"></div>
+      <h2 data-i18n="wizard.title"></h2>
+      <div class="row wrap"><button id="wizard-open" data-i18n="wizard.open"></button><span class="muted" data-i18n="wizard.open_help"></span></div>
       <h2 data-i18n="access.title"></h2>
       <div class="access" id="access">
         <p class="muted" id="access-state"></p>
@@ -418,6 +420,7 @@
   </main>
 </div>
 <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+<dialog id="wizard" class="wizard-dialog"></dialog>
 <div class="offline-box" id="offline" role="alert"><strong data-i18n="status.lost_title"></strong><span data-i18n="status.lost_help"></span></div>
 <script type="module" src="/static/js/main.js"></script>
 </body>
