@@ -202,7 +202,7 @@ class ShowStore:
             else:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 tmp = path.with_suffix(".tmp")
-                tmp.write_text(text, encoding="utf-8")
+                tmp.write_text(text, encoding="utf-8", newline="")  # as given: no \r\n added on Windows
                 tmp.replace(path)
         if self.after_commit is not None:
             try:
@@ -228,7 +228,7 @@ class ShowStore:
 
     @staticmethod
     def _text(p: Path) -> str | None:
-        return p.read_text(encoding="utf-8") if p.exists() else None
+        return p.read_bytes().decode("utf-8") if p.exists() else None  # exact, line endings too
 
     def _unchanged(self, files: dict[Path, str | None]) -> None:
         moved = [str(p.relative_to(self.root)) for p, text in files.items() if self._text(p) != text]

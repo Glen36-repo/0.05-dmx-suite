@@ -85,6 +85,8 @@ def test_backups_and_state_stay_out(tmp_path):
 @pytest.mark.parametrize("name", ["../evil.yaml", "/abs.yaml", "scenes/../../evil.yaml", "a\\b.yaml",
                                   "C:/x.yaml", ".backups/x.yaml", "script.py", "scenes/readme.txt"])
 def test_unsafe_names_refuse_the_whole_file(tmp_path, name):
+    if "\\" in name and sys.platform == "win32":
+        pytest.skip("zipfile turns \\ into / on Windows when writing, so this name can't be made here")
     f = _zip(tmp_path / "bad.dms", {"fixtures.yaml": b"version: 3\n", name: b"x: 1\n"})
     with pytest.raises(DmsError):
         unpack(f, tmp_path / "out")
@@ -280,10 +282,11 @@ def test_pack_and_unpack_commands(tmp_path, capsys):
 def test_restart_command_line(monkeypatch):
     monkeypatch.setattr(sys, "orig_argv", ["python3", "-m", "dmx_suite.cli", "--shows", "a.dms", "run", "--sim"], raising=False)
     monkeypatch.setattr(sys, "argv", ["cli.py", "--shows", "a.dms", "run", "--sim"])
-    assert restart_argv(Path("/x/b.dms")) == ["python3", "-m", "dmx_suite.cli", "--shows", "/x/b.dms", "run", "--sim"]
+    b = str(Path("/x/b.dms"))
+    assert restart_argv(Path("/x/b.dms")) == ["python3", "-m", "dmx_suite.cli", "--shows", b, "run", "--sim"]
     monkeypatch.setattr(sys, "orig_argv", ["C:/app/0.05 DMX Suite.exe"], raising=False)
     monkeypatch.setattr(sys, "argv", ["C:/app/0.05 DMX Suite.exe"])
-    assert restart_argv(Path("/x/b.dms")) == ["C:/app/0.05 DMX Suite.exe", "--shows", "/x/b.dms"]
+    assert restart_argv(Path("/x/b.dms")) == ["C:/app/0.05 DMX Suite.exe", "--shows", b]
 
 
 def test_installed_app_starts_a_new_dms_from_the_starter_shows(tmp_path, monkeypatch):
