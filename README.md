@@ -9,7 +9,7 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules. The 
 | Path | What |
 | --- | --- |
 | `docs/PROTOCOL.md` | USB serial and ESP-NOW protocol (node link) |
-| `shows/` | Show files: `fixtures.yaml`, `palettes.yaml`, `scenes/`, `shows/`, `setlists/`, `rigs/`, `looks/`, `midi/` |
+| `shows/` | Show files: `fixtures.yaml`, `palettes.yaml`, `inputs.yaml`, `scenes/`, `shows/`, `setlists/`, `rigs/`, `looks/`, `midi/` |
 | `dmx_suite/engine.py` | Show engine: 40 Hz loop, MASTER, blackout, drum flash, masters, haze |
 | `dmx_suite/rules.py` | Rule layer: enforces the hard rules just before output |
 | `dmx_suite/scenes.py` | Scenes: layered colour, effects (chases, flash, sweep, random move) and positions |
@@ -128,8 +128,11 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 - **Shows:** build shows from scenes and edit setlists (below).
 - **Fixtures:** the patch, fixture types and rig settings (below).
 - **Busk:** your own panels of buttons and faders to play over the running show (below).
-- **Heads:** drag on a pad to hold a head at a spot (head limits still apply); save held positions as a palette position.
-- **MIDI:** live monitor (what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
+- **Heads:** drag on a pad to hold a head at a spot (head limits still apply; fine mode for small moves); store held heads to named head points for this rig (description, tags, stage place); focus mode and a re-focus walk.
+- **Palettes:** palettes with tags (seven built in), generate from a colour by colour theory, preview on the rig; named colours.
+- **MIDI:** named inputs and devices (learn, calibrate, device profiles), live monitor (input name and what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
+
+Alerts lie over the top of the page as banners (dismiss, snooze, minimise); the bell opens the alerts list (mute a device for this rig, quiet mode). Colours are picked with the colour wheel (◐).
 - **Setup:** find a light, channel tester, drum flash test, devices, node health (name/identify nodes), address check, theme, check for updates.
 - **Files:** preview or play scenes, and restore any file from the backups.
 
@@ -232,9 +235,9 @@ dmx-suite unpack "My show.dms" my-show-folder
 dmx-suite --shows "My show.dms" run --sim
 ```
 
-All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers and drum pad map (`shows/midi/default.yaml`), and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.
+All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers (`shows/inputs.yaml`) and drum pad map (`shows/midi/default.yaml`), head points and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.
 
-Scenes (`shows/scenes/*.yaml`) are layers applied in order to lights or groups: a colour, position or gobo, an effect, or both. Colours, positions and gobos come from `shows/palettes.yaml`. Like looks, scenes can't set dimmers or haze or move the U'King heads. See the top of `dmx_suite/scenes.py` for every option.
+Scenes (`shows/scenes/*.yaml`) are layers applied in order to lights or groups: a colour, position or gobo, an effect, or both. Colours and gobos come from `shows/palettes.yaml`; positions are the rig's head points (`positions:` in `shows/rigs/*.yaml`). MIDI and OSC inputs are named once in `shows/inputs.yaml` and used by name in the MIDI map. Like looks, scenes can't set dimmers or haze or move the U'King heads. See the top of `dmx_suite/scenes.py` for every option.
 
 **Effects** (each a class in `dmx_suite/effects/`, so the scene builder, auto shows and Claude all see the same list):
 

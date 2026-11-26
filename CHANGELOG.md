@@ -2,6 +2,21 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v3, release V3.1)
+
+### Added
+- Named inputs: define each pad, pedal, key or OSC control once (`inputs.yaml`), grouped into devices, with roles (kick, snare, tom, cymbal, count-in, activity), velocity range and calibrated velocity curve; MIDI maps name them. Learn an input from the gear; device profiles for the TD-25, SamplePad 4, FCB1010 and GM drums; save your own.
+- Head points: named aim points per rig config with a description, tags and a rough stage place; store held heads to a point on the Heads page, fine mode, focus mode and a re-focus walk.
+- Colour wheel: hue/saturation, brightness, hex and RGB, white/amber/UV for lights that have them, white temperature presets, recent and named swatches, pick from a light, what each light can make, live preview.
+- Palettes page: palettes with tags (seven built in), generate from a colour by colour theory, preview on the rig, rename, duplicate, import and export; named colours renamed everywhere at once.
+- Alerts: banners over the page (no layout jumps) with dismiss, snooze and minimise; a bell with the alerts list; mute a device for this rig; quiet mode; critical alerts can't be dismissed while they last; an alerts log.
+- Claude: list and edit inputs and head points, read alerts; the guide explains inputs and points.
+
+### Changed
+- Show file format 5: MIDI mappings become named inputs and palette positions become head points in each rig, once, with a backup. Everything looks and reacts exactly as before.
+- MIDI learn makes (or reuses) a named input.
+- Deleting a named colour that's in use says where it's used.
+
 ## Unreleased (v2, release R8)
 
 ### Added

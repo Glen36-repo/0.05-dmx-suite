@@ -7,6 +7,20 @@
 - **Grand master** changes brightness only, never position or colour choice.
 - **Moving-head limits** from the rig file are always kept to.
 
+## Alerts and banners
+
+When something drops out (a MIDI interface unplugged, a DMX output down, a node offline or weak, an engine fault) a banner appears over the top of the page and the laptop beeps. Banners lie over the page, so buttons never move under your finger.
+
+- **✕** dismisses a banner. It stays hidden while the problem lasts and comes back only if the device recovers and then drops out again
+- **10 min** hides it for ten minutes; the alerts list also has 1 hour and the rest of the gig
+- banners clear by themselves when the problem is fixed
+- **Critical** alerts (engine fault, a DMX output down, every output lost) can only be minimised (**–**) to the red bell while the fault lasts
+- the **bell** shows how many alerts are open and opens the alerts list: time, device, message and state
+- **Not using this today** mutes a device's alerts for this rig config (greyed in the status strip); switching rig clears it
+- **Quiet** (in the alerts list): only critical alerts make banners; the rest go quietly to the list
+
+Every alert is kept in the gig log (`logs/alerts-YYYY-MM-DD.jsonl` in app data), and Claude can read the list.
+
 ## When something goes wrong
 
 | What you see | What it means | What to do |
