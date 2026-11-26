@@ -202,15 +202,28 @@ class Desktop:
         return 0
 
     def smoke(self, seconds: float) -> None:
-        """Build check: wait for the page, check it's this app's UI and it started, quit."""
-        time.sleep(seconds)
-        try:
-            app = self.window.evaluate_js(
-                "(document.querySelector('meta[name=application-name]') || {}).content"
-                " + (document.body.classList.contains('ready') ? ' ready' : ' not ready')")
-        except Exception as e:  # noqa: BLE001
-            app = f"error: {e}"
+        """Build check: wait (up to `seconds`, at least 30) for the page to be this app's UI and
+        started, then quit. Says what it last saw, and any page errors, if it never got there."""
+        js = ("(document.querySelector('meta[name=application-name]') || {}).content"
+              " + (document.body.classList.contains('ready') ? ' ready' : ' not ready')")
+        deadline = time.monotonic() + max(seconds, 30.0)
+        time.sleep(min(seconds, 2.0))
+        app = "not checked"
+        while True:
+            try:
+                app = self.window.evaluate_js(js)
+            except Exception as e:  # noqa: BLE001
+                app = f"error: {e}"
+            if app == "dmx-suite ready" or time.monotonic() >= deadline:
+                break
+            time.sleep(0.5)
         print(f"smoke test: page {app!r}", flush=True)
+        if app != "dmx-suite ready":
+            try:
+                text = self.window.evaluate_js("document.body.innerText.slice(0, 400)")
+                print(f"smoke test: page text {text!r}", flush=True)
+            except Exception as e:  # noqa: BLE001
+                print(f"smoke test: couldn't read the page: {e}", flush=True)
         self.smoke_ok = app == "dmx-suite ready"
         self.quit()
 
