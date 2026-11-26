@@ -88,8 +88,18 @@
         <button data-haze="manual" data-i18n="haze.manual"></button>
         <button data-haze="pulse" data-i18n="haze.pulse"></button>
         <button id="boost" class="hold perform" data-i18n="haze.boost"></button>
+        <select id="haze-preset" data-i18n-title="haze.preset_tip"></select>
       </div>
       <div class="muted" id="haze"></div>
+      <details class="section haze-settings" id="haze-settings">
+        <summary><span data-i18n="haze.settings"></span> <span class="sum muted" id="haze-rig"></span></summary>
+        <div class="hz-blocks" id="hz-blocks"></div>
+        <div class="row wrap">
+          <button id="hz-save" class="primary" data-i18n="haze.save" disabled></button>
+          <button id="hz-revert" data-i18n="haze.revert" disabled></button>
+          <span class="muted" data-i18n="haze.live_note"></span>
+        </div>
+      </details>
     </section>
 
     <!-- LAYOUT -->

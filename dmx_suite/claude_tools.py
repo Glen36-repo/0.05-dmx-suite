@@ -423,6 +423,23 @@ class DmxTools:
     def list_backups(self) -> str:
         return _dump(self.local.backups(30)) or "no backups yet"
 
+    def save_haze_settings(self, settings_yaml: str, rig: str = "") -> str:
+        """Haze controller settings (levels %, seconds, auto_off_min, presets) into the rig's haze: block."""
+        changes = _yaml(settings_yaml, "haze settings")
+        if not rig:
+            try:
+                r = self._call("POST", "/api/haze/settings", {"changes": changes, "save": True})
+                return f"saved (backup {r['backup']}) for rig {r['rig']}"
+            except Offline:
+                rig = self._rig_name()
+        from .rig import parse_haze
+
+        data = self.local.read("rig", rig)
+        block = {**(data.get("haze") or {}), **changes}
+        parse_haze(block)
+        data["haze"] = block
+        return f"saved to rigs/{rig}.yaml (backup {self.local.put('rig', rig, data, f'haze settings for rig {rig}')})"
+
     def now_playing(self) -> str:
         s = self._live("GET", "/api/state")
         keep = {k: s[k] for k in ("describe", "master", "blackout", "gig_lock", "grand", "subs", "haze", "preview_s", "rig")}

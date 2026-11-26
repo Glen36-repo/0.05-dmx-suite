@@ -96,6 +96,22 @@ class HazeConfig:
     rest_s: float = 30.0  # forced off time after max_on_s
     boost_cooldown_s: float = 20.0
     auto_off_s: float = 0.0  # manual/pulse revert to off after this (0 = never)
+    pulse_level: float | None = None  # v4: pulse output level (None = level)
+    presets: list[dict[str, Any]] = field(default_factory=list)  # v4: [{name, mode, level}], e.g. Haze 4 Med = 41 %
+
+    def to_dict(self) -> dict[str, Any]:
+        """The rig file's `haze:` block (levels in %, auto-off in minutes)."""
+        pc = lambda v: round(v * 100, 1)  # noqa: E731
+        d: dict[str, Any] = {"enabled": self.enabled, "default_mode": self.default_mode, "level": pc(self.level),
+                             "boost_level": pc(self.boost_level), "pulse_on_s": self.pulse_on_s,
+                             "pulse_every_s": self.pulse_every_s, "boost_s": self.boost_s, "max_on_s": self.max_on_s,
+                             "rest_s": self.rest_s, "boost_cooldown_s": self.boost_cooldown_s,
+                             "auto_off_min": round(self.auto_off_s / 60, 2)}
+        if self.pulse_level is not None:
+            d["pulse_level"] = pc(self.pulse_level)
+        if self.presets:
+            d["presets"] = [{**p, "level": pc(p["level"])} for p in self.presets]
+        return d
 
 
 @dataclass
@@ -206,29 +222,7 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
             _range(lim.get("pan", [0, 100]), f"{fid} pan"),
             _range(lim.get("tilt", [0, 100]), f"{fid} tilt"),
         )
-    h = data.get("haze") or {}
-    if not isinstance(h, dict):
-        raise ConfigError("haze: needs settings like level: 60")
-    mode = h.get("default_mode", "off")
-    if mode is False:  # YAML reads a bare `off` as false
-        mode = "off"
-    haze = HazeConfig(
-        enabled=bool(h.get("enabled", True)),
-        default_mode=mode,
-        level=_pct(h.get("level", 60), "haze level"),
-        boost_level=_pct(h.get("boost_level", 100), "haze boost_level"),
-        pulse_on_s=_secs(h.get("pulse_on_s", 5), "haze pulse_on_s", 0.1),
-        pulse_every_s=_secs(h.get("pulse_every_s", 120), "haze pulse_every_s", 0.2),
-        boost_s=_secs(h.get("boost_s", 0), "haze boost_s"),
-        max_on_s=_secs(h.get("max_on_s", 60), "haze max_on_s", 1),
-        rest_s=_secs(h.get("rest_s", 30), "haze rest_s"),
-        boost_cooldown_s=_secs(h.get("boost_cooldown_s", 20), "haze boost_cooldown_s"),
-        auto_off_s=_secs(h.get("auto_off_min", 0), "haze auto_off_min") * 60,
-    )
-    if haze.default_mode not in ("off", "manual", "pulse"):
-        raise ConfigError("haze default_mode must be off, manual or pulse")
-    if haze.pulse_on_s >= haze.pulse_every_s:
-        raise ConfigError("haze pulse_on_s must be shorter than pulse_every_s")
+    haze = parse_haze(data.get("haze"))
     kick_data = data.get("kick_colour") or {"red": 100, "green": 100, "blue": 100}
     if not isinstance(kick_data, dict) or set(kick_data) - set(EMITTERS):
         raise ConfigError(f"kick_colour: emitter levels in %, from {', '.join(EMITTERS)}")
@@ -438,6 +432,65 @@ def parse_outputs(d: Any) -> tuple[list[dict[str, Any]], list[str]]:
                 raise ConfigError(f"outputs {i + 1}: universe 0-15")
         out.append(o)
     return out, warn
+
+
+def parse_haze(d: Any) -> HazeConfig:
+    """The rig's `haze:` block, checked (levels in %, auto-off in minutes)."""
+    h = d or {}
+    if not isinstance(h, dict):
+        raise ConfigError("haze: needs settings like level: 60")
+    bad = set(h) - HAZE_KEYS
+    if bad:
+        raise ConfigError(f"haze: unknown settings {sorted(bad)}; known: {', '.join(sorted(HAZE_KEYS))}")
+    mode = h.get("default_mode", "off")
+    if mode is False:  # YAML reads a bare `off` as false
+        mode = "off"
+    haze = HazeConfig(
+        enabled=bool(h.get("enabled", True)),
+        default_mode=mode,
+        level=_pct(h.get("level", 60), "haze level"),
+        boost_level=_pct(h.get("boost_level", 100), "haze boost_level"),
+        pulse_on_s=_secs(h.get("pulse_on_s", 5), "haze pulse_on_s", 0.1),
+        pulse_every_s=_secs(h.get("pulse_every_s", 120), "haze pulse_every_s", 0.2),
+        boost_s=_secs(h.get("boost_s", 0), "haze boost_s"),
+        max_on_s=_secs(h.get("max_on_s", 60), "haze max_on_s", 1),
+        rest_s=_secs(h.get("rest_s", 30), "haze rest_s"),
+        boost_cooldown_s=_secs(h.get("boost_cooldown_s", 20), "haze boost_cooldown_s"),
+        auto_off_s=_secs(h.get("auto_off_min", 0), "haze auto_off_min") * 60,
+        pulse_level=None if h.get("pulse_level") is None else _pct(h["pulse_level"], "haze pulse_level"),
+        presets=_haze_presets(h.get("presets")),
+    )
+    if haze.default_mode not in ("off", "manual", "pulse"):
+        raise ConfigError("haze default_mode must be off, manual or pulse")
+    if haze.pulse_on_s >= haze.pulse_every_s:
+        raise ConfigError("haze pulse_on_s must be shorter than pulse_every_s")
+    return haze
+
+
+HAZE_KEYS = {"enabled", "default_mode", "level", "boost_level", "pulse_on_s", "pulse_every_s", "boost_s", "max_on_s",
+             "rest_s", "boost_cooldown_s", "auto_off_min", "pulse_level", "presets"}
+
+
+def _haze_presets(d: Any) -> list[dict[str, Any]]:
+    """Named haze settings (v4): [{name: Haze 4 Med, mode: manual, level: 41}] - picked on the Live page
+    or from MIDI (haze_preset). Only the haze controller uses them (rule 5)."""
+    if d is None:
+        return []
+    if not isinstance(d, list):
+        raise ConfigError("haze presets: a list of {name, mode, level}")
+    out, names = [], set()
+    for i, p in enumerate(d):
+        if not isinstance(p, dict) or not p.get("name") or set(p) - {"name", "mode", "level"}:
+            raise ConfigError(f"haze preset {i + 1}: {{name, mode, level}}")
+        name = str(p["name"])
+        if name in names:
+            raise ConfigError(f"haze preset {name!r} twice")
+        names.add(name)
+        mode = str(p.get("mode", "manual"))
+        if mode not in ("off", "manual", "pulse"):
+            raise ConfigError(f"haze preset {name}: mode is off, manual or pulse")
+        out.append({"name": name, "mode": mode, "level": _pct(p.get("level", 60), f"haze preset {name} level")})
+    return out
 
 
 def parse_placement(fid: str, v: Any) -> Placement:

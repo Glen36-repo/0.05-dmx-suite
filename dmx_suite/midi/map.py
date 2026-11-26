@@ -45,6 +45,7 @@ ACTIONS: dict[str, set[str]] = {
     "haze_manual": set(),
     "haze_pulse": set(),
     "haze_boost": set(),
+    "haze_preset": {"preset"},  # v4: a named haze preset (level + mode) from the rig's haze block
     # shows and setlists
     "select_show": {"show", "set"},
     "select_set": {"set"},
@@ -191,6 +192,8 @@ def validate(m: Mapping, input_type: str | None = None) -> None:
         raise ConfigError(f"{where}: autopilot state is on, off or toggle")
     if m.action == "autopilot_fx" and (m.params.get("bank") not in ("move", "colour", "drum") or not m.params.get("item")):
         raise ConfigError(f"{where}: autopilot_fx needs bank (move, colour, drum) and item")
+    if m.action == "haze_preset" and not m.params.get("preset"):
+        raise ConfigError(f"{where}: haze_preset needs preset (a haze preset's name)")
     if m.action == "preset" and not m.params.get("preset"):
         raise ConfigError(f"{where}: preset needs preset (a preset's name)")
     if m.action == "autopilot_palette" and not m.params.get("palette"):

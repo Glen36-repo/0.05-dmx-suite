@@ -47,6 +47,7 @@ DEFAULT_PORT = 8505
 # what Claude's token may change (everything else is the people at the laptop's call)
 MAX_UPLOAD = 20 * 1024 * 1024
 CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/routing/output", "/api/claude/haze",
+                 "/api/haze/settings",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check", "/api/generate")
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
@@ -100,8 +101,13 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
                 raise ApiError(409, "boost refused (disabled or cooling down)")
         elif act == "release":
             e.haze_boost(False)
+        elif act == "preset":
+            try:
+                e.haze_preset(str(a.get("preset", "")))
+            except ValueError as err:
+                raise ApiError(400, str(err)) from err
         else:
-            raise ApiError(400, "haze action: off, manual, pulse, toggle_manual, boost, release")
+            raise ApiError(400, "haze action: off, manual, pulse, toggle_manual, boost, release, preset")
     elif cmd == "show":
         c.select_show(a["show"], a.get("set"))
     elif cmd == "set":
@@ -719,6 +725,14 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/layout" and method == "PUT":
                 bid = app.save_layout(body.get("layout") or {})
                 return self._json(200, {"ok": True, "backup": bid})
+            if path == "/api/haze/settings" and method == "POST":  # Haze settings panel (and Claude, saving)
+                r = app.haze_settings(body.get("changes") or {}, bool(body.get("save")))
+                return self._json(200, {"ok": True, **r})
+            if path == "/api/haze/revert" and method == "POST":
+                return self._json(200, {"ok": True, **app.haze_revert()})
+            if path == "/api/haze/test" and method == "POST":
+                span = app.haze_test(str(body.get("mode", "")))
+                return self._json(200, {"ok": True, "seconds": span})
             if path == "/api/routing/output" and method == "POST":
                 r = app.set_output(int(body.get("index", -1)), body.get("set") or {})
                 return self._json(200, {"ok": True, **r})

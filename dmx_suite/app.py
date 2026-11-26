@@ -371,6 +371,35 @@ class App:
                              "last_frame_age_ms": n.get("last_data_age_ms"), "all_zero": None})
         return {"universes": used, "rows": rows, "problems": routing_problems(rig)}
 
+    # ------------------------------------------------------------------ haze settings (v4)
+
+    def haze_settings(self, changes: dict[str, Any], save: bool) -> dict[str, Any]:
+        """Haze settings panel: `changes` over the running rig's `haze:` block. save=False tries them live
+        (not written, reverts on the next reload); save=True writes the rig file. Rule 5 is untouched:
+        this edits the haze controller only."""
+        from .rig import parse_haze
+
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        block = {**(data.get("haze") or {}), **(changes or {})}
+        cfg = parse_haze(block)  # checked before anything changes
+        if save:
+            data["haze"] = block
+            bid = self.store.put("rig", rig_name, data, f"haze settings for rig {rig_name}")
+            self.reload()
+            return {"backup": bid, "settings": cfg.to_dict(), "rig": rig_name}
+        self.engine.haze_settings(cfg)
+        return {"applied": True, "settings": cfg.to_dict(), "rig": rig_name}
+
+    def haze_revert(self) -> dict[str, Any]:
+        """Back to the saved haze settings (undo the live tries)."""
+        self.engine.haze_settings(self.engine.rig.haze)
+        return {"settings": self.engine.rig.haze.to_dict(), "rig": self.names[0]}
+
+    def haze_test(self, mode: str) -> float:
+        self.require_unlocked("testing the haze")
+        return self.engine.haze_test(mode)
+
     def frame_view(self, universe: int, out: str | int | None = None) -> dict[str, Any]:
         """The 512 channels an interface really sent on a universe (Monitor, address map). `out` is an
         output index (default: the first that carries the universe), or "engine" for the engine's own
@@ -1457,7 +1486,9 @@ class App:
             "subs": {k.value: f.target for k, f in e.masters.subs.items() if k != Kind.HAZE},
             "haze": {"enabled": hz.enabled, "mode": hz.mode.value, "on": hz.output_on, "level": hz.level,
                      "boosting": hz.boosting, "resting": hz.resting, "auto_off_s": hz.auto_off_in_s,
-                     "next_pulse_s": hz.next_pulse_in_s, "boost_cooldown_s": hz.boost_cooldown_s},
+                     "next_pulse_s": hz.next_pulse_in_s, "boost_cooldown_s": hz.boost_cooldown_s,
+                     "testing": hz.testing, "preset": hz.preset, "settings": e.haze.cfg.to_dict(),
+                     "rig": self.names[0]},
             "now": n.__dict__,
             "describe": self.ctl.describe(),
             "preview_s": e.previewing,

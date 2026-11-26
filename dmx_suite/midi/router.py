@@ -238,6 +238,14 @@ class MidiRouter:
             if m.pressed and not ok:
                 return "haze boost refused (disabled or cooling down)"
             return "haze boost on" if m.pressed else "haze boost release"
+        if a == "haze_preset":
+            if not m.pressed:
+                return "release"
+            try:
+                e.haze_preset(str(p.get("preset")))
+            except ValueError as err:
+                return f"haze_preset: {err}"
+            return f"haze preset {p.get('preset')}"
         if a == "override":
             if self.busk is None:
                 return "override: not running"

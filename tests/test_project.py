@@ -146,6 +146,10 @@ def test_every_ui_text_key_exists():
     used |= {"review.banned_toast", "review.rated"}
     # v4
     used |= {f"layout.need_{n}" for n in ("one", "two", "three", "pixels")}
+    used |= {f"haze.b_{b}" for b in ("manual", "pulse", "boost", "safety")}
+    used |= {f"haze.u_{u}" for u in ("pct", "s", "min")}
+    used |= {f"haze.f_{k}" for k in ("level", "pulse_level", "pulse_on_s", "pulse_every_s", "boost_level", "boost_s",
+                                     "boost_cooldown_s", "max_on_s", "rest_s", "auto_off_min", "default_mode")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

@@ -2,6 +2,7 @@
 import { cmd } from "../api.js";
 import { $, $$, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
+import { initHazePanel, renderHazePanel } from "../hazepanel.js";
 import { t } from "../i18n.js";
 import { live, onCatalogue, onState } from "../state.js";
 
@@ -96,8 +97,10 @@ function render(s) {
   if (h.next_pulse_s != null) bits.push(t("haze.next_pulse", { s: Math.round(h.next_pulse_s) }));
   if (h.auto_off_s != null) bits.push(t("haze.auto_off", { min: Math.round(h.auto_off_s / 60) }));
   if (h.boost_cooldown_s) bits.push(t("haze.cooldown", { s: Math.round(h.boost_cooldown_s) }));
+  if (h.testing) bits.push(t("haze.testing", { mode: t("haze.b_" + h.testing) }));
   $("#haze").textContent = bits.join(" · ");
   $$("[data-haze]").forEach((b) => b.classList.toggle("sel", h.mode === b.dataset.haze));
+  renderHazePanel(h);
 
   grid.update(s.fixtures, s.haze);
   grid.mark(Object.keys(s.busk?.lights || {})); // lights held by busk buttons
@@ -112,6 +115,7 @@ export function init() {
   boost.addEventListener("pointerdown", (e) => { e.preventDefault(); boost.classList.add("on"); cmd("haze", { action: "boost" }); });
   const up = () => { if (boost.classList.contains("on")) { boost.classList.remove("on"); cmd("haze", { action: "release" }); } };
   ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => boost.addEventListener(ev, up));
+  initHazePanel();
   onCatalogue(buildCatalogue);
   onState(render);
 }

@@ -329,3 +329,36 @@ def test_arrange_shortcuts_and_reverse(ui):
     page.wait_for_selector("#layout-dirty.hidden", state="attached")
     lay = app.engine.rig.layout
     assert lay["bar_1"].reverse and lay["bar_1"].rot == 90.0
+
+
+# ---------------------------------------------------------------- haze settings (item 14)
+
+
+def test_haze_settings_panel(ui):
+    import yaml
+
+    page, app, root, _ = ui
+    go(page, "live")
+    page.click("#haze-settings summary")
+    page.wait_for_selector("#hz-blocks [data-block=pulse] #hz-duty")
+    assert "rig: full" in page.inner_text("#haze-rig")
+    assert page.text_content("#hz-blocks").count("Test") == 3
+    page.fill("#hz-blocks input.num[data-key=level]", "41")
+    page.press("#hz-blocks input.num[data-key=level]", "Tab")
+    page.wait_for_function("!document.querySelector('#hz-save').disabled")
+    for _ in range(40):
+        if abs(app.engine.haze.cfg.level - 0.41) < 1e-9:
+            break
+        page.wait_for_timeout(50)
+    assert app.engine.haze.cfg.level == pytest.approx(0.41)  # tried live, not saved
+    assert yaml.safe_load((root / "rigs" / "full.yaml").read_text())["haze"]["level"] == 60
+    page.fill("#hz-blocks input.num[data-key=pulse_on_s]", "1")
+    page.press("#hz-blocks input.num[data-key=pulse_on_s]", "Tab")
+    page.fill("#hz-blocks input.num[data-key=pulse_every_s]", "61")
+    page.press("#hz-blocks input.num[data-key=pulse_every_s]", "Tab")
+    assert "1 s every 61 s ≈ 2 %" in page.inner_text("#hz-duty")
+    page.click("#hz-save")
+    page.wait_for_function("document.querySelector('#hz-save').disabled")
+    assert yaml.safe_load((root / "rigs" / "full.yaml").read_text())["haze"]["level"] == 41
+    page.click("[data-test=manual]")
+    page.wait_for_function("document.querySelector('#haze').textContent.includes('testing')")

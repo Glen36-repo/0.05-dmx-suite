@@ -235,7 +235,8 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
 
     @tool
     def now_playing() -> str:
-        """What's running: show/set/song, MASTER, blackout, masters, haze, gig lock. Engine must be running."""
+        """What's running: show/set/song, MASTER, blackout, masters, haze (mode, output, settings, preset),
+        gig lock. Engine must be running."""
         return t.now_playing()
 
     @tool
@@ -245,9 +246,23 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.preview_scene(scene, seconds)
 
     @tool
-    def set_haze(action: str) -> str:
-        """Haze mode: off, manual or pulse. Not allowed during gig lock. Haze settings live in the rig file."""
-        return t.set_haze(action)
+    def set_haze(action: str, settings_yaml: str = "") -> str:
+        """Haze mode: off, manual or pulse (or '' to leave the mode). With settings_yaml, also tune the haze
+        controller and save it to the running rig: '{level: 41, pulse_level: 30, pulse_on_s: 1, pulse_every_s: 61,
+        boost_level: 100, boost_s: 0, boost_cooldown_s: 20, max_on_s: 60, rest_s: 30, auto_off_min: 120,
+        default_mode: off, presets: [{name: Haze 4 Med, mode: manual, level: 41}]}' (levels %). Not during gig
+        lock. Scenes and shows never set haze (rule 5)."""
+        out = []
+        if settings_yaml.strip():
+            out.append(t.save_haze_settings(settings_yaml))
+        if action:
+            out.append(t.set_haze(action))
+        return "; ".join(out) or "nothing to do: give an action or settings"
+
+    @tool
+    def save_haze_settings(settings_yaml: str, rig: str = "") -> str:
+        """Tune the haze controller (same settings as set_haze) for a rig without changing the mode."""
+        return t.save_haze_settings(settings_yaml, rig)
 
     @tool
     def get_layout(rig: str = "") -> str:
