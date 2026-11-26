@@ -26,6 +26,7 @@ from .midi.router import MidiRouter
 from .output import LogDriver, NodeSerialDriver, make_driver
 from .ofl import import_ofl
 from .setup import format_report, patch_report
+from .app import App
 from .showctl import ShowController
 from .showfiles import ShowFiles, check_all, load_show
 
@@ -273,8 +274,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     for d in drivers:  # rig config lists the nodes expected, so a missing one shows at setup
         if isinstance(d, NodeSerialDriver):
             d.link.health.expect(show.rig.nodes)
-    engine = Engine(show.rig, drivers, show.look)
-    ctl = ShowController(engine, show, None if args.sim else args.shows / ".state.json")
+    state_path = None if args.sim else args.shows / ".state.json"
+    app = App(show, drivers, state_path, log_dir=args.shows.parent / "logs", rig=args.rig, look=args.look, midi=args.midi)
+    engine, ctl, router = app.engine, app.ctl, app.router
     resumed = False if args.fresh else ctl.restore()  # laptop restarted mid-gig: carry on
     if resumed:
         print("resumed:", ctl.describe())
@@ -284,7 +286,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         ctl.select_show(args.show, args.set)
     elif args.scene:
         ctl.select_scene(args.scene)
-    router = MidiRouter(engine, show.midimap, MidiMonitor(), ctl)
+    web = None
+    if not args.no_web:
+        from .web.server import WebServer
+
+        web = WebServer(app, "0.0.0.0" if args.lan else "127.0.0.1", args.port)
+        web.start()
+        print(f"browser UI: http://localhost:{web.port}/")
+        if args.lan:
+            print(f"from a phone on the same network: http://<this laptop's IP>:{web.port}/?t={web.token}")
     fake = FakeMidiIn(router.handle_mido)
     real = None
     if not args.sim:
@@ -292,7 +302,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print("MIDI in:", ", ".join(p.name for p in real.ports) or "none")
     engine.start()
     try:
-        if args.sim or sys.stdin.isatty():
+        if not args.headless and (args.sim or sys.stdin.isatty()):
             console(engine, router, fake, show.midimap_path, show, ctl)
         else:
             while True:
@@ -302,6 +312,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     finally:
         if real:
             real.close()
+        if web:
+            web.stop()
         engine.stop()
     return 0
 
@@ -369,6 +381,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--set", help="set within the show, e.g. mid")
     p.add_argument("--setlist", help="start a setlist at song 1")
     p.add_argument("--fresh", action="store_true", help="don't resume what was playing before a restart")
+    p.add_argument("--port", type=int, default=8505, help="browser UI port")
+    p.add_argument("--lan", action="store_true", help="let phones on the network open the UI (needs the token link)")
+    p.add_argument("--no-web", action="store_true", help="no browser UI")
+    p.add_argument("--headless", action="store_true", help="no console; run until stopped (e.g. as a service)")
 
     sub.add_parser("midi-ports", help="list MIDI inputs")
     p = sub.add_parser("midi-monitor", help="live MIDI list with what each message triggers")
@@ -376,6 +392,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--channel", type=int, help="only this channel (1-16)")
 
     sub.add_parser("check", help="validate show files")
+    sub.add_parser("mcp", help="MCP server for Claude Desktop (stdio)")
     p = sub.add_parser("addresses", help="patch / address check")
     p.add_argument("--rig", default="full")
     p = sub.add_parser("import-ofl", help="fixture type YAML from an Open Fixture Library JSON file")
@@ -384,6 +401,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--key", help="type key to use in fixtures.yaml")
     p.add_argument("--kind", choices=[k.value for k in Kind], help="override the guessed kind")
     return ap
+
+
+def cmd_mcp(args: argparse.Namespace) -> int:
+    import os
+
+    os.environ.setdefault("DMX_SUITE_SHOWS", str(args.shows))
+    from .mcp_server import main as mcp_main
+
+    mcp_main()
+    return 0
 
 
 def cmd_addresses(args: argparse.Namespace) -> int:
@@ -409,6 +436,7 @@ def main(argv: list[str] | None = None) -> int:
             "midi-ports": cmd_midi_ports,
             "midi-monitor": cmd_midi_monitor,
             "check": cmd_check,
+            "mcp": cmd_mcp,
             "addresses": cmd_addresses,
             "import-ofl": cmd_import_ofl,
         }[args.cmd](args)

@@ -286,6 +286,14 @@ Decided 26/11/2026:
 | Resume after restart | Live runs save show/set/setlist song/MASTER to `shows/.state.json` on every change; restored on start if under 12 hours old |
 | Missing fixtures in shows | Auto shows only use fixtures in the rig; hand-written scene layers can name a `fallback` group |
 | Kick light in auto shows | White most steps, the show colour about 30 % of steps |
+| Browser UI | Standard-library web server + server-sent events; no build step, no internet needed |
+| UI access | Localhost only by default; `--lan` for phones, which need the token link; every change needs the token; Host header must be localhost or an IP (blocks DNS-rebinding) |
+| Gig lock | Blocks file changes, preview, Claude haze changes, MIDI map save and node naming; the band's live controls still work; survives a restart |
+| Claude haze control | off / manual / pulse only; boost stays on the footswitch |
+| Preview | Plays under the current MASTER (rule 1), so with MASTER off the rig stays dark and Claude is told so |
+| Edits | Staged and checked against the whole show folder (every rig) before writing; previous file kept in `shows/.backups/<date-time>/`; writing YAML drops comments |
+| Live reload | Scenes, palettes, shows, setlists and MIDI map reload straight away; fixture/rig changes need a restart |
+| Claude without the engine | MCP edits the show files directly with the same checks; live tools report the engine isn't running |
 
 Open:
 
@@ -296,6 +304,8 @@ Open:
 - [ ] Daslight import: need a sample Daslight show/patch file to read its format
 - [ ] Palette positions and gobo values (`shows/palettes.yaml`): set at rehearsal
 - [ ] Rehearsal: tune auto-show styles (colours, step times, energy) and write the real setlist
+- [ ] Brand assets: replace `dmx_suite/web/static/brand/logo.svg` and `brand.css` (placeholders now); CoreS3 boot logo
+- [ ] Rig layout for the UI preview (currently grouped by fixture kind, not stage position)
 - [ ] 0.05 brand assets: logo files (SVG preferred), colours, font
 - [ ] Unit DMX (U183) wiring: confirm TX/RX pins and whether a direction (DE/RE) pin is needed, before first flash (`firmware/include/config.h`)
 - [ ] Node status: CoreS3 screen (0.05 logo, status) not built yet; identify on the node only logs

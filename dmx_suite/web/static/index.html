@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="dmx-token" content="__TOKEN__">
+<meta name="theme-color" content="#08080b">
+<title>0.05 DMX Suite</title>
+<link rel="icon" href="/static/brand/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <img src="/static/brand/logo.svg" alt="0.05" class="logo">
+  <div class="now" id="now">connecting…</div>
+  <button class="lock" id="giglock" title="Gig lock: Claude can read but not change or preview anything">Gig lock</button>
+</header>
+<div class="health" id="health"></div>
+<div class="banner hidden" id="banner"></div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="live" class="on">Live</button>
+  <button data-tab="heads">Heads</button>
+  <button data-tab="midi">MIDI</button>
+  <button data-tab="setup">Setup</button>
+  <button data-tab="files">Files</button>
+</nav>
+
+<main>
+  <!-- LIVE -->
+  <section id="tab-live" class="tab on">
+    <div class="row big">
+      <button id="master" class="toggle master">MASTER</button>
+      <button id="blackout" class="toggle danger">BLACKOUT</button>
+    </div>
+    <div class="stage" id="stage"></div>
+    <h2>Show</h2>
+    <div class="row wrap" id="shows"></div>
+    <div class="row wrap" id="sets"></div>
+    <div class="row">
+      <button data-cmd="next">Next step</button>
+      <button data-cmd="look">Static look</button>
+      <button id="tap">Tap</button>
+      <button data-cmd="tempo" data-bpm="off">Tempo off</button>
+      <span class="muted" id="preview"></span>
+    </div>
+    <h2>Setlist</h2>
+    <div class="row wrap">
+      <select id="setlist"></select>
+      <button id="setlist-go">Start</button>
+      <button data-cmd="song" data-song="prev">◀ Prev song</button>
+      <button data-cmd="song" data-song="next">Next song ▶</button>
+    </div>
+    <ol class="songs" id="songs"></ol>
+    <h2>Masters</h2>
+    <div class="faders" id="faders"></div>
+    <h2>Haze</h2>
+    <div class="row wrap">
+      <button data-haze="off">Off</button>
+      <button data-haze="manual">Manual</button>
+      <button data-haze="pulse">Pulse</button>
+      <button id="boost" class="hold">Boost (hold)</button>
+    </div>
+    <div class="muted" id="haze"></div>
+  </section>
+
+  <!-- HEADS -->
+  <section id="tab-heads" class="tab">
+    <p class="muted">Drag on a pad to hold that head at a spot (head limits still apply). Release hands it back to the show.</p>
+    <div class="heads" id="heads"></div>
+    <div class="row wrap">
+      <button data-cmd="release_positions">Release all</button>
+      <input id="posname" placeholder="palette name, e.g. drum_kit" maxlength="40">
+      <button id="savepos">Save as palette position</button>
+    </div>
+    <div class="row wrap" id="positions"></div>
+  </section>
+
+  <!-- MIDI -->
+  <section id="tab-midi" class="tab">
+    <div class="row wrap">
+      <button id="midi-pause">Pause</button>
+      <button id="midi-clear">Clear</button>
+      <select id="midi-filter"><option value="">All channels</option></select>
+    </div>
+    <table class="monitor"><thead><tr><th>Time</th><th>Port</th><th>Ch</th><th>Type</th><th>#</th><th>Val</th><th>Triggered</th></tr></thead>
+      <tbody id="monitor"></tbody></table>
+    <h2>MIDI learn</h2>
+    <div class="row wrap">
+      <select id="learn-action"></select>
+      <input id="learn-params" placeholder='params, e.g. fixtures=bars length_ms=120'>
+      <button id="learn-go">Learn</button>
+      <button id="learn-cancel">Cancel</button>
+      <span id="learn-state" class="muted"></span>
+    </div>
+    <h2>Mapping</h2>
+    <table class="map"><thead><tr><th>Input</th><th>Ch</th><th>#</th><th>Action</th><th></th></tr></thead><tbody id="map"></tbody></table>
+    <button id="map-save">Save MIDI map</button>
+  </section>
+
+  <!-- SETUP -->
+  <section id="tab-setup" class="tab">
+    <h2>Find fixture</h2>
+    <div class="row wrap" id="find"></div>
+    <h2>Channel tester</h2>
+    <div class="row wrap">
+      <input id="chan" type="number" min="1" max="512" placeholder="ch" class="narrow">
+      <input id="chanval" type="range" min="0" max="255" value="0">
+      <span id="chanshow">0</span>
+      <button id="chan-off">Release</button>
+      <button data-cmd="setup_off">Clear all tests</button>
+    </div>
+    <h2>Drum flash test</h2>
+    <div class="row"><button data-cmd="flash_test">Flash all (MASTER off)</button></div>
+    <h2>Nodes</h2>
+    <table class="nodes"><thead><tr><th>Name</th><th>MAC</th><th>State</th><th>Signal</th><th>Loss</th><th>Last data</th><th></th></tr></thead><tbody id="nodes"></tbody></table>
+    <h2>Addresses</h2>
+    <table class="addr"><thead><tr><th>Fixture</th><th>Type</th><th>Uni</th><th>Start</th><th>End</th><th>In rig</th><th>Checked</th></tr></thead><tbody id="addr"></tbody></table>
+    <div class="muted" id="addrnotes"></div>
+  </section>
+
+  <!-- FILES -->
+  <section id="tab-files" class="tab">
+    <h2>Scenes</h2>
+    <div class="list" id="scenes"></div>
+    <h2>Backups</h2>
+    <p class="muted">Every change from here or from Claude keeps the previous file. Restore puts one file back.</p>
+    <div class="list" id="backups"></div>
+  </section>
+</main>
+<div class="toast hidden" id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

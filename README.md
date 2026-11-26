@@ -16,6 +16,9 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules.
 | `dmx_suite/ofl.py` | Fixture import from Open Fixture Library files |
 | `dmx_suite/auto.py` | Auto-show generator (LOW / MID / HIGH, opera, acoustic styles) |
 | `dmx_suite/shows.py`, `showctl.py` | Shows, setlists, tap tempo, resume after restart |
+| `dmx_suite/web/` | Browser UI and local JSON API (standard library, works offline) |
+| `dmx_suite/store.py` | Validated, backed-up edits to the show folder (UI and Claude) |
+| `dmx_suite/claude_tools.py`, `mcp_server.py` | Claude Desktop (MCP) tools |
 | `dmx_suite/output/` | Output drivers: `node_serial`, `enttec_open`, `enttec_pro`, `log`, `null` |
 | `dmx_suite/midi/` | MIDI map, router, monitor and learn |
 | `dmx_suite/cli.py` | `dmx-suite`: run, simulator, MIDI monitor, show file check |
@@ -26,10 +29,10 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules.
 
 ## Setup (laptop)
 
-On the gig laptop (real MIDI ports):
+On the gig laptop (real MIDI ports, Claude Desktop tools):
 
 ```bash
-pip install -e .[hw,dev]
+pip install -e .[hw,claude,dev]
 ```
 
 For development without MIDI hardware:
@@ -91,6 +94,39 @@ Shows (console): `show band high`, `set low`, `next` (next step), `now`, `setlis
 Setup and test (console): `find mh_a` lights one fixture, `chan 30 255` drives a raw channel, `setup off` clears both, `addresses` shows the patch, `nodes` shows node health. Scenes: `scenes`, `scene opera`, `look`.
 
 Simulator console example: `master off`, then `hit 38 110` flashes the bars and shows the time from hit to frame sent. `learn flash fixtures=bars` then a pad hit maps that pad; `save` writes the MIDI map.
+
+## Browser UI
+
+`dmx-suite run` also starts the browser UI at http://localhost:8505/ (`--port` to change, `--no-web` to turn off).
+
+- **Live:** MASTER, blackout, rig preview, show/set/scene buttons, next step, tap tempo, setlist, grand master and sub-master faders, haze.
+- **Heads:** drag on a pad to hold a head at a spot (head limits still apply); save held positions as a palette position.
+- **MIDI:** live monitor (what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
+- **Setup:** find fixture, channel tester, drum flash test, node health (name/identify nodes), address check.
+- **Files:** preview or play scenes, and restore any file from the backups.
+
+A health strip across the top shows every node; a banner and a beep appear when one drops out or goes weak. Node changes are logged to `logs/health-<date>.jsonl`.
+
+**Gig lock** (top right): Claude can still read everything, but can't change files, preview or change haze, and the MIDI map can't be saved. The band's live controls keep working.
+
+**Phone:** start with `--lan`, then open the link it prints (it carries an access token) on a phone on the same network. Without `--lan` the UI is only reachable from the laptop.
+
+## Claude Desktop
+
+Lets Claude read and build scenes, shows, setlists and palettes in plain words, check them against the hard rules, preview them on the rig and read node health. Add this to Claude Desktop's `claude_desktop_config.json` (use the full path to `dmx-suite.exe` inside your virtual environment's `Scripts` folder):
+
+```json
+{
+  "mcpServers": {
+    "dmx-suite": {
+      "command": "C:\\path\\to\\.venv\\Scripts\\dmx-suite.exe",
+      "args": ["--shows", "C:\\path\\to\\shows", "mcp"]
+    }
+  }
+}
+```
+
+With `dmx-suite run` going, Claude's changes go through the engine: gig lock applies, scene/show/palette changes load straight away, and preview, haze and node tools work. With it stopped, Claude edits the show files directly (same checks and backups). Every change is checked against the whole show folder first and refused with the reason if it breaks a rule or a reference; the previous file is kept in `shows/.backups/`.
 
 ## Show files
 

@@ -1,0 +1,6 @@
+/* 0.05 brand: PLACEHOLDER until the band's colours and font arrive (SCOPE open item).
+   Change these and the logo in this folder; nothing else needs editing. */
+:root {
+  --brand-accent: #6a5cff;
+  --brand-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
