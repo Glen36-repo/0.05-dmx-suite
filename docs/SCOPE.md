@@ -265,10 +265,19 @@ Decided 26/11/2026:
 | Blackout | Sticky panic: stays black, does not time out into the fallback look |
 | Unassigned receivers | Follow universe 0 so a fresh rig works before naming |
 | Receiver with no node | Holds the last frame 5 s, then black |
+| Blackout and haze | Blackout darkens every light including the kick light, but leaves haze running (haze has its own off) |
+| Startup state | MASTER on with the current look, set per rig config (`startup.master`) |
+| Kick light and flashes | Drum flashes never drive the kick light (it keeps its own rules) |
+| Drum flash while blacked out | Ignored |
+| Haze max on-time | Hitting `max_on_s` forces haze off for `rest_s`, then the mode resumes |
+| MIDI on Linux | `python-rtmidi` is an optional `hw` extra; the simulator works without it |
 
 Open:
 
-- [ ] Drum flash map: which pads flash which fixtures (later)
+- [ ] Drum flash map: which pads flash which fixtures (later). `shows/midi/default.yaml` has GM drum-note placeholders
+- [ ] Fixture channel maps and DMX addresses: copy from the Daslight patch into `shows/fixtures.yaml` (all `verified: false`)
+- [ ] FCB1010 program change numbers: copy from Daslight into `shows/midi/default.yaml`
+- [ ] MH-A tilt limit value (placeholder 75 % in `shows/rigs/full.yaml`)
 - [ ] 0.05 brand assets: logo files (SVG preferred), colours, font
 - [ ] Unit DMX (U183) wiring: confirm TX/RX pins and whether a direction (DE/RE) pin is needed, before first flash (`firmware/include/config.h`)
 - [ ] Node status: CoreS3 screen (0.05 logo, status) not built yet; identify on the node only logs
