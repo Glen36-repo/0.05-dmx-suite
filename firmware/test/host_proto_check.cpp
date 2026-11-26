@@ -49,8 +49,17 @@ int main() {
 
   Status st = {};
   st.uptime_ms = 123456; st.frames_rx = 4000; st.frame_rate_x10 = 400; st.crc_errors = 2;
-  st.other_errors = 1; st.mode = LIVE; st.receivers_online = 3;
+  st.other_errors = 1; st.mode = LIVE; st.receivers_online = 3; st.flags = FLAG_DEV_KEY; st.channel = 6;
   hex("status", out, encode(out, MSG_STATUS, (const uint8_t*)&st, sizeof(st)));
+
+  // v1.1: ACK with a request id, SET_CHANNEL with one, request_len
+  uint8_t ack[3] = {MSG_ASSIGN, ACK_OK, 42};
+  hex("ack_req", out, encode(out, MSG_ACK, ack, 3));
+  uint8_t ch[2] = {11, 7};
+  hex("set_channel", out, encode(out, MSG_SET_CHANNEL, ch, 2));
+  bool has_req; uint8_t req;
+  printf("request_len %d%d%d %d\n", request_len(23, 23, ch, has_req, req), request_len(24, 23, ch, has_req, req),
+         request_len(25, 23, ch, has_req, req), (int)has_req);
 
   // fallback look: parse then render at several times
   uint16_t addrs[] = {1, 4, 100};
@@ -65,6 +74,15 @@ int main() {
   n += 512;
   Fallback fb;
   if (fb.parse(buf, n) != ACK_OK) { printf("fallback parse failed\n"); return 1; }
+  printf("fallback_size %u\n", Fallback::size(buf, n));
+  static uint8_t fbu[1 + MAX_PAYLOAD];
+  fbu[0] = 2;
+  memcpy(fbu + 1, buf, n);
+  fbu[1 + n] = 9;  // request id
+  static uint8_t big[MAX_PAYLOAD + 6];
+  size_t bn = encode(big, MSG_SET_FALLBACK_U, fbu, 1 + n + 1);
+  hex("set_fallback_u_head", big, 12);
+  hex("set_fallback_u_tail", big + bn - 4, 4);
   uint8_t frame[512];
   const uint32_t times[] = {0, 999, 1000, 2500, 5999, 6000, 123457};
   for (uint32_t t : times) {

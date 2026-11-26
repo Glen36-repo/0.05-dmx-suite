@@ -41,8 +41,31 @@ def test_encoders_match(firmware_output):
     assert firmware_output["frame"] == p.dmx_frame(bytes(i & 0xFF for i in range(512))).hex()
     hb = p.Heartbeat(bytes(range(0xA0, 0xA6)), p.NodeType.DMX_RX, (0, 1, 2), 3600, -67, 3, 25, 0, "Left bars")
     assert firmware_output["heartbeat"] == p.heartbeat_msg(hb).hex()
-    st = p.Status(123456, 4000, 40.0, 2, 1, p.Mode.LIVE, 3)
+    st = p.Status(123456, 4000, 40.0, 2, 1, p.Mode.LIVE, 3, p.FLAG_DEV_KEY, 6)
     assert firmware_output["status"] == p.status_msg(st).hex()
+    assert p.decode(p.Packet(p.MsgType.STATUS, st.pack())).channel == 6
+
+
+def test_v11_messages_match(firmware_output):
+    assert firmware_output["ack_req"] == p.ack_msg(p.MsgType.ASSIGN, p.AckCode.OK, 42).hex()
+    assert firmware_output["set_channel"] == p.set_channel(11, req=7).hex()
+    assert firmware_output["request_len"] == "110 0"  # exact, +1 (with an id), +2 refused; the last had none
+    base = bytearray(512)
+    base[9] = 255
+    look = p.FallbackLook(1500, 6, 200, [1, 4, 100], bytes(base))
+    assert firmware_output["fallback_size"] == str(p.fallback_size(look.pack()))
+    msg = p.set_fallback_universe(2, look, req=9)
+    assert firmware_output["set_fallback_u_head"] == msg[:12].hex()
+    assert firmware_output["set_fallback_u_tail"] == msg[-4:].hex()
+
+
+def test_v1_firmware_is_still_read():
+    old = p.Status(1, 2, 3.0, 4, 5, p.Mode.FALLBACK, 1)  # no flags: the 18-byte v1 record
+    assert len(old.pack()) == 18
+    back = p.decode(p.Packet(p.MsgType.STATUS, old.pack()))
+    assert back.flags is None and back.channel is None and not back.dev_key
+    assert p.decode(p.Packet(p.MsgType.ACK, bytes([5, 0]))).req is None
+    assert not p.supports_v11((0, 1, 0)) and p.supports_v11((0, 2, 0)) and not p.supports_v11(None)
 
 
 def test_fallback_render_matches(firmware_output):

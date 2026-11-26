@@ -1,6 +1,9 @@
 // 0.05 receiver: AtomS3 Lite + Unit DMX.
 // ESP-NOW frames from the node -> wired DMX. Sends a heartbeat every second.
-// LED: green = receiving, red = no data, blue = receiving but unnamed, white flashing = identify.
+// LED: green = receiving, red = no data, blue = receiving but unnamed, white flashing = identify,
+// purple blinking = looking for the node on every radio channel.
+// Follows the node to another radio channel (SET_CHANNEL); if it hears nothing for SCAN_AFTER_MS it
+// listens on each channel in turn until it finds the node again, and remembers that channel.
 // Protocol: docs/PROTOCOL.md §4.
 
 #include <Arduino.h>
@@ -41,6 +44,12 @@ static volatile uint32_t identify_until_ms = 0;
 static uint8_t loss_pct = 0;
 static uint32_t next_beat_ms = 0;
 
+static uint8_t channel = RADIO_CHANNEL;
+static volatile uint8_t move_to = 0;          // SET_CHANNEL heard: move in loop()
+static volatile uint32_t last_valid_ms = 0;   // any packet from our rig, on this channel
+static uint32_t scan_next_ms = 0;
+static bool scanning = false;
+
 static uint8_t active_universe() { return my_universe == UNIVERSE_NONE ? 0 : my_universe; }
 
 // RSSI: ESP-NOW callbacks on this core don't carry it, so read it from the raw 802.11 frame.
@@ -55,7 +64,14 @@ static void on_radio(const uint8_t* mac, const uint8_t* data, int len) {
   if (!radio::valid(data, len, net_id)) return;
   const radio::Header* h = (const radio::Header*)data;
   uint32_t now = millis();
+  last_valid_ms = now ? now : 1;
   switch (h->kind) {
+    case radio::SET_CHANNEL: {
+      if (len != (int)sizeof(radio::SetChannel)) return;
+      uint8_t ch = ((const radio::SetChannel*)data)->channel;
+      if (radio_link::valid_channel(ch)) move_to = ch;
+      return;
+    }
     case radio::DMX_CHUNK: {
       if (len < (int)offsetof(radio::DmxChunk, data)) return;
       const radio::DmxChunk* c = (const radio::DmxChunk*)data;
@@ -102,7 +118,10 @@ static void on_radio(const uint8_t* mac, const uint8_t* data, int len) {
 static void led(uint8_t r, uint8_t g, uint8_t b) { neopixelWrite(STATUS_LED_PIN, r, g, b); }
 
 static void update_led(uint32_t now, bool receiving) {
-  if ((int32_t)(identify_until_ms - now) > 0) {
+  if (scanning) {
+    bool on = (now / 300) % 2;
+    led(on * 30, 0, on * 40);
+  } else if ((int32_t)(identify_until_ms - now) > 0) {
     bool on = (now / 150) % 2;
     led(on * 60, on * 60, on * 60);
   } else if (!receiving) {
@@ -136,9 +155,11 @@ void setup() {
   prefs.begin("rx", true);
   prefs.getBytes("name", my_name, NAME_LEN);
   my_universe = prefs.getUChar("universe", UNIVERSE_NONE);
+  channel = prefs.getUChar("channel", RADIO_CHANNEL);
+  if (!radio_link::valid_channel(channel)) channel = RADIO_CHANNEL;
   prefs.end();
   net_id = radio_link::net_id();
-  radio_link::begin(on_radio);
+  radio_link::begin(on_radio, channel);
   radio_link::own_mac(my_mac);
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_rx_cb(on_promisc);
@@ -167,6 +188,36 @@ void loop() {
     dmx.set(local);
   }
   dmx.service();
+
+  // the node moved channel: follow it, and remember
+  if (move_to) {
+    channel = move_to;
+    move_to = 0;
+    radio_link::set_channel(channel);
+    prefs.begin("rx", false);
+    prefs.putUChar("channel", channel);
+    prefs.end();
+    last_valid_ms = now;
+  }
+
+  // nothing from the rig for a while (missed the move, or the node was re-set): look on every channel
+  uint32_t quiet = now - (last_valid_ms ? last_valid_ms : boot_ms);
+  if (!scanning && quiet > SCAN_AFTER_MS) {
+    scanning = true;
+    scan_next_ms = now;
+  }
+  if (scanning) {
+    if (last_valid_ms && now - last_valid_ms < SCAN_DWELL_MS) {  // heard the node on this channel
+      scanning = false;
+      prefs.begin("rx", false);
+      prefs.putUChar("channel", channel);
+      prefs.end();
+    } else if ((int32_t)(now - scan_next_ms) >= 0) {
+      channel = channel >= MAX_CHANNEL ? MIN_CHANNEL : channel + 1;
+      radio_link::set_channel(channel);
+      scan_next_ms = now + SCAN_DWELL_MS;
+    }
+  }
 
   if (assign_pending) {
     portENTER_CRITICAL(&mux);

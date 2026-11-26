@@ -1,4 +1,9 @@
-"""0.05 node link wire protocol (USB serial). Spec: docs/PROTOCOL.md."""
+"""0.05 node link wire protocol (USB serial), v1.1. Spec: docs/PROTOCOL.md.
+
+v1.1 (firmware 0.2) only adds to v1: SET_FALLBACK_UNIVERSE and SET_CHANNEL, an optional request
+id at the end of requests that get an ACK (echoed as a third ACK byte), and flags + radio channel
+at the end of STATUS. Older firmware is still read (18-byte STATUS, 2-byte ACK); send request ids
+only to firmware that knows them (`supports_v11`)."""
 
 from __future__ import annotations
 
@@ -17,6 +22,16 @@ LOSS_NA = 255
 AGE_NEVER = 0xFFFFFFFF
 UNIVERSE_NONE = 0xFF
 UNIVERSE_ALL = 0xFF
+MAX_UNIVERSES = 16  # universes the node keeps alive (frames, sequence numbers)
+MAX_FALLBACKS = 4  # universes with their own stored fallback look
+MIN_CHANNEL, MAX_CHANNEL = 1, 13
+FLAG_DEV_KEY = 0x01  # STATUS flags: built with the development pairing key
+FLAG_DMX_FAIL = 0x02  # the node's wired DMX driver didn't start
+V11_FW = (0, 2, 0)  # first firmware with protocol v1.1
+
+
+def supports_v11(fw: tuple[int, int, int] | None) -> bool:
+    return fw is not None and tuple(fw) >= V11_FW
 
 
 class MsgType(IntEnum):
@@ -28,6 +43,8 @@ class MsgType(IntEnum):
     ASSIGN = 0x05
     IDENTIFY = 0x06
     STATUS_REQ = 0x07
+    SET_FALLBACK_UNIVERSE = 0x08  # v1.1
+    SET_CHANNEL = 0x09  # v1.1
     # node -> laptop
     STATUS = 0x81
     HEARTBEAT = 0x82
@@ -186,16 +203,31 @@ def status_req() -> bytes:
     return encode(MsgType.STATUS_REQ)
 
 
-def assign(mac: bytes, universe: int, name: str) -> bytes:
+def _req(req: int | None) -> bytes:
+    """v1.1: an optional request id at the end of a request, echoed in its ACK."""
+    if req is None:
+        return b""
+    if not 0 <= req <= 0xFF:
+        raise ProtocolError("request id 0-255")
+    return bytes([req])
+
+
+def assign(mac: bytes, universe: int, name: str, req: int | None = None) -> bytes:
     _check_mac(mac)
     if not 0 <= universe <= 0xFF:
         raise ProtocolError("universe 0-255")
-    return encode(MsgType.ASSIGN, mac + bytes([universe]) + pack_name(name))
+    return encode(MsgType.ASSIGN, mac + bytes([universe]) + pack_name(name) + _req(req))
 
 
-def identify(mac: bytes, seconds: int = 5) -> bytes:
+def identify(mac: bytes, seconds: int = 5, req: int | None = None) -> bytes:
     _check_mac(mac)
-    return encode(MsgType.IDENTIFY, mac + bytes([max(0, min(255, seconds))]))
+    return encode(MsgType.IDENTIFY, mac + bytes([max(0, min(255, seconds))]) + _req(req))
+
+
+def set_channel(channel: int, req: int | None = None) -> bytes:
+    if not MIN_CHANNEL <= channel <= MAX_CHANNEL:
+        raise ProtocolError(f"radio channel {MIN_CHANNEL}-{MAX_CHANNEL}")
+    return encode(MsgType.SET_CHANNEL, bytes([channel]) + _req(req))
 
 
 @dataclass
@@ -233,13 +265,34 @@ class FallbackLook:
         return look
 
 
-def set_fallback(look: FallbackLook) -> bytes:
-    return encode(MsgType.SET_FALLBACK, look.pack())
+def set_fallback(look: FallbackLook, req: int | None = None) -> bytes:
+    return encode(MsgType.SET_FALLBACK, look.pack() + _req(req))
+
+
+def set_fallback_universe(universe: int, look: FallbackLook, req: int | None = None) -> bytes:
+    if not 0 <= universe < MAX_UNIVERSES:
+        raise ProtocolError(f"universe 0-{MAX_UNIVERSES - 1}")
+    return encode(MsgType.SET_FALLBACK_UNIVERSE, bytes([universe]) + look.pack() + _req(req))
+
+
+def split_request(payload: bytes, want: int) -> tuple[bytes, int | None] | None:
+    """(the request, its id or None), or None if the length is wrong. Matches firmware request_len."""
+    if len(payload) == want:
+        return payload, None
+    if len(payload) == want + 1:
+        return payload[:want], payload[want]
+    return None
+
+
+def fallback_size(payload: bytes) -> int:
+    """Length of a fallback look payload from its header (0 if too short to tell)."""
+    return 0 if len(payload) < 6 else 6 + 2 * payload[5] + DMX_CHANNELS
 
 
 # --------------------------------------------------------------------------- node -> laptop
 
-_STATUS = struct.Struct("<IIHIHBB")
+_STATUS = struct.Struct("<IIHIHBBBB")
+_STATUS_V1 = struct.Struct("<IIHIHBB")
 _HEARTBEAT = struct.Struct("<6sB3sIbBIB16s")
 
 
@@ -252,24 +305,33 @@ class Status:
     other_errors: int
     mode: Mode
     receivers_online: int
+    flags: int | None = None  # v1.1: FLAG_* (None: firmware 0.1)
+    channel: int | None = None  # v1.1: radio channel in use
+
+    @property
+    def dev_key(self) -> bool:
+        return bool(self.flags and self.flags & FLAG_DEV_KEY)
+
+    @property
+    def dmx_failed(self) -> bool:
+        return bool(self.flags and self.flags & FLAG_DMX_FAIL)
 
     def pack(self) -> bytes:
-        return _STATUS.pack(
-            self.uptime_ms,
-            self.frames_rx,
-            round(self.frame_rate * 10),
-            self.crc_errors,
-            self.other_errors,
-            int(self.mode),
-            self.receivers_online,
-        )
+        head = (self.uptime_ms, self.frames_rx, round(self.frame_rate * 10), self.crc_errors, self.other_errors,
+                int(self.mode), self.receivers_online)
+        if self.flags is None:
+            return _STATUS_V1.pack(*head)
+        return _STATUS.pack(*head, self.flags, self.channel or 0)
 
     @classmethod
     def unpack(cls, payload: bytes) -> Status:
+        if len(payload) == _STATUS_V1.size:
+            up, frames, rate, crc, other, mode, rx = _STATUS_V1.unpack(payload)
+            return cls(up, frames, rate / 10, crc, other, Mode(mode), rx)
         if len(payload) != _STATUS.size:
             raise ProtocolError("bad STATUS length")
-        up, frames, rate, crc, other, mode, rx = _STATUS.unpack(payload)
-        return cls(up, frames, rate / 10, crc, other, Mode(mode), rx)
+        up, frames, rate, crc, other, mode, rx, flags, ch = _STATUS.unpack(payload)
+        return cls(up, frames, rate / 10, crc, other, Mode(mode), rx, flags, ch)
 
 
 @dataclass
@@ -335,6 +397,7 @@ STATUS_SIZE = _STATUS.size
 class Ack:
     acked_type: int
     code: AckCode
+    req: int | None = None  # v1.1: the request id it answers
 
 
 @dataclass
@@ -369,13 +432,13 @@ def decode(pkt: Packet) -> Message:
             raise ProtocolError("bad PONG length")
         return Pong(struct.unpack("<I", p)[0])
     if t == MsgType.ACK:
-        if len(p) != 2:
+        if len(p) not in (2, 3):
             raise ProtocolError("bad ACK length")
         try:
             code = AckCode(p[1])
         except ValueError as e:
             raise ProtocolError(f"unknown ACK code {p[1]}") from e
-        return Ack(p[0], code)
+        return Ack(p[0], code, p[2] if len(p) == 3 else None)
     if t == MsgType.LOG:
         return Log(p.decode("utf-8", errors="replace"))
     raise ProtocolError(f"unknown node message type 0x{t:02X}")
@@ -396,8 +459,8 @@ def pong_msg(token: int) -> bytes:
     return encode(MsgType.PONG, struct.pack("<I", token))
 
 
-def ack_msg(acked_type: int, code: AckCode = AckCode.OK) -> bytes:
-    return encode(MsgType.ACK, bytes([acked_type, int(code)]))
+def ack_msg(acked_type: int, code: AckCode = AckCode.OK, req: int | None = None) -> bytes:
+    return encode(MsgType.ACK, bytes([acked_type, int(code)]) + _req(req))
 
 
 def log_msg(text: str) -> bytes:

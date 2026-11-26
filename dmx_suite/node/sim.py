@@ -1,17 +1,21 @@
-"""Simulated CoreS3 node + AtomS3 receivers. Mirrors firmware/src/node/main.cpp behaviour.
+"""Simulated CoreS3 node + AtomS3 receivers. Mirrors firmware/src/node/main.cpp behaviour (0.2).
 
 Used by tests and `dmx-node-test --sim` so the laptop side can be built with no hardware.
+Radio is modelled per universe like the firmware: every frame sent to a universe carries that
+universe's next sequence number, a receiver drops each packet with its `loss_pct` chance, and the
+loss it reports is worked out from the gaps it saw (not just copied), as on the AtomS3.
 """
 
 from __future__ import annotations
 
+import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from . import protocol as p
 
-FW_VERSION = (0, 1, 0)
+FW_VERSION = (0, 2, 0)
 HEARTBEAT_MS = 1000
 RECEIVER_ONLINE_MS = 3500
 DEFAULT_HOLD_MS = 2000
@@ -23,12 +27,42 @@ class SimReceiver:
     universe: int | None = None
     name: str = ""
     rssi: int = -55
-    loss_pct: int = 0
+    loss_pct: int = 0  # chance (%) each radio packet is lost
     online: bool = True
     announced: bool = False
     frame: bytearray = field(default_factory=lambda: bytearray(p.DMX_CHANNELS))
     last_data_ms: int | None = None
     identify_until_ms: int = 0
+    channel: int = 1
+    last_seq: int | None = None
+    got: int = 0
+    missed: int = 0
+    measured_loss: int | None = None  # what the last heartbeat reported
+
+    @property
+    def active_universe(self) -> int:
+        return 0 if self.universe is None else self.universe
+
+    def hear(self, universe: int, seq: int, frame: bytes | bytearray, now: int, rng: random.Random) -> None:
+        """One radio DMX packet (all its chunks) for `universe`, as the AtomS3 handles it."""
+        if universe != self.active_universe:
+            return  # another universe: not counted, so it can't look like loss
+        if rng.random() * 100 < self.loss_pct:
+            return  # lost on the air
+        if self.last_seq is not None:
+            gap = (seq - self.last_seq) & 0xFF
+            if 1 < gap < 64:
+                self.missed += gap - 1
+        self.got += 1
+        self.last_seq = seq
+        self.frame[:] = frame
+        self.last_data_ms = now
+
+    def take_loss(self) -> int:
+        total = self.got + self.missed
+        self.measured_loss = self.missed * 100 // total if total else 0
+        self.got = self.missed = 0
+        return self.measured_loss
 
 
 class SimNode:
@@ -46,7 +80,6 @@ class SimNode:
         self.boot_ms = self._clock()
         self.parser = p.Parser()
         self.out = bytearray()
-        self.fallback: p.FallbackLook | None = None
         self.output = bytearray(p.DMX_CHANNELS)  # what's on the wired DMX line
         self.live = bytearray(p.DMX_CHANNELS)
         self.mode = p.Mode.FALLBACK  # boots into fallback until frames arrive
@@ -59,6 +92,15 @@ class SimNode:
         self._announced = False
         self.identify_until_ms = 0
         self.dmx_packets_sent = 0  # wire packets, incremented on every immediate send
+        self.fallbacks: dict[int, p.FallbackLook] = {}  # universe -> look (0.2: up to MAX_FALLBACKS)
+        self.frames: dict[int, bytearray] = {}  # universe -> last frame (keep-alive)
+        self.seen_ms: dict[int, int] = {}
+        self.radio_seq: dict[int, int] = {}
+        self.radio_sent: dict[int, int] = {}  # packets per universe (tests)
+        self.channel = 1
+        self.dev_key = True
+        self._radio_last_ms = -10**9
+        self.rng = random.Random(5)
 
     # ------------------------------------------------------------------ io
 
@@ -77,7 +119,32 @@ class SimNode:
     # ------------------------------------------------------------------ behaviour
 
     def _hold_ms(self) -> int:
-        return self.fallback.hold_ms if self.fallback else DEFAULT_HOLD_MS
+        own = self.fallbacks.get(self.universe or 0)
+        return own.hold_ms if own else DEFAULT_HOLD_MS
+
+    @property
+    def fallback(self) -> p.FallbackLook | None:  # the node's own universe (v1 name)
+        return self.fallbacks.get(self.universe or 0)
+
+    def _active(self, u: int, now: int) -> bool:
+        return (u in self.seen_ms and now - self.seen_ms[u] < 10_000) or u in self.fallbacks
+
+    def _ack(self, t: int, code: p.AckCode = p.AckCode.OK, req: int | None = None) -> None:
+        if code != p.AckCode.OK:
+            self.other_errors += 1
+        self.out += p.ack_msg(t, code, req)
+
+    def _set_fallback(self, universe: int, payload: bytes) -> p.AckCode:
+        if not 0 <= universe < p.MAX_UNIVERSES:
+            return p.AckCode.BAD_VALUE
+        try:
+            look = p.FallbackLook.unpack(payload)
+        except p.ProtocolError:
+            return p.AckCode.BAD_VALUE
+        if universe not in self.fallbacks and len(self.fallbacks) >= p.MAX_FALLBACKS:
+            return p.AckCode.BAD_VALUE
+        self.fallbacks[universe] = look
+        return p.AckCode.OK
 
     def _handle(self, pkt: p.Packet) -> None:
         t, pl = pkt.type, pkt.payload
@@ -91,23 +158,30 @@ class SimNode:
             self._rate_window.append(now)
             frame = bytearray(p.DMX_CHANNELS)
             frame[: len(data)] = data
+            self.last_frame_ms = now
+            self.mode = p.Mode.LIVE
             if universe == (self.universe or 0):
                 self.live = frame
-                self.last_frame_ms = now
-                self.mode = p.Mode.LIVE
                 self._send_dmx(self.live)
-            self._radio_frame(universe, frame, now)
+            if universe < p.MAX_UNIVERSES:
+                self.frames[universe] = bytearray(frame)
+                self.seen_ms[universe] = now
+                self._radio_frame(universe, frame, now)
         elif t == p.MsgType.BLACKOUT:
             if len(pl) != 1:
                 self._nak(t, p.AckCode.BAD_LENGTH)
                 return
-            self.live = bytearray(p.DMX_CHANNELS)
             self.mode = p.Mode.BLACKOUT
             self.last_frame_ms = now
-            self._send_dmx(self.live)
-            for r in self.receivers:
-                if pl[0] in (p.UNIVERSE_ALL, r.universe):
-                    r.frame = bytearray(p.DMX_CHANNELS)
+            for u in range(p.MAX_UNIVERSES):  # every universe, not just the node's own
+                if pl[0] not in (p.UNIVERSE_ALL, u):
+                    continue
+                self.frames[u] = bytearray(p.DMX_CHANNELS)
+                if u == (self.universe or 0):
+                    self.live = bytearray(p.DMX_CHANNELS)
+                    self._send_dmx(self.live)
+                if pl[0] == u or self._active(u, now) or u == (self.universe or 0):
+                    self._radio_frame(u, self.frames[u], now)
         elif t == p.MsgType.PING:
             if len(pl) != 4:
                 self._nak(t, p.AckCode.BAD_LENGTH)
@@ -116,28 +190,53 @@ class SimNode:
         elif t == p.MsgType.STATUS_REQ:
             self.out += p.status_msg(self.status())
         elif t == p.MsgType.SET_FALLBACK:
-            try:
-                self.fallback = p.FallbackLook.unpack(pl)
-            except p.ProtocolError:
-                self._nak(t, p.AckCode.BAD_VALUE)
-                return
-            self.out += p.ack_msg(t)
-        elif t in (p.MsgType.ASSIGN, p.MsgType.IDENTIFY):
-            want = 6 + 1 + p.NAME_LEN if t == p.MsgType.ASSIGN else 7
-            if len(pl) != want:
+            got = p.split_request(pl, p.fallback_size(pl)) if p.fallback_size(pl) else None
+            if got is None:
                 self._nak(t, p.AckCode.BAD_LENGTH)
                 return
-            mac = pl[:6]
+            self._ack(t, self._set_fallback(self.universe or 0, got[0]), got[1])
+        elif t == p.MsgType.SET_FALLBACK_UNIVERSE:
+            size = p.fallback_size(pl[1:]) if pl else 0
+            got = p.split_request(pl, size + 1) if size else None
+            if got is None:
+                self._nak(t, p.AckCode.BAD_LENGTH)
+                return
+            self._ack(t, self._set_fallback(pl[0], got[0][1:]), got[1])
+        elif t == p.MsgType.SET_CHANNEL:
+            got = p.split_request(pl, 1)
+            if got is None:
+                self._nak(t, p.AckCode.BAD_LENGTH)
+                return
+            ch = got[0][0]
+            if not p.MIN_CHANNEL <= ch <= p.MAX_CHANNEL:
+                self._ack(t, p.AckCode.BAD_VALUE, got[1])
+                return
+            self.channel = ch
+            for r in self.receivers:  # they hear SET_CHANNEL on the old channel and follow
+                if r.online:
+                    r.channel = ch
+            self._ack(t, p.AckCode.OK, got[1])
+        elif t in (p.MsgType.ASSIGN, p.MsgType.IDENTIFY):
+            want = 6 + 1 + p.NAME_LEN if t == p.MsgType.ASSIGN else 7
+            got = p.split_request(pl, want)
+            if got is None:
+                self._nak(t, p.AckCode.BAD_LENGTH)
+                return
+            body, req = got
+            mac = body[:6]
             target = self if mac == self.mac else next((r for r in self.receivers if r.mac == mac), None)
             if target is None:
-                self._nak(t, p.AckCode.UNKNOWN_TARGET)
+                self._ack(t, p.AckCode.UNKNOWN_TARGET, req)
                 return
             if t == p.MsgType.ASSIGN:
-                target.universe = None if pl[6] == p.UNIVERSE_NONE else pl[6]
-                target.name = p.unpack_name(pl[7:])
+                if target is self:
+                    target.universe = 0 if body[6] == p.UNIVERSE_NONE else body[6]
+                else:
+                    target.universe = None if body[6] == p.UNIVERSE_NONE else body[6]
+                target.name = p.unpack_name(body[7:])
             else:
-                target.identify_until_ms = now + pl[6] * 1000
-            self.out += p.ack_msg(t)
+                target.identify_until_ms = now + body[6] * 1000
+            self._ack(t, p.AckCode.OK, req)
         else:
             self._nak(t, p.AckCode.UNKNOWN_TYPE)
 
@@ -150,11 +249,16 @@ class SimNode:
         self.dmx_packets_sent += 1
 
     def _radio_frame(self, universe: int, frame: bytes | bytearray, now: int) -> None:
+        if not 0 <= universe < p.MAX_UNIVERSES:
+            return
+        seq = self.radio_seq.get(universe, 0)
+        self.radio_seq[universe] = (seq + 1) & 0xFF  # per universe, as firmware 0.2
+        self.radio_sent[universe] = self.radio_sent.get(universe, 0) + 1
+        self._radio_last_ms = now
         for r in self.receivers:
             # unassigned receivers follow universe 0 so a fresh single-universe rig works
-            if r.online and (0 if r.universe is None else r.universe) == universe:
-                r.frame[:] = frame
-                r.last_data_ms = now
+            if r.online and r.channel == self.channel:
+                r.hear(universe, seq, frame, now, self.rng)
 
     def step(self) -> None:
         now = self.now()
@@ -163,10 +267,19 @@ class SimNode:
             if now - self.last_frame_ms > self._hold_ms():
                 self.mode = p.Mode.FALLBACK
                 self.fallback_start_ms = now
-        if self.mode == p.Mode.FALLBACK:
-            frame = p.render_fallback(self.fallback, now - self.fallback_start_ms)
-            self._send_dmx(frame)
-            self._radio_frame(self.universe or 0, frame, now)
+        own = self.universe or 0
+        if self.mode == p.Mode.FALLBACK and now - self._radio_last_ms >= 25:
+            for u in range(p.MAX_UNIVERSES):  # every universe: its own look, or black
+                if u != own and not self._active(u, now):
+                    continue
+                frame = p.render_fallback(self.fallbacks.get(u), now - self.fallback_start_ms)
+                if u == own:
+                    self._send_dmx(frame)
+                self._radio_frame(u, frame, now)
+        elif self.mode != p.Mode.FALLBACK and now - self._radio_last_ms >= 100:  # keep-alive
+            for u in range(p.MAX_UNIVERSES):
+                if u == own or self._active(u, now):
+                    self._radio_frame(u, self.frames.get(u, bytearray(p.DMX_CHANNELS)), now)
         # heartbeats
         if not self._announced:
             self.out += p.heartbeat_msg(self.heartbeat(), announce=True)
@@ -191,7 +304,9 @@ class SimNode:
             crc_errors=self.parser.crc_errors,
             other_errors=self.other_errors,
             mode=self.mode,
-            receivers_online=sum(1 for r in self.receivers if r.online),
+            receivers_online=sum(1 for r in self.receivers if r.online and r.channel == self.channel),
+            flags=p.FLAG_DEV_KEY if self.dev_key else 0,
+            channel=self.channel,
         )
 
     def heartbeat(self) -> p.Heartbeat:
@@ -216,7 +331,7 @@ class SimNode:
             fw=FW_VERSION,
             uptime_s=(now - self.boot_ms) // 1000,
             rssi=r.rssi,
-            loss_pct=r.loss_pct,
+            loss_pct=r.take_loss() if r.last_data_ms is not None else None,
             last_data_age_ms=None if r.last_data_ms is None else now - r.last_data_ms,
             universe=r.universe,
             name=r.name,

@@ -1,4 +1,6 @@
-// 0.05 node link protocol v1. Spec: docs/PROTOCOL.md. Must match dmx_suite/node/protocol.py.
+// 0.05 node link protocol v1.1. Spec: docs/PROTOCOL.md. Must match dmx_suite/node/protocol.py.
+// v1.1 (firmware 0.2) only adds to v1: new messages, an optional request id at the end of
+// requests that get an ACK, and two bytes at the end of STATUS. A v1 laptop still works.
 // Plain C++ (no Arduino headers) so tests can compile it on the host.
 #pragma once
 
@@ -19,6 +21,11 @@ constexpr uint32_t AGE_NEVER = 0xFFFFFFFFu;
 constexpr uint8_t UNIVERSE_NONE = 0xFF;
 constexpr uint8_t UNIVERSE_ALL = 0xFF;
 constexpr uint16_t HUE_STEPS = 1536;
+constexpr uint8_t MAX_UNIVERSES = 16;  // universes the node keeps frames, sequence numbers and keep-alives for
+constexpr uint8_t MAX_FALLBACKS = 4;   // universes that can have their own stored fallback look
+constexpr uint8_t MIN_CHANNEL = 1, MAX_CHANNEL = 13;
+constexpr uint8_t FLAG_DEV_KEY = 0x01;   // STATUS flags: built with the development pairing key
+constexpr uint8_t FLAG_DMX_FAIL = 0x02;  // the wired DMX driver didn't start
 
 enum MsgType : uint8_t {
   MSG_DMX_FRAME = 0x01,
@@ -28,6 +35,8 @@ enum MsgType : uint8_t {
   MSG_ASSIGN = 0x05,
   MSG_IDENTIFY = 0x06,
   MSG_STATUS_REQ = 0x07,
+  MSG_SET_FALLBACK_U = 0x08,  // v1.1: fallback look for one universe
+  MSG_SET_CHANNEL = 0x09,     // v1.1: move the node and its receivers to another radio channel
   MSG_STATUS = 0x81,
   MSG_HEARTBEAT = 0x82,
   MSG_ANNOUNCE = 0x83,
@@ -41,7 +50,15 @@ enum NodeType : uint8_t { DMX_TX = 1, DMX_RX = 2, MIDI = 3 };
 enum Mode : uint8_t { LIVE = 0, FALLBACK = 1, BLACKOUT_MODE = 2 };
 
 // Parsers reject unknown types at the header so a stray 0xA5 can't stall them waiting for a bogus length.
-inline bool known_type(uint8_t t) { return (t >= 0x01 && t <= 0x07) || (t >= 0x81 && t <= 0x86); }
+inline bool known_type(uint8_t t) { return (t >= 0x01 && t <= 0x09) || (t >= 0x81 && t <= 0x86); }
+
+// v1.1 request ids: a request that gets an ACK may carry one extra byte, echoed in the ACK, so the
+// laptop can tell which of several requests an ACK answers. Returns false if the length is wrong.
+inline bool request_len(uint16_t len, uint16_t want, const uint8_t* p, bool& has_req, uint8_t& req) {
+  if (len == want) { has_req = false; req = 0; return true; }
+  if (len == want + 1) { has_req = true; req = p[want]; return true; }
+  return false;
+}
 
 // ------------------------------------------------------------------ little-endian helpers
 
@@ -133,7 +150,7 @@ struct Heartbeat {  // 37 bytes
   uint8_t universe;
   char name[NAME_LEN];
 };
-struct Status {  // 18 bytes
+struct Status {  // 20 bytes (v1: the first 18)
   uint32_t uptime_ms;
   uint32_t frames_rx;
   uint16_t frame_rate_x10;
@@ -141,10 +158,12 @@ struct Status {  // 18 bytes
   uint16_t other_errors;
   uint8_t mode;
   uint8_t receivers_online;
+  uint8_t flags;    // FLAG_*
+  uint8_t channel;  // radio channel in use
 };
 #pragma pack(pop)
 static_assert(sizeof(Heartbeat) == 37, "heartbeat size");
-static_assert(sizeof(Status) == 18, "status size");
+static_assert(sizeof(Status) == 20, "status size");
 // ESP32 and x86 are both little-endian, so packed structs are the wire format.
 
 // ------------------------------------------------------------------ fallback look
@@ -157,6 +176,11 @@ struct Fallback {
   uint16_t rgb_addr[MAX_FALLBACK_RGB] = {};
   uint8_t base[DMX_CHANNELS] = {};
   bool valid = false;  // false = fallback is full black
+
+  // Length of a fallback payload starting at p (0 if too short to tell).
+  static uint16_t size(const uint8_t* p, uint16_t len) {
+    return len < 6 ? 0 : 6 + 2 * p[5] + DMX_CHANNELS;
+  }
 
   // Returns AckCode.
   uint8_t parse(const uint8_t* p, uint16_t len) {
@@ -213,7 +237,7 @@ inline void render_fallback(const Fallback& fb, uint32_t elapsed_ms, uint8_t* ou
 
 namespace radio {
 constexpr uint8_t MAGIC0 = 'O', MAGIC1 = '5', VERSION = 1;
-constexpr uint8_t DMX_CHUNK = 0x01, ASSIGN = 0x02, IDENTIFY = 0x03, HEARTBEAT = 0x10;
+constexpr uint8_t DMX_CHUNK = 0x01, ASSIGN = 0x02, IDENTIFY = 0x03, SET_CHANNEL = 0x04, HEARTBEAT = 0x10;
 constexpr uint8_t CHUNK_MAX = 200;
 constexpr uint16_t CHUNK_SIZE = 171;  // 512 = 171 + 171 + 170
 
@@ -246,6 +270,10 @@ struct Identify {
 struct Beat {
   Header h;
   proto::Heartbeat hb;
+};
+struct SetChannel {
+  Header h;
+  uint8_t channel;
 };
 #pragma pack(pop)
 static_assert(sizeof(DmxChunk) <= 250, "ESP-NOW v1 max payload");
