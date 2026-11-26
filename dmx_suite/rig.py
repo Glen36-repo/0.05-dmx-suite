@@ -118,7 +118,8 @@ class Rig:
     kick_colour: dict[str, float] = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
     startup_master: bool = True
     nodes: list[tuple[str, str]] = field(default_factory=list)  # (mac, name)
-    outputs: list[dict[str, Any]] = field(default_factory=list)
+    outputs: list[dict[str, Any]] = field(default_factory=list)  # v4: each has `universe` (0 when not given)
+    output_warnings: list[str] = field(default_factory=list)  # e.g. "no universe: given, assumed 0"
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
     osc: OscConfig = field(default_factory=OscConfig)
@@ -232,6 +233,7 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
     if not isinstance(kick_data, dict) or set(kick_data) - set(EMITTERS):
         raise ConfigError(f"kick_colour: emitter levels in %, from {', '.join(EMITTERS)}")
     kick = {k: _pct(v, f"kick colour {k}") for k, v in kick_data.items()}
+    outputs, out_warn = parse_outputs(data.get("outputs"))
     return Rig(
         name=name,
         patch=patch,
@@ -245,7 +247,8 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         kick_colour=kick,
         startup_master=bool((data.get("startup") or {}).get("master", True)),
         nodes=[(n["mac"].upper(), n.get("name", "")) for n in data.get("nodes") or []],
-        outputs=list(data.get("outputs") or [{"driver": "null"}]),
+        outputs=outputs,
+        output_warnings=out_warn,
         midi_inputs=[str(x) for x in data.get("midi_inputs") or []],
         layout=_layout(data.get("layout"), patch),
         profile=profile,
@@ -375,6 +378,66 @@ def _osc(d: Any) -> OscConfig:
         except ValueError as e:
             raise ConfigError(f"osc allow: {a!r} isn't an address or network") from e
     return OscConfig(port, [str(a) for a in allow])
+
+
+CARRIES_ALL = ("node", "log", "null")  # drivers that send every universe (nodes are set per node)
+NETWORK = ("artnet", "sacn")  # every universe unless `universes:` maps some
+
+
+def output_carries(o: dict[str, Any], universe: int) -> bool:
+    if o["driver"] in CARRIES_ALL:
+        return True
+    if o["driver"] in NETWORK:
+        m = o.get("universes")
+        return not m or universe in {int(k) for k in m}
+    return o.get("universe", 0) == universe
+
+
+def routing_problems(rig: Rig) -> list[str]:
+    """Universes with lights but nothing sending them, outputs sending a universe with no lights."""
+    out = list(rig.output_warnings)
+    used = set(rig.universes) if rig.fixtures else set()
+    for u in sorted(used):
+        if not any(output_carries(o, u) for o in rig.outputs):
+            out.append(f"universe {u} has lights but no output sends it; add one or set an output's universe")
+    for i, o in enumerate(rig.outputs):
+        if "universe" in o and o["universe"] not in used and o["driver"] not in CARRIES_ALL:
+            out.append(f"output {i + 1} ({o.get('alias') or o.get('port') or o['driver']}) sends universe "
+                       f"{o['universe']}, which has no lights")
+    return out
+
+
+def parse_outputs(d: Any) -> tuple[list[dict[str, Any]], list[str]]:
+    """The rig's `outputs:`, checked: known driver (v3 ids read), `universe:` 0-15 for interfaces that
+    carry one universe (missing -> 0, with a warning so the routing is confirmed, not guessed)."""
+    from .output import DRIVERS, driver_id
+
+    if d is None:
+        return [{"driver": "null"}], []
+    if not isinstance(d, list):
+        raise ConfigError("outputs: a list, e.g. - {driver: usb_dmx_open, port: COM3, universe: 0}")
+    out, warn = [], []
+    for i, o in enumerate(d):
+        if not isinstance(o, dict) or "driver" not in o:
+            raise ConfigError(f"outputs {i + 1}: needs driver ({', '.join(sorted(DRIVERS))})")
+        o = dict(o)
+        o["driver"] = driver_id(o["driver"])
+        if o["driver"] not in DRIVERS:
+            raise ConfigError(f"outputs {i + 1}: unknown driver {o['driver']!r}; one of {', '.join(sorted(DRIVERS))}")
+        if o["driver"] in CARRIES_ALL or o["driver"] in NETWORK:
+            if o["driver"] in CARRIES_ALL:
+                o.pop("universe", None)
+        elif "universe" not in o:
+            o["universe"] = 0
+            where = o.get("alias") or o.get("port") or o["driver"]
+            warn.append(f"output {i + 1} ({where}) has no universe: given; it sends universe 0. "
+                        "Confirm it in the routing table (Layout page)")
+        if "universe" in o:
+            u = o["universe"]
+            if isinstance(u, bool) or not isinstance(u, int) or not 0 <= u <= 15:
+                raise ConfigError(f"outputs {i + 1}: universe 0-15")
+        out.append(o)
+    return out, warn
 
 
 def parse_placement(fid: str, v: Any) -> Placement:

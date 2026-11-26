@@ -103,7 +103,7 @@ class EnttecOpenDriver(OutputDriver):
 
     def __init__(self, port: str, universe: int = 0, serial_factory: Callable[..., Any] = _serial) -> None:
         self.port = port
-        self.universe = universe
+        self.universe: int = universe
         self._p = _Port(port, serial_factory, DMX_BAUD, 2)
         self._frame = bytes(512)
         self._new = threading.Event()
@@ -138,10 +138,12 @@ class EnttecOpenDriver(OutputDriver):
                 _spin(BREAK_S)
                 ser.break_condition = False
                 _spin(MAB_S)
-                ser.write(b"\x00" + self._frame)
+                frame = self._frame
+                ser.write(b"\x00" + frame)
                 ser.flush()
                 self.packets += 1
                 self._p.wrote()
+                self.wire.record(self.universe, frame)
             except Exception as e:
                 self._p.failed(e)
                 continue
@@ -177,7 +179,7 @@ class EnttecProDriver(OutputDriver):
     def __init__(self, port: str, universe: int = 0, serial_factory: Callable[..., Any] = _serial,
                  threaded: bool = True) -> None:
         self.port = port
-        self.universe = universe
+        self.universe: int = universe
         self._lock = threading.Lock()
         self.packets = 0
         self._sender = SenderThread(self._write, self.name) if threaded else None
@@ -207,6 +209,7 @@ class EnttecProDriver(OutputDriver):
                 self._p.ser.write(pro_packet(frame))
                 self.packets += 1
                 self._p.wrote()
+                self.wire.record(universe, frame)
             except Exception as e:
                 self._p.failed(e)
 

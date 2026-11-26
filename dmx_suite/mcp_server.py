@@ -269,6 +269,22 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.set_layout(yaml.safe_dump({fixture: {"x": x, "y": y, "rot": rot}}), rig)
 
     @tool
+    def list_outputs() -> str:
+        """The routing table: which universe goes out which interface (USB DMX, Art-Net/sACN, the 0.05 node
+        link, each wireless node), with state, fps, frames, errors, last frame age and whether the last frame
+        sent was all zeros. Plus routing problems (a universe with lights but no output, an output with no
+        lights, an output with no universe: given). Use it first when the software runs but the rig is dark."""
+        return t.list_outputs()
+
+    @tool
+    def set_output(index: int, driver: str = "", port: str = "", universe: int | None = None, mac: str = "",
+                   alias: str = "") -> str:
+        """Change output `index` (from list_outputs; -1 adds one): driver (usb_dmx_open, usb_dmx_pro, node,
+        artnet, sacn), port (COM3), universe (0-15), alias (e.g. Stage DMX). With mac: set a wireless node's
+        universe instead. Not during gig lock. Output changes apply after a restart until v4's live rebuild."""
+        return t.set_output(index, driver, port, universe, mac, alias)
+
+    @tool
     def delete_fixture(fixture: str) -> str:
         """Take a patched light out of the patch and every rig (layout, head limits). Refused if a scene or
         look names it directly; not during gig lock. Backed up (undo_last_change)."""

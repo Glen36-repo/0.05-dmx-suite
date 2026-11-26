@@ -14,7 +14,7 @@ from .midi.map import MidiMap, load_map, validate, where_of
 from .midi.named import Inputs, load_inputs
 from .palettes import Palettes, load_palettes
 from .presets import load_presets, load_ratings, preset_scenes
-from .rig import Rig, load_rig
+from .rig import Rig, load_rig, routing_problems
 from .scenes import Scene, load_scenes
 from .shows import Setlist, Show, load_setlists, load_shows, parse_setlist, parse_show
 from .versions import read_doc
@@ -210,6 +210,7 @@ def check_all(root: str | Path) -> list[str]:
     for rk, rig in rigs.items():
         problems += [f"warning: rigs/{rk}.yaml {w}" for w in rig.point_problems()]
         problems += [f"warning: rigs/{rk}.yaml {w}" for w in layout_warnings(rig)]
+        problems += [f"warning: rigs/{rk}.yaml {w}" for w in routing_problems(rig)]
     try:
         from .quality import load_rules
 

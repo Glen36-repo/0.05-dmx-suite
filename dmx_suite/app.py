@@ -165,7 +165,8 @@ class App:
                         "universe": hb.universe if hb else None, "uptime_s": hb.uptime_s if hb else None,
                     })
             else:
-                out.append({"mac": None, "name": d.name, "state": "connected", "driver": d.status()})
+                unis = [u for u in (sorted(set(self.engine.rig.universes)) or [0]) if d.carries(u)]
+                out.append({"mac": None, "name": d.name, "state": "connected", "driver": d.status(), "universes": unis})
         return out
 
     # ------------------------------------------------------------------ 0.05 node set-up (R8)
@@ -338,6 +339,70 @@ class App:
             self._fps = (now, self.engine.frames_sent, rate)
         return rate
 
+    # ------------------------------------------------------------------ routing (v4)
+
+    def routing(self) -> dict[str, Any]:
+        """Which universe goes out which interface, with live stats from what each one really sent."""
+        from .rig import routing_problems
+
+        rig = self.engine.rig
+        used = sorted(set(rig.universes)) if rig.fixtures else []
+        rows: list[dict[str, Any]] = []
+        for i, d in enumerate(self.engine.drivers):
+            st = d.state()
+            cfg = d.cfg or {}
+            for u in used or [0]:
+                if not d.carries(u):
+                    continue
+                w = d.wire.stats(u)
+                st_d = d.status()
+                kind = "node link" if isinstance(d, NodeSerialDriver) else "wired"
+                rows.append({"universe": u, "output": i, "kind": kind,
+                             "interface": cfg.get("alias") or st["name"], "driver": cfg.get("driver", d.name),
+                             "port": cfg.get("port") or getattr(d, "port", None), "device": cfg.get("device"),
+                             "state": st["state"], "detail": st["detail"],
+                             "packets": st_d.get("packets", st_d.get("frames")), "errors": st_d.get("errors", 0), **w})
+        for n in self.nodes():
+            if n.get("mac"):
+                rows.append({"universe": n.get("universe"), "output": None, "kind": "node",
+                             "interface": n["name"] or n["mac"],
+                             "driver": "node", "mac": n["mac"], "state": n["state"], "detail": f"rssi {n.get('rssi')}",
+                             "packets": None, "errors": None, "fps": None, "frames": None, "jitter_ms": None,
+                             "last_frame_age_ms": n.get("last_data_age_ms"), "all_zero": None})
+        return {"universes": used, "rows": rows, "problems": routing_problems(rig)}
+
+    def set_output(self, index: int, changes: dict[str, Any]) -> dict[str, Any]:
+        """Change (or with index -1 add) one `outputs:` entry of the running rig: driver, port, universe,
+        alias, device. Written to the rig file (validated, backed up, gig-locked)."""
+        from .rig import parse_outputs
+
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        outs = list(data.get("outputs") or [])
+        if index == -1:
+            outs.append({})
+            index = len(outs) - 1
+        if not 0 <= index < len(outs):
+            raise ValueError(f"no output {index}; the rig has {len(outs)} (index from 0, -1 adds one)")
+        bad = set(changes) - {"driver", "port", "universe", "alias", "device", "host", "universes"}
+        if bad:
+            raise ValueError(f"an output takes driver, port, universe, alias, device (not {sorted(bad)})")
+        outs[index] = {**outs[index], **{k: v for k, v in changes.items() if v is not None}}
+        parse_outputs(outs)  # checked before writing
+        data["outputs"] = outs
+        bid = self.store.put("rig", rig_name, data, f"output {index + 1} on rig {rig_name}")
+        notes = self.reload()
+        return {"backup": bid, "notes": notes, "outputs": outs}
+
+    def routing_problems_cached(self) -> list[str]:
+        from .rig import routing_problems
+
+        rig = self.engine.rig
+        key = (id(rig), repr(rig.outputs), tuple(rig.universes))
+        if getattr(self, "_rp_cache", (None,))[0] != key:
+            self._rp_cache = (key, routing_problems(rig))
+        return self._rp_cache[1]
+
     def layout_problems(self) -> list[dict[str, Any]]:
         """Overlapping / touching lights on the running rig's layout (worked out once per rig)."""
         from .layout import layout_problems
@@ -371,7 +436,15 @@ class App:
                         "detail": f"running the last good version (backup {self.show_problem['backup']}): "
                                   f"{self.show_problem['problem']}"})
         for d in self.engine.drivers:
-            out.append(d.state())
+            st = d.state()
+            unis = [u for u in (sorted(set(self.engine.rig.universes)) or [0]) if d.carries(u)]
+            if unis and st.get("state") != "sim":  # which universe(s) it carries, at the front
+                st["detail"] = f"U{','.join(map(str, unis))} · {st['detail']}"
+            out.append(st)
+        rp = self.routing_problems_cached()
+        if rp:
+            more = f" (+{len(rp) - 1})" if len(rp) > 1 else ""
+            out.append({"kind": "routing", "name": "Routing", "state": "warn", "detail": rp[0] + more})
         lp = self.layout_problems()
         if lp:
             pairs = ", ".join(f"{p['a']}/{p['b']}" for p in lp[:4]) + (" ..." if len(lp) > 4 else "")

@@ -44,6 +44,7 @@ class NodeSerialDriver(OutputDriver):
     def _write(self, universe: int, frame: bytes) -> None:
         try:
             self.link.send_frame(frame, universe)
+            self.wire.record(universe, frame)
         except Exception:
             self.errors += 1
 

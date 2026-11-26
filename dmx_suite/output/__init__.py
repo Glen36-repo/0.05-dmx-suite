@@ -46,7 +46,9 @@ def make_driver(cfg: dict[str, Any]) -> OutputDriver:
         cfg.pop(k, None)
     if "universe" in cfg and "universe" not in inspect.signature(DRIVERS[name]).parameters:
         cfg.pop("universe")  # drivers that send every universe (node, log, null) or map them (Art-Net, sACN)
-    return DRIVERS[name](**cfg)
+    drv = DRIVERS[name](**cfg)
+    drv.cfg = {"driver": name, **cfg}  # what the rig asked for (routing table)
+    return drv
 
 
 __all__ = [

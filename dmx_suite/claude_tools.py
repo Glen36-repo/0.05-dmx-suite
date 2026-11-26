@@ -366,6 +366,29 @@ class DmxTools:
         data["layout"] = merge_positions(r, data.get("layout"), positions)
         return self.local.put("rig", rig, data, f"place {', '.join(sorted(positions))} on rig {rig}")
 
+    def list_outputs(self) -> str:
+        try:
+            return _dump(self._call("GET", "/api/routing"))
+        except Offline:
+            from .rig import routing_problems
+
+            name = self._rig_name()
+            r = load_rig(self.shows / "rigs" / f"{name}.yaml", load_patch(self.shows / "fixtures.yaml"))
+            return _dump({"rig": name, "outputs": r.outputs, "universes": r.universes, "problems": routing_problems(r),
+                          "note": "the engine isn't running: no live stats"})
+
+    def set_output(self, index: int, driver: str = "", port: str = "", universe: int | None = None, mac: str = "",
+                   alias: str = "") -> str:
+        if mac:  # a wireless node: its universe is set on the node itself
+            if universe is None:
+                raise StoreError("a node needs universe")
+            return self.assign_node(mac, alias or mac, universe)
+        given = (("driver", driver), ("port", port), ("universe", universe), ("alias", alias))
+        changes = {k: v for k, v in given if v not in ("", None)}
+        r = self._live("POST", "/api/routing/output", {"index": index, "set": changes})
+        notes = "; ".join(r.get("notes") or [])
+        return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
+
     def delete_fixture(self, fixture: str) -> str:
         return self._write("POST", "/api/store/fixture/remove", {"id": fixture}, lambda: self.local.remove_fixture(fixture))
 
