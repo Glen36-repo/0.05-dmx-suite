@@ -43,6 +43,10 @@ class Engine:
         # setup/test page: find one fixture, raw channel tester
         self.find: str | None = None
         self.channel_test: dict[tuple[int, int], int] = {}  # (universe, 1-based channel) -> value
+        # position picker: hold a head at a spot over whatever the show does (limits still apply)
+        self.position_override: dict[str, tuple[float, float]] = {}
+        # preview: play something for a while, then put back what was running
+        self._preview: tuple[float, Callable[[float], Look] | None, Scene | None, Look] | None = None
         self.flashes: dict[str, Flash] = {}
         self.masters = Masters(rig.grand_master, rig.sub_masters, rig.flash_level, rig.fade_s)
         self.haze = Haze(rig.haze, now)
@@ -67,8 +71,13 @@ class Engine:
             now = self.clock()
             for fid in [f for f, fl in self.flashes.items() if fl.until <= now]:
                 del self.flashes[fid]
+            if self._preview is not None and now >= self._preview[0]:
+                _, self.source, self.scene, self.look = self._preview
+                self._preview = None
             if self.source is not None:
                 self.look = self.source(now)
+            if self.position_override:
+                self.look = self._with_positions(self.look)
             if self.find is not None:
                 self.frames = self._render_find(now)
             else:
@@ -138,13 +147,61 @@ class Engine:
 
     def set_look(self, look: Look) -> None:
         with self.lock:
+            self._preview = None
             self.source, self.scene = None, None
             self.look = look
+        self._changed()
+
+    def _with_positions(self, look: Look) -> Look:
+        fixtures = dict(look.fixtures)
+        for fid, (pan, tilt) in self.position_override.items():
+            base = fixtures.get(fid, FixtureLook())
+            fixtures[fid] = FixtureLook(**{**base.__dict__, "pan": pan, "tilt": tilt})
+        return Look(fixtures=fixtures, show_colour=look.show_colour)
+
+    def override_position(self, fid: str, pan: float | None = None, tilt: float | None = None) -> None:
+        """Hold a moving head at pan/tilt (0-1); call with pan=None to release."""
+        with self.lock:
+            if pan is None or tilt is None:
+                self.position_override.pop(fid, None)
+            else:
+                fx = self.rig.patch.fixtures.get(fid)
+                if fx is None or fid not in self.rig.present:
+                    raise ValueError(f"{fid} is not in this rig")
+                if fx.type.colour_only or not fx.type.has("pan"):
+                    raise ValueError(f"{fid} can't move (rule 7)")
+                if not (0 <= pan <= 1 and 0 <= tilt <= 1):
+                    raise ValueError("pan and tilt are 0-1")
+                self.position_override[fid] = (pan, tilt)
+        self._changed()
+
+    def preview(self, source: Callable[[float], Look], seconds: float, scene: Scene | None = None) -> None:
+        """Play `source` for `seconds`, then go back to what was running. Rules still apply."""
+        if not 0 < seconds <= 300:
+            raise ValueError("preview 0-300 s")
+        with self.lock:
+            prev = self._preview[1:] if self._preview else (self.source, self.scene, self.look)
+            self._preview = (self.clock() + seconds, *prev)
+            self.source, self.scene = source, scene
+        self._changed()
+
+    @property
+    def previewing(self) -> float | None:
+        """Seconds of preview left, or None."""
+        with self.lock:
+            return max(0.0, self._preview[0] - self.clock()) if self._preview else None
+
+    def end_preview(self) -> None:
+        with self.lock:
+            if self._preview:
+                _, self.source, self.scene, self.look = self._preview
+                self._preview = None
         self._changed()
 
     def set_source(self, source: Callable[[float], Look], scene: Scene | None = None) -> None:
         """Play any look source (a show, a scene with tap tempo). The rule layer still applies."""
         with self.lock:
+            self._preview = None  # a real selection ends any preview
             self.source, self.scene = source, scene
         self._changed()
 

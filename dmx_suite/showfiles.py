@@ -82,14 +82,14 @@ def check_all(root: str | Path) -> list[str]:
     except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
         problems.append(f"palettes.yaml: {e}")
         pal = None
+    scenes: dict = {}
+    shows: dict = {}
     if pal is not None:
-        scenes = {}
         for p in sorted((root / "scenes").glob("*.yaml")):
             try:
                 scenes[p.stem] = load_scenes_file(p, patch, pal)
             except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
                 problems.append(f"scenes/{p.name}: {e}")
-        shows = {}
         for p in sorted((root / "shows").glob("*.yaml")):
             try:
                 shows[p.stem] = parse_show(p.stem, yaml.safe_load(p.read_text(encoding="utf-8")) or {}, pal, scenes)
@@ -121,6 +121,9 @@ def check_all(root: str | Path) -> list[str]:
             for m in mp.mappings:
                 if m.action == "flash":
                     patch.resolve(m.params["fixtures"])
+                for key, table in (("show", shows), ("scene", scenes)):
+                    if key in m.params and m.params[key] not in table:
+                        raise ConfigError(f"{m.type} ch{m.channel} #{m.number}: unknown {key} {m.params[key]!r}")
         except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
             problems.append(f"midi/{p.name}: {e}")
     return problems
