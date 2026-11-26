@@ -2,6 +2,16 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v3, release V3.4)
+
+### Added
+- Ride page: autopilot, mood, hold, previous/next look; Move FX, Flash FX and Colour FX banks with big touch targets; drum FX; palettes with a lock; ride faders for everything or per bank; haze controls alongside; layout strip; "Why did it do that?"; lights in the auto show; Learn any control from a pad or pedal.
+- Autopilot: looks change on a timer per mood (low 60 s / mid 40 s / high 20 s, with variation), no repeats, contrast with the last look; energy from named input roles (MIDI only); mood follows the energy or a pedal; fill + crash changes early with a colour hit; build and breakdown; pauses while MASTER is off.
+- Between songs: silence fades to a talking look, a count-in or first hit starts the show again; walk-on and walk-off looks from buttons or the setlist.
+- Control priority (blackout > MASTER-off drum flash > Flash FX and busk > hold > autopilot / show) shown on the Ride page; `release_fade_s` fades back in when a higher level lets go.
+- Decision log: every look change with its reason, on screen and per gig in app data.
+- MIDI/OSC actions for all of it; Claude can read what the autopilot is doing and why, and tune its settings.
+
 ## Unreleased (v3, release V3.3)
 
 ### Added

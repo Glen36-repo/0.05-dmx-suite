@@ -1,6 +1,55 @@
-# Auto show: FX banks and ride controls
+# Auto show: the Ride page, autopilot, FX banks
 
-The auto show builds looks from **FX banks** for whatever rig you have, with no programming. The Ride page and the autopilot (from v3.4) use it; Claude can try looks with `preview_look`.
+The auto show builds looks from **FX banks** for whatever rig you have, with no programming: open the **Ride** page, turn the **autopilot** on, and ride it with a few big controls. Claude can try looks with `preview_look` and explain what the autopilot is doing.
+
+## The Ride page
+
+- along the top: **Autopilot** on/off, mood **LOW / MID / HIGH** (or **Auto mood**: it follows the energy), **Hold**, **◀ Previous**, **Next look ▶**, and the energy bar
+- the layout strip shows what the lights are doing
+- **Move FX** on the left, **Flash FX** in the middle (held while your finger is on them), **Colour FX** on the right, **Drum FX** below; tap one to use it now
+- **Palette**, with **Lock palette** so the autopilot keeps it
+- **Ride controls**: speed, fade, fan, size, shift, for everything or per bank
+- the **Haze** controls are here too, but they're separate: the auto show never touches haze
+- **Why did it do that?** lists the autopilot's last decisions with the reason for each
+- **Lights in the auto show**: how each light is used; change one or leave it out
+- **Learn**: tap Learn, tap any control, then hit a pad or press a pedal: it's mapped and saved
+
+## The autopilot
+
+It picks a Move FX + Colour FX + palette + ride settings and changes them on a timer that depends on the mood (60 s low, 40 s mid, 20 s high, give or take 20 %). It never repeats one of the last few looks, and each new look contrasts with the last (look quality rules).
+
+- **Energy** comes from your MIDI only (no microphone): how many hits a second on inputs with the `activity` role, and how hard. Any instrument can drive it (give a keyboard or pad controller the roles)
+- **Mood** follows the energy unless you set it with a button or pedal (MIDI action `mood`, mood: low / mid / high / up / down / auto); with no drum MIDI it's manual
+- a **drum fill then a crash** changes the look early and fires a colour hit
+- a **build** (energy climbing) gets faster, bigger looks; a **breakdown** (energy falling) gets slower, sparser ones
+- **MASTER off**: drum flash owns the rig and the autopilot waits
+- picking a show, scene or look by hand turns the autopilot off
+
+### Between songs
+
+No `activity` hits for 4 seconds = the song has ended: the lights fade to a calm **talking look**. A count-in (4 evenly spaced hits on an input with the `count_in` role, e.g. sticks or the hi-hat pedal) or the first hit = the song is starting: straight back into the show. **Walk-on** and **walk-off** looks play from their buttons, or when a setlist starts and after its last song.
+
+### Control priority
+
+Highest first: **1** blackout, **2** MASTER off (drum flash), **3** Flash FX and busk buttons, **4** hold (the look stays, the autopilot stops changing), **5** the autopilot or the running show. Pedals: `autopilot`, `hold`, `look_next`, `look_prev`, `mood`, `walk_on`, `walk_off`, plus `ride_fx`, `ride_palette`, `palette_lock` and the faders `ride_speed`, `ride_fade`, `ride_fan`, `ride_size`, `ride_shift`.
+
+Set `release_fade_s` in the rig file (e.g. `0.5`) and letting go of a higher level fades back to the one below (MASTER back on, blackout off, a held Flash FX) instead of cutting.
+
+### Settings (rig file)
+
+```yaml
+autopilot:
+  moods: {low: 60, mid: 40, high: 20}
+  variation: 0.2
+  no_repeat: 4
+  fade: {low: 4, mid: 2, high: 0.5}
+  gap_s: 4
+  count_in: 4
+  talking: {colour: static, palette: white, move: kit, ride: {speed: 0.5}}
+  palettes: [warm, cool, band]
+```
+
+Every decision (time, energy, mood, look, why) is saved per gig in `logs/decisions-YYYY-MM-DD.jsonl` in app data; Claude reads it with `autopilot_status`.
 
 ## How the lights are sorted
 

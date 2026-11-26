@@ -96,6 +96,18 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.save_quality_rules(yaml_text)
 
     @tool
+    def autopilot_status(n: int = 20) -> str:
+        """What the autopilot is doing and why: on/off, mood, energy, next change, control priority, and
+        the last n decisions (time, energy, mood, look, trigger, reason). Engine must be running."""
+        return t.autopilot_status(n)
+
+    @tool
+    def save_autopilot_settings(rig: str, yaml_text: str) -> str:
+        """Tune the autopilot for a rig (merged into its `autopilot:` block), e.g.
+        '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6, gap_s: 5}'."""
+        return t.save_autopilot_settings(rig, yaml_text)
+
+    @tool
     def get_alerts() -> str:
         """Alerts: what's offline or failing now and recently (time, device, message, state: active,
         dismissed, muted, snoozed, cleared), and which devices are muted for this rig. Read only."""

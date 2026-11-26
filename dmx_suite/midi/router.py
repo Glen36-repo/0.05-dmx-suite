@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..engine import Engine
-from .map import ACTIONS, CONTINUOUS, Mapping, MidiMap, validate
+from .map import ACTIONS, CONTINUOUS, RIDE_ACTIONS, Mapping, MidiMap, validate
 from .monitor import MidiMonitor, MonitorEntry
 from .named import InputDef, Inputs, suggest
 
@@ -67,6 +67,7 @@ class MidiRouter:
         self.monitor = monitor or MidiMonitor()
         self.busk: Callable[[str, str, bool, float | None], str] | None = None  # App.busk
         self.flash_fx: Callable[[dict[str, Any], bool, bool], str] | None = None  # App.flash_fx_input
+        self.ride: Callable[[str, dict[str, Any], float | None], str] | None = None  # App.ride_action (v3.4)
         # (action, params, callback, port fragment the mapping is tied to)
         self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None, str | None] | None = None
         # learn an input's message: (input id, callback with the learned message)
@@ -254,6 +255,18 @@ class MidiRouter:
             except Exception as err:
                 return f"{a}: {err}"
             return f"{a} x{value:.2f}"
+        if a in RIDE_ACTIONS:
+            if self.ride is None:
+                return f"{a}: not running"
+            level = None
+            if a in CONTINUOUS:
+                level = m.level if m.level is not None else m.value / 127
+            elif not m.pressed:
+                return "release"
+            try:
+                return self.ride(a, dict(p), level)
+            except Exception as err:  # a bad press must never stop the show
+                return f"{a} failed: {err}"
         if a == "flash_fx":
             if self.flash_fx is None:
                 return "flash_fx: not running"

@@ -68,12 +68,18 @@ class ShowController:
         self.player: ShowPlayer | None = None
         self.setlist: Setlist | None = None
         self.song: int | None = None
+        # v3.4: the band picked something by hand (the autopilot steps aside); setlist start / end (walk looks)
+        self.on_manual: Callable[[], None] | None = None
+        self.on_setlist: Callable[[str], None] | None = None
 
     # ------------------------------------------------------------------ selection
 
     @_locked
     def select_look(self) -> None:
         from . import steps
+
+        if self.on_manual:
+            self.on_manual()
 
         steps.set_active(None)
         self.mode, self.show, self.set_name, self.scene_key, self.player = "look", None, None, None, None
@@ -83,6 +89,9 @@ class ShowController:
     @_locked
     def select_scene(self, key: str, step: int = 0) -> None:
         from . import steps
+
+        if self.on_manual:
+            self.on_manual()
 
         if key not in self.files.scenes:
             raise ConfigError(f"no scene {key!r}")
@@ -101,6 +110,8 @@ class ShowController:
         set_name = set_name or show.default_set
         from . import steps
 
+        if self.on_manual:
+            self.on_manual()
         steps.set_active(None)  # a step scene in the show takes over when it's drawn
         self.player = ShowPlayer(show, set_name, self.e.rig, self.files.palettes, self.files.scenes, self.tempo, self.e.clock())
         self.mode, self.show, self.set_name, self.scene_key = "show", show, set_name, None
@@ -136,7 +147,7 @@ class ShowController:
         self.e.set_source(self.player, self.player.scene)
 
     @_locked
-    def select_ride(self, label: str, player: Any, scene: Any, fade_s: float = 0.0) -> None:
+    def select_ride(self, label: str, player: Any, scene: Any, fade_s: float = 0.0, manual: bool = False) -> None:
         """The Ride page or the autopilot is playing a look (v3.3)."""
         from . import steps
 
@@ -196,6 +207,8 @@ class ShowController:
         if key not in self.files.setlists:
             raise ConfigError(f"no setlist {key!r}")
         self.setlist = self.files.setlists[key]
+        if self.on_setlist and song == 0:
+            self.on_setlist("walk_on")
         self.go_song(song)
 
     @_locked
@@ -215,6 +228,10 @@ class ShowController:
 
     @_locked
     def next_song(self) -> None:
+        if self.setlist is not None and self.song is not None and self.song >= len(self.setlist.songs) - 1:
+            if self.on_setlist:  # past the last song: walk-off
+                self.on_setlist("walk_off")
+            return
         self.go_song((self.song if self.song is not None else -1) + 1)
 
     @_locked

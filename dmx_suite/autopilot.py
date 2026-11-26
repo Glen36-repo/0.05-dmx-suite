@@ -1,0 +1,505 @@
+"""Autopilot (v3.4): picks a Move FX + Colour FX + palette + ride settings and changes it on a
+timer per mood, from the band's MIDI only (no audio). Also: between songs, hold and the decision log.
+
+Energy (0-1) comes from named inputs by role (drums.BUS): how many `activity` hits a second over the
+last few seconds, and how hard. Mood (low / mid / high) is set by a pedal or button, or follows
+the energy (with some hysteresis so it doesn't flap). With no drum MIDI, mood is manual only.
+
+A look changes:
+- on the mood's timer (e.g. low 60 s, mid 40 s, high 20 s, +- variation), never repeating one of
+  the last few looks and always contrasting with the last (look quality rules)
+- early on a drum fill followed by a crash: a look change and a colour hit (Flash FX)
+- on a build (energy rising fast): faster and bigger; on a breakdown (energy falling): slower, sparser
+- between songs: no `activity` input for `gap_s` = song ended, fade to the talking look; a count-in
+  (`count_in` hits, evenly spaced) or any activity = song starting, straight back into the show
+
+It never touches haze (looks can't hold haze, rule 5), moves heads only through Move FX (dark
+between points), and pauses while MASTER is off (drum flash) or a hold is on. Everything uses a
+seeded random generator, so a recorded session replays identically.
+
+Every decision is logged (time, energy, mood, look, why) in memory and, per gig, in
+logs/decisions-YYYY-MM-DD.jsonl.
+
+Rig config (all optional):
+    autopilot:
+      moods: {low: 60, mid: 40, high: 20}   # seconds between changes
+      variation: 0.2                        # +- share of that, random
+      no_repeat: 4                          # not one of the last N looks
+      fade: {low: 4, mid: 2, high: 0.5}     # crossfade into a new look, seconds
+      energy: {window_s: 4, full_rate: 6}   # hits a second for full energy
+      fill: {window_s: 1.2, hits: 5, crash_s: 1.0}
+      gap_s: 4                              # silence that ends a song
+      count_in: 4                           # even hits that start one
+      talking: {colour: static, palette: white, move: kit, ride: {speed: 0.5}}
+      walk_on: {colour: colour_fade, palette: band, move: swim}
+      walk_off: {colour: static, palette: warm}
+      palettes: [warm, cool, band]          # only these (default: by mood tag)
+      seed: gig-1
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import logging
+import random
+import threading
+import time
+import zlib
+from collections import deque
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .fixtures import ConfigError
+
+log = logging.getLogger(__name__)
+
+MOODS = ("low", "mid", "high")
+TRIGGERS = ("timer", "fill_crash", "mood", "build", "breakdown", "song_end", "song_start", "walk_on", "walk_off",
+            "next", "previous", "start", "preset")
+
+DEFAULTS: dict[str, Any] = {
+    "moods": {"low": 60.0, "mid": 40.0, "high": 20.0},
+    "variation": 0.2,
+    "no_repeat": 4,
+    "fade": {"low": 4.0, "mid": 2.0, "high": 0.5},
+    "energy": {"window_s": 4.0, "full_rate": 6.0},
+    "fill": {"window_s": 1.2, "hits": 5, "crash_s": 1.0},
+    "gap_s": 4.0,
+    "count_in": 4,
+    "talking": {"colour": "static", "palette": "white", "move": "kit", "ride": {"speed": 0.5, "fade": 1.0}},
+    "walk_on": {"colour": "colour_fade", "palette": "band", "move": "swim", "ride": {"speed": 0.6}},
+    "walk_off": {"colour": "static", "palette": "warm", "ride": {"fade": 1.0}},
+    "palettes": [],
+    "seed": "",
+}
+TARGET_BUSY = {"low": 0.3, "mid": 0.75, "high": 1.15}
+
+
+def parse_config(d: Any) -> dict[str, Any]:
+    """The rig's `autopilot:` block over the defaults, checked."""
+    from .fxbanks import BY_ID
+    from .quality import merge
+
+    if d is None:
+        return copy.deepcopy(DEFAULTS)
+    if not isinstance(d, dict) or set(d) - set(DEFAULTS):
+        raise ConfigError(f"autopilot: settings are {', '.join(DEFAULTS)}")
+    out = merge(DEFAULTS, d)
+    for m in MOODS:
+        for k in ("moods", "fade"):
+            v = out[k].get(m)
+            if not isinstance(v, (int, float)) or v < 0 or (k == "moods" and v < 2):
+                raise ConfigError(f"autopilot {k} {m}: seconds ({'2 or more' if k == 'moods' else '0 or more'})")
+    if not 0 <= float(out["variation"]) <= 0.9:
+        raise ConfigError("autopilot variation: 0-0.9")
+    if not isinstance(out["no_repeat"], int) or not 0 <= out["no_repeat"] <= 50:
+        raise ConfigError("autopilot no_repeat: 0-50 looks")
+    if float(out["gap_s"]) < 1:
+        raise ConfigError("autopilot gap_s: 1 s or more")
+    if not isinstance(out["count_in"], int) or not 2 <= out["count_in"] <= 8:
+        raise ConfigError("autopilot count_in: 2-8 hits")
+    for k in ("talking", "walk_on", "walk_off"):
+        p = out[k]
+        if not isinstance(p, dict):
+            raise ConfigError(f"autopilot {k}: a look {{colour, move, palette, ride}}")
+        for bank in ("move", "colour", "drum"):
+            if p.get(bank) and p[bank] not in BY_ID:
+                raise ConfigError(f"autopilot {k}: unknown FX item {p[bank]!r}")
+    return out
+
+
+# ---------------------------------------------------------------------- energy
+
+
+class Energy:
+    """Energy 0-1 from named input hits by role, plus fill and count-in detection."""
+
+    def __init__(self, bus: Any, cfg: dict[str, Any]) -> None:
+        self.bus = bus
+        self.cfg = cfg
+        self.history: deque[tuple[float, float]] = deque(maxlen=400)  # (time, energy), for build/breakdown
+
+    def level(self, now: float) -> float:
+        w = float(self.cfg["energy"]["window_s"])
+        hits = self.bus.recent("activity", now, w)
+        if not hits:
+            return 0.0
+        rate = len(hits) / w
+        strength = sum(h.strength for h in hits) / len(hits)
+        backbone = 0.1 if any("kick" in h.roles for h in hits) and any("snare" in h.roles for h in hits) else 0.0
+        e = min(1.0, 0.65 * min(1.0, rate / float(self.cfg["energy"]["full_rate"])) + 0.3 * strength + backbone)
+        return round(e, 3)
+
+    def sample(self, now: float) -> float:
+        e = self.level(now)
+        if not self.history or now - self.history[-1][0] >= 0.5:
+            self.history.append((now, e))
+        return e
+
+    def trend(self, now: float, back_s: float = 8.0) -> float:
+        """Energy now minus the average a few seconds ago (+ = building, - = breaking down)."""
+        old = [e for t, e in self.history if now - back_s - 2 <= t <= now - back_s + 2]
+        if not old or not self.history:
+            return 0.0
+        return self.history[-1][1] - sum(old) / len(old)
+
+    def fill_then_crash(self, now: float, since: float) -> bool:
+        """A drum fill (snare/tom hits close together) followed by a crash, since `since`."""
+        f = self.cfg["fill"]
+        for crash in self.bus.recent("cymbal", now, max(0.05, now - since)):
+            before = [h for h in self.bus.recent(None, crash.time, float(f["window_s"]) + float(f["crash_s"]))
+                      if ("snare" in h.roles or "tom" in h.roles) and h.time < crash.time]
+            if len(before) >= int(f["hits"]) and crash.time - before[-1].time <= float(f["crash_s"]):
+                return True
+        return False
+
+    def count_in(self, now: float) -> bool:
+        """`count_in` hits with the count_in role, evenly spaced (within 25 %), just now."""
+        n = int(self.cfg["count_in"])
+        hits = self.bus.recent("count_in", now, 6.0)[-n:]
+        if len(hits) < n:
+            return False
+        gaps = [b.time - a.time for a, b in zip(hits, hits[1:])]
+        mean = sum(gaps) / len(gaps)
+        return 0.2 <= mean <= 1.5 and all(abs(g - mean) <= 0.25 * mean for g in gaps) and now - hits[-1].time <= 2 * mean
+
+
+# ---------------------------------------------------------------------- decisions
+
+
+@dataclass
+class Decision:
+    time: float
+    energy: float
+    mood: str
+    trigger: str
+    look: dict[str, Any]
+    why: str
+    candidates: int = 0
+    rejected: int = 0
+    score: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"time": self.time, "energy": self.energy, "mood": self.mood, "trigger": self.trigger, "look": self.look,
+                "why": self.why, "candidates": self.candidates, "rejected": self.rejected, "score": round(self.score, 3)}
+
+
+@dataclass
+class State:
+    on: bool = False
+    hold: bool = False
+    mood: str = "mid"
+    mood_manual: bool = False
+    between: bool = False  # between songs (talking look)
+    last_change: float = 0.0
+    next_change: float = 0.0
+    last_activity: float | None = None
+    pick: Any = None
+    history: list[Any] = field(default_factory=list)  # picks played, newest last
+    allowed: list[str] | None = None  # preset ids the autopilot may use (V3.5 presets), None = any
+
+
+class Autopilot:
+    """Drives `play(pick, fade_s)` (the app's ride_play). Call tick(now) a few times a second."""
+
+    def __init__(self, play: Callable[[Any, float], Any], rig_auto: Callable[[], Any], palettes: Callable[[], dict[str, Any]],
+                 quality: Callable[[], Any], bus: Any, cfg: dict[str, Any] | None = None, log_dir: Path | None = None,
+                 master_off: Callable[[], bool] | None = None, flash: Callable[[str], Any] | None = None,
+                 ratings: Callable[[], dict[str, int]] | None = None,
+                 presets: Callable[[], dict[str, Any]] | None = None) -> None:
+        self.play = play
+        self.rig_auto = rig_auto
+        self.palettes = palettes  # key -> {name, tags, resolved}
+        self.quality = quality
+        self.bus = bus
+        self.cfg = cfg or copy.deepcopy(DEFAULTS)
+        self.energy = Energy(bus, self.cfg)
+        self.log_dir = log_dir
+        self.master_off = master_off or (lambda: False)
+        self.flash = flash
+        self.ratings = ratings or (lambda: {})  # look key -> +1 liked / -1 disliked / -2 banned (V3.5)
+        self.presets = presets or (lambda: {})  # preset id -> pick dict (V3.5)
+        self.st = State()
+        self.decisions: deque[Decision] = deque(maxlen=500)
+        self.rng = random.Random(zlib.crc32(str(self.cfg.get("seed") or "autopilot").encode()))
+        self._lock = threading.RLock()
+        self._last_tick = 0.0
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+
+    # ------------------------------------------------------------------ controls (pedals, buttons, Claude)
+
+    def set_on(self, on: bool, now: float) -> None:
+        with self._lock:
+            if on and not self.st.on:
+                self.st.on = True
+                self.st.last_activity = None
+                self.change(now, "start")
+            elif not on:
+                self.st.on = False
+
+    def set_mood(self, mood: str | None, now: float) -> None:
+        """A mood by pedal or button (None = back to following the energy)."""
+        with self._lock:
+            if mood is None:
+                self.st.mood_manual = False
+                return
+            if mood not in MOODS:
+                raise ValueError("mood is low, mid or high")
+            changed = mood != self.st.mood
+            self.st.mood, self.st.mood_manual = mood, True
+            if changed and self.st.on and not self.st.hold:
+                self.change(now, "mood")
+
+    def mood_step(self, way: int, now: float) -> str:
+        i = max(0, min(2, MOODS.index(self.st.mood) + way))
+        self.set_mood(MOODS[i], now)
+        return self.st.mood
+
+    def set_hold(self, on: bool) -> None:
+        with self._lock:
+            self.st.hold = on
+
+    def next(self, now: float) -> None:
+        with self._lock:
+            self.change(now, "next")
+
+    def previous(self, now: float) -> None:
+        with self._lock:
+            if len(self.st.history) >= 2:
+                self.st.history.pop()
+                pick = self.st.history[-1]
+                self._play(pick, now, "previous", "back to the look before", 0, 0, 0.0)
+
+    def walk(self, which: str, now: float) -> None:
+        """Walk-on or walk-off look (button, pedal, or setlist start/end)."""
+        from .fxbanks import Pick
+
+        with self._lock:
+            pick = Pick.from_dict(self.cfg[which])
+            self.st.between = which == "walk_off"
+            self._play(pick, now, which, f"{which.replace('_', '-')} look", 0, 0, 0.0, fade=self.cfg["fade"]["low"])
+
+    def limit_to(self, preset_ids: list[str] | None) -> None:
+        """Only these presets ("only these looks for this song"); None = any look."""
+        with self._lock:
+            self.st.allowed = list(preset_ids) if preset_ids else None
+
+    # ------------------------------------------------------------------ the loop
+
+    def tick(self, now: float) -> Decision | None:
+        with self._lock:
+            e = self.energy.sample(now)
+            st = self.st
+            if not st.on:
+                return None
+            last = self.bus.last("activity", now)
+            if not st.mood_manual and last is not None:
+                self._follow_energy(e)
+            if self.master_off():  # MASTER off: drum flash owns the rig; the autopilot waits
+                st.next_change = max(st.next_change, now + 1.0)
+                self._last_tick = now
+                return None
+            since = self._last_tick or now
+            self._last_tick = now
+            if last is not None and (st.last_activity is None or last.time > st.last_activity):
+                new_activity = st.last_activity is None or last.time > st.last_activity
+                st.last_activity = last.time
+                if st.between and new_activity:  # song starting: count-in or first hit
+                    st.between = False
+                    why = "count-in" if self.energy.count_in(now) else "first hit after the gap"
+                    return self.change(now, "song_start", extra=why)
+            if (not st.between and st.last_activity is not None and now - st.last_activity >= float(self.cfg["gap_s"])
+                    and not st.hold):
+                st.between = True
+                from .fxbanks import Pick
+
+                return self._play(Pick.from_dict(self.cfg["talking"]), now, "song_end",
+                                  f"no activity for {now - st.last_activity:.1f} s: talking look", 0, 0, 0.0,
+                                  fade=self.cfg["fade"]["low"])
+            if st.hold or st.between:
+                return None
+            if self.energy.fill_then_crash(now, since):
+                d = self.change(now, "fill_crash")
+                if self.flash is not None:
+                    try:
+                        self.flash("colour_hit")
+                    except Exception:  # a flash must never stop the autopilot
+                        log.exception("colour hit failed")
+                return d
+            tr = self.energy.trend(now)
+            if tr >= 0.35 and now - st.last_change > 6:
+                return self.change(now, "build", extra=f"energy up {tr:+.2f}")
+            if tr <= -0.35 and now - st.last_change > 6:
+                return self.change(now, "breakdown", extra=f"energy down {tr:+.2f}")
+            if now >= st.next_change:
+                return self.change(now, "timer")
+            return None
+
+    def _follow_energy(self, e: float) -> None:
+        m = self.st.mood
+        if m == "low" and e > 0.42:
+            self.st.mood = "mid"
+        elif m == "mid" and e > 0.72:
+            self.st.mood = "high"
+        elif m == "mid" and e < 0.25:
+            self.st.mood = "low"
+        elif m == "high" and e < 0.55:
+            self.st.mood = "mid"
+
+    # ------------------------------------------------------------------ choosing a look
+
+    def _palettes_for(self, mood: str) -> list[str]:
+        pals = self.palettes()
+        allowed = [p for p in self.cfg.get("palettes") or [] if p in pals]
+        if allowed:
+            return allowed
+        tagged = [k for k, v in pals.items() if mood in (v.get("tags") or [])]
+        return tagged or list(pals)
+
+    def choose(self, now: float, trigger: str) -> tuple[Any, int, int, float]:
+        """(pick, candidates looked at, rejected by the rules, score)."""
+        from .fxbanks import Pick, RideSettings, available
+
+        mood = self.st.mood
+        ar = self.rig_auto()
+        q = self.quality()
+        ratings = self.ratings()
+        recent = [p.key() for p in self.st.history[-int(self.cfg["no_repeat"]):]]
+        last = self.st.history[-1] if self.st.history else None
+        pal_data = {k: v.get("resolved", []) for k, v in self.palettes().items()}
+        ride = RideSettings()
+        if trigger == "build":
+            ride = RideSettings(speed=1.5, size=0.8, fan=0.7)
+        elif trigger == "breakdown":
+            ride = RideSettings(speed=0.6, size=0.3, fan=0.4)
+        elif mood == "low":
+            ride = RideSettings(speed=0.8, size=0.35, fade=0.8)
+        elif mood == "high":
+            ride = RideSettings(speed=1.25, size=0.7, fade=0.2)
+        cands: list[Pick]
+        if self.st.allowed:  # limited to presets
+            pres = self.presets()
+            cands = [Pick.from_dict(pres[k]) for k in self.st.allowed if k in pres]
+        else:
+            moves: list[str | None] = [i.id for i in available(ar, "move", mood)] or [None]
+            colours = [i.id for i in available(ar, "colour", mood)] or ["static"]
+            drums = [None, None] + ([i.id for i in available(ar, "drum", mood)] if mood != "low" else [])
+            pals = self._palettes_for(mood)
+            cands = []
+            for _ in range(320):
+                cands.append(Pick(self.rng.choice(moves), self.rng.choice(colours), self.rng.choice(drums),
+                                  self.rng.choice(pals), ride))
+        best: Any = None
+        best_score = -1e9
+        rejected = 0
+        seen = 0
+        w = q.r["weights"]
+        for p in cands:
+            seen += 1
+            r = ratings.get(p.key(), 0)
+            if r <= -2:  # banned on the look review page
+                rejected += 1
+                continue
+            if p.key() in recent and not self.st.allowed:
+                rejected += 1
+                continue
+            if q.combo_issues(p, mood) and not self.st.allowed:
+                rejected += 1
+                continue
+            if not q.contrast_ok(last, p, pal_data) and not (self.st.allowed and len(cands) == 1):
+                rejected += 1
+                continue
+            busy = sum(q.busy(_item(x)) for x in (p.move, p.colour, p.drum) if x)
+            score = (w["mood_match"] + w["busy_fit"] * (1 - min(1.0, abs(busy - TARGET_BUSY[mood])))
+                     + (w["liked"] if r > 0 else w["disliked"] if r < 0 else 0) + self.rng.random())
+            if score > best_score:
+                best, best_score = p, score
+        if best is None:  # everything refused (tiny rig, long no-repeat): the least-bad option
+            best = cands[0] if cands else Pick(colour="static", ride=ride)
+        return best, seen, rejected, best_score
+
+    def change(self, now: float, trigger: str, extra: str = "") -> Decision:
+        pick, seen, rejected, score = self.choose(now, trigger)
+        reasons = {"timer": f"{self.st.mood} timer", "fill_crash": "drum fill then a crash",
+                   "mood": f"mood set to {self.st.mood}",
+                   "build": "energy building", "breakdown": "energy dropping", "song_start": "song starting",
+                   "next": "next look (pedal)", "start": "autopilot on", "preset": "preset"}
+        why = reasons.get(trigger, trigger) + (f" ({extra})" if extra else "")
+        return self._play(pick, now, trigger, why, seen, rejected, score)
+
+    def _play(self, pick: Any, now: float, trigger: str, why: str, seen: int, rejected: int, score: float,
+              fade: float | None = None) -> Decision:
+        st = self.st
+        fade_s = float(self.cfg["fade"][st.mood]) if fade is None else fade
+        try:
+            self.play(pick, fade_s)
+        except Exception as e:  # a look the rig can't take: log it and try again later
+            log.warning("autopilot look refused: %s", e)
+            why += f" - refused: {e}"
+        if trigger != "previous":
+            st.history.append(pick)
+            del st.history[:-50]
+        st.pick = pick
+        st.last_change = now
+        base = float(self.cfg["moods"][st.mood])
+        var = float(self.cfg["variation"])
+        st.next_change = now + base * (1 + self.rng.uniform(-var, var))
+        d = Decision(now, self.energy.level(now), st.mood, trigger, pick.to_dict(), why, seen, rejected, score)
+        self.decisions.append(d)
+        self._log(d)
+        return d
+
+    def _log(self, d: Decision) -> None:
+        if self.log_dir is None:
+            return
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            with (self.log_dir / f"decisions-{time.strftime('%Y-%m-%d')}.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps(d.to_dict()) + "\n")
+        except OSError:
+            log.exception("decision log write failed")
+
+    # ------------------------------------------------------------------ status
+
+    def status(self, now: float) -> dict[str, Any]:
+        st = self.st
+        return {"on": st.on, "hold": st.hold, "mood": st.mood, "mood_manual": st.mood_manual, "between": st.between,
+                "energy": self.energy.level(now), "next_change_s": round(max(0.0, st.next_change - now), 1) if st.on else None,
+                "paused": st.on and self.master_off(), "pick": st.pick.to_dict() if st.pick else None,
+                "allowed": st.allowed, "last": self.decisions[-1].to_dict() if self.decisions else None}
+
+    def log_since(self, n: int = 50) -> list[dict[str, Any]]:
+        return [d.to_dict() for d in list(self.decisions)[-n:]]
+
+    # ------------------------------------------------------------------ background thread (the running app)
+
+    def start(self, clock: Callable[[], float], every_s: float = 0.1) -> None:
+        if self._thread is not None:
+            return
+        self._stop.clear()
+
+        def run() -> None:
+            while not self._stop.wait(every_s):
+                try:
+                    self.tick(clock())
+                except Exception:  # never stop the show
+                    log.exception("autopilot tick failed")
+
+        self._thread = threading.Thread(target=run, name="autopilot", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1)
+            self._thread = None
+
+
+def _item(x: str) -> Any:
+    from .fxbanks import BY_ID
+
+    return BY_ID.get(x)

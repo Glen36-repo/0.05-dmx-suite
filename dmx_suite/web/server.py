@@ -379,6 +379,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.alerts_view())
             if path == "/api/fx":  # FX banks for this rig (v3.3)
                 return self._json(200, app.fx_catalogue())
+            if path == "/api/autopilot":  # status and the decision log (v3.4)
+                n = int(q.get("n", 50))
+                return self._json(200, {"status": app.autopilot.status(app.engine.clock()), "log": app.autopilot.log_since(n),
+                                        "priority": app.priority(), "config": app.autopilot.cfg})
             if path == "/api/kelvin":
                 from ..colourtheory import KELVIN_PRESETS, hex_of, kelvin
 
@@ -705,6 +709,17 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     return self._json(200, app.ride_play(body.get("pick") or {}, body.get("fade_s")))
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
+            if path == "/api/ride/action" and method == "POST":  # Ride page controls (v3.4)
+                try:
+                    a = str(body.get("action", ""))
+                    params = {k: v for k, v in body.items() if k not in ("action", "level")}
+                    lvl = body.get("level")
+                    result = app.ride_action(a, params, None if lvl is None else float(lvl))
+                    return self._json(200, {"ok": True, "result": result})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/ride/learn" and method == "POST":  # MIDI learn a Ride control, saved when learned
+                return self._json(200, {"ok": True, "message": app.learn_and_save(str(body["action"]), body.get("params") or {})})
             if path == "/api/flashfx" and method == "POST":
                 try:
                     lm = body.get("length_ms")

@@ -296,6 +296,7 @@ class Session:
             self.osc.stop()
         if self.web:
             self.web.stop()
+        self.app.autopilot.stop()
         self.engine.stop()
 
 
@@ -384,6 +385,7 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
                 app.osc_error = f"port {show.rig.osc.port}: {e}"
                 out(f"OSC in: couldn't listen on port {show.rig.osc.port} ({e})")
         session.engine.start()
+        app.autopilot.start(app.engine.clock)  # ticks only do anything while it's switched on
     except BaseException:
         session.stop()
         raise

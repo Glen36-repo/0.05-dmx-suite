@@ -62,8 +62,27 @@ ACTIONS: dict[str, set[str]] = {
     "step_fade": set(),  # fader: fades 0x - 2x
     # Flash FX (v3.3): held while pressed, or for length_ms
     "flash_fx": {"fx", "colour", "side", "length_ms"},
+    # Ride page and autopilot (v3.4)
+    "autopilot": {"state"},  # on | off | toggle
+    "hold": set(),  # toggle: the look stays, the autopilot stops changing
+    "look_next": set(),
+    "look_prev": set(),
+    "mood": {"mood"},  # low | mid | high | up | down | auto
+    "walk_on": set(),
+    "walk_off": set(),
+    "ride_fx": {"bank", "item"},
+    "ride_palette": {"palette"},
+    "palette_lock": set(),
+    "ride_speed": set(),
+    "ride_fade": set(),
+    "ride_fan": set(),
+    "ride_size": set(),
+    "ride_shift": set(),
 }
-CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade"}  # need a CC or OSC
+CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade",
+              "ride_speed", "ride_fade", "ride_fan", "ride_size", "ride_shift"}  # need a CC or OSC
+RIDE_ACTIONS = {"autopilot", "hold", "look_next", "look_prev", "mood", "walk_on", "walk_off", "ride_fx", "ride_palette",
+                "palette_lock", "ride_speed", "ride_fade", "ride_fan", "ride_size", "ride_shift"}
 
 
 @dataclass
@@ -151,6 +170,14 @@ def validate(m: Mapping, input_type: str | None = None) -> None:
             raise ConfigError(f"{where}: flash_fx needs fx: one of {', '.join(KINDS)}")
         if m.params.get("side", "left") not in ("left", "right"):
             raise ConfigError(f"{where}: flash_fx side is left or right")
+    if m.action == "mood" and m.params.get("mood") not in ("low", "mid", "high", "up", "down", "auto"):
+        raise ConfigError(f"{where}: mood needs mood: low, mid, high, up, down or auto")
+    if m.action == "autopilot" and m.params.get("state", "toggle") not in ("on", "off", "toggle"):
+        raise ConfigError(f"{where}: autopilot state is on, off or toggle")
+    if m.action == "ride_fx" and (m.params.get("bank") not in ("move", "colour", "drum") or not m.params.get("item")):
+        raise ConfigError(f"{where}: ride_fx needs bank (move, colour, drum) and item")
+    if m.action == "ride_palette" and not m.params.get("palette"):
+        raise ConfigError(f"{where}: ride_palette needs palette")
     if m.action == "busk" and (not m.params.get("panel") or not m.params.get("widget")):
         raise ConfigError(f"{where}: busk needs panel and widget")
     if m.action == "sub_master":

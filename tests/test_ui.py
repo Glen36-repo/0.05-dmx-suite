@@ -723,3 +723,65 @@ def test_build_a_step_scene(ui):
     while (app.ctl.now().steps or {}).get("index") != 1 and time.time() < deadline:
         time.sleep(0.05)
     assert app.ctl.now().steps["index"] == 1
+
+
+# ------------------------------------------------------------------ v3.4
+
+
+def test_ride_page_autopilot_mood_and_fx(ui):
+    page, app, root, _ = ui
+    go(page, "ride")
+    page.wait_for_selector("#ride-move [data-fx=pan_sweep]")
+    page.wait_for_selector("#ride-colour [data-fx=comet]")  # the full rig has pixel bars
+    page.click("#ride-colour [data-fx=colour_chase]")
+    page.wait_for_function("document.querySelector('#ride-colour [data-fx=colour_chase]').classList.contains('sel')")
+    assert app.ride_pick.colour == "colour_chase" and app.ctl.mode == "ride"
+    page.click("#ride-palettes [data-palette=fire]")
+    page.wait_for_function("document.querySelector('#ride-palettes [data-palette=fire]').classList.contains('sel')")
+    page.click("#ap-toggle")
+    page.wait_for_function("document.querySelector('#ap-toggle').classList.contains('on')")
+    assert app.autopilot.st.on
+    page.click("#ride-moods [data-mood=high]")
+    page.wait_for_function("document.querySelector('#ride-moods [data-mood=high]').classList.contains('sel')")
+    assert app.autopilot.st.mood == "high" and app.autopilot.st.mood_manual
+    page.wait_for_selector("#ride-why li")  # the decision log shows why
+    page.click("#ap-hold")
+    page.wait_for_function("document.querySelector('#ap-hold').classList.contains('on')")
+    page.click("#ap-toggle")
+    page.wait_for_function("!document.querySelector('#ap-toggle').classList.contains('on')")
+
+
+def test_ride_flash_fx_held_while_pressed(ui):
+    page, app, *_ = ui
+    go(page, "ride")
+    page.wait_for_selector("#ride-flash [data-flash=blinder]")
+    b = page.locator("#ride-flash [data-flash=blinder]").bounding_box()
+    page.mouse.move(b["x"] + 10, b["y"] + 10)
+    page.mouse.down()
+    deadline = time.time() + 3
+    while not any(o.key == "flashfx/blinder" for o in app.engine.overrides) and time.time() < deadline:
+        time.sleep(0.05)
+    assert any(o.key == "flashfx/blinder" for o in app.engine.overrides)
+    page.mouse.up()
+    deadline = time.time() + 3
+    while any(o.key == "flashfx/blinder" for o in app.engine.overrides) and time.time() < deadline:
+        time.sleep(0.05)
+    assert not any(o.key == "flashfx/blinder" for o in app.engine.overrides)
+
+
+def test_ride_learn_maps_a_pad(ui):
+    page, app, root, _ = ui
+    from dmx_suite.midi.inputs import FakeMidiIn
+
+    go(page, "ride")
+    page.wait_for_selector("#ap-next")
+    page.click("#ride-learn")
+    page.click("#ap-next")
+    deadline = time.time() + 3
+    while app.router.learning != "look_next" and time.time() < deadline:
+        time.sleep(0.05)
+    FakeMidiIn(app.router.handle_mido).note(51, 100)  # the ride cymbal
+    deadline = time.time() + 3
+    while "look_next" not in (root / "midi" / "default.yaml").read_text(encoding="utf-8") and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.router.map.get_input("ride").action == "look_next"

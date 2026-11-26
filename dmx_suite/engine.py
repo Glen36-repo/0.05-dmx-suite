@@ -109,7 +109,12 @@ class Engine:
     # ------------------------------------------------------------------ output
 
     def _state(self, now: float) -> ControlState:
-        return ControlState(self.master, self.blackout, self.flashes, self.haze.tick(now), now)
+        gate, gate_all = 1.0, False
+        start = getattr(self, "_gate_start", None)
+        fade = self.rig.release_fade_s
+        if start is not None and fade > 0 and now - start < fade:
+            gate, gate_all = max(0.0, (now - start) / fade), self._gate_all
+        return ControlState(self.master, self.blackout, self.flashes, self.haze.tick(now), now, gate, gate_all)
 
     def output(self) -> dict[int, bytearray]:
         """Render and send now. Called by the loop and directly by anything that must not wait."""
@@ -417,6 +422,8 @@ class Engine:
 
     def set_master(self, on: bool) -> None:
         with self.lock:
+            if on and not self.master:  # control priority: MASTER back on fades the show in (release_fade_s)
+                self._gate_start, self._gate_all = self.clock(), False
             self.master = on
             if on:
                 self.flashes.clear()
@@ -427,6 +434,8 @@ class Engine:
 
     def set_blackout(self, on: bool) -> None:
         with self.lock:
+            if self.blackout and not on:  # blackout released: everything fades back in (release_fade_s)
+                self._gate_start, self._gate_all = self.clock(), True
             self.blackout = on
         self._changed()
 

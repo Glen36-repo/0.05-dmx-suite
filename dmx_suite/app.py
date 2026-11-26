@@ -53,6 +53,21 @@ class App:
 
         self.bus = BUS  # named input hits by role: drum-reactive effects, autopilot energy
         self.ride_pick = Pick()  # what the Ride page shows / last played (v3.3)
+        self.palette_lock = False
+        from .autopilot import Autopilot
+        from .classify import auto_rig
+
+        self.autopilot = Autopilot(
+            play=lambda pick, fade: self.ride_play(self._locked_palette(pick).to_dict(), fade, by="autopilot"),
+            rig_auto=lambda: auto_rig(self.engine.rig),
+            palettes=lambda: self.files.palettes.sets,
+            quality=self.quality, bus=self.bus, cfg=files.rig.autopilot, log_dir=log_dir,
+            master_off=lambda: self.engine.rig.profile.master_gate and not self.engine.master,
+            flash=lambda kind: self.flash_fx(kind, True, "show", length_ms=500),
+            ratings=self.look_ratings, presets=self.preset_picks)
+        self.router.ride = self.ride_action
+        self.ctl.on_manual = self._manual_pick
+        self.ctl.on_setlist = self._setlist_walk
         self.gig_lock = False
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
@@ -399,6 +414,8 @@ class App:
                 notes.append("output, MIDI input and OSC changes take effect after a restart")
                 new.rig.outputs, new.rig.midi_inputs, new.rig.osc = old_rig.outputs, old_rig.midi_inputs, old_rig.osc
             self.engine.swap_rig(new.rig, new.look)
+            self.autopilot.cfg = new.rig.autopilot
+            self.autopilot.energy.cfg = new.rig.autopilot
             self._loaded_sig = sig
             self.files = new
             self.ctl.files = new
@@ -494,11 +511,16 @@ class App:
         data = compose(pick, auto_rig(self.engine.rig), list(sets[key]["colours"]), name)
         return parse_scene(data, self.files.patch, pal, name), data
 
-    def ride_play(self, pick_data: dict[str, Any], fade_s: float | None = None) -> dict[str, Any]:
+    def ride_play(self, pick_data: dict[str, Any], fade_s: float | None = None, by: str = "ride") -> dict[str, Any]:
         """Play a Ride look now: FX + palette + ride settings (the Ride page; the autopilot uses it too)."""
         from .fxbanks import Pick
 
         pick = Pick.from_dict(pick_data)
+        if by == "ride" and self.autopilot.st.on:  # picked by hand on the Ride page: the autopilot carries on from it
+            now = self.engine.clock()
+            self.autopilot.st.history.append(pick)
+            self.autopilot.st.pick = pick
+            self.autopilot.st.next_change = now + float(self.autopilot.cfg["moods"][self.autopilot.st.mood])
         sc, data = self.compose(pick)
         if sc.uses_intensity and self.engine.rig.profile.master_gate:
             raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
@@ -506,9 +528,115 @@ class App:
         issues = self.quality().combo_issues(pick, "mid")
         self.ride_pick = pick
         label = " + ".join(x for x in (pick.move, pick.colour, pick.drum) if x) + f" · {pick.palette}"
-        self.ctl.select_ride(f"Ride: {label}", ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff),
-                             sc, fade)
+        prefix = "Autopilot" if by == "autopilot" else "Ride"
+        self.ctl.select_ride(f"{prefix}: {label}", ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff),
+                             sc, fade, manual=by != "autopilot")
         return {"ok": True, "playing": label, "issues": issues, "scene": data}
+
+    # ------------------------------------------------------------------ autopilot and Ride controls (v3.4)
+
+    def _locked_palette(self, pick: Any) -> Any:
+        """Palette lock: the autopilot keeps the palette the Ride page chose."""
+        if self.palette_lock:
+            pick.palette = self.ride_pick.palette
+        return pick
+
+    def _manual_pick(self) -> None:
+        """The band picked a look, scene or show by hand: the autopilot steps aside."""
+        if self.autopilot.st.on:
+            self.autopilot.set_on(False, self.engine.clock())
+
+    def _setlist_walk(self, which: str) -> None:
+        if self.autopilot.st.on:
+            self.autopilot.walk(which, self.engine.clock())
+
+    def look_ratings(self) -> dict[str, int]:
+        return getattr(self, "_ratings", {})
+
+    def preset_picks(self) -> dict[str, Any]:
+        return getattr(self, "_presets", {})
+
+    def priority(self) -> dict[str, Any]:
+        """Live control priority, highest first, and which level is in charge now."""
+        e = self.engine
+        levels = [("blackout", e.blackout), ("drum_flash", e.rig.profile.master_gate and not e.master),
+                  ("flash_busk", bool(e.held())), ("hold", self.autopilot.st.hold), ("autopilot", self.autopilot.st.on)]
+        top = next((k for k, on in levels if on), "show")
+        return {"levels": [k for k, on in levels if on], "top": top}
+
+    def ride_action(self, action: str, p: dict[str, Any], level: float | None = None) -> str:
+        """Ride page and autopilot controls, from the page, MIDI or OSC."""
+        from .fxbanks import BY_ID, RANGES
+
+        now = self.engine.clock()
+        ap = self.autopilot
+        if action == "autopilot":
+            state = p.get("state", "toggle")
+            on = (not ap.st.on) if state == "toggle" else state == "on"
+            ap.set_on(on, now)
+            return f"autopilot {'on' if on else 'off'}"
+        if action == "hold":
+            on = not ap.st.hold if p.get("on") is None else bool(p["on"])
+            ap.set_hold(on)
+            return f"hold {'on' if on else 'off'}"
+        if action == "look_next":
+            if ap.st.on:
+                ap.next(now)
+                return "next look"
+            return "look_next: autopilot is off"
+        if action == "look_prev":
+            ap.previous(now)
+            return "previous look"
+        if action == "mood":
+            m = p.get("mood", "auto")
+            if m in ("up", "down"):
+                return f"mood {ap.mood_step(1 if m == 'up' else -1, now)}"
+            ap.set_mood(None if m == "auto" else m, now)
+            return f"mood {m}"
+        if action in ("walk_on", "walk_off"):
+            ap.walk(action, now)
+            return action.replace("_", "-")
+        pick = self.ride_pick
+        if action == "ride_fx":
+            bank, item = p.get("bank"), p.get("item")
+            if bank not in ("move", "colour", "drum") or (item and item not in BY_ID):
+                raise ValueError("ride_fx needs bank move/colour/drum and an FX item")
+            setattr(pick, bank, item or None)
+        elif action == "ride_palette":
+            if p.get("palette") not in self.files.palettes.sets:
+                raise ValueError(f"no palette {p.get('palette')!r}")
+            pick.palette = p["palette"]
+        elif action == "palette_lock":
+            self.palette_lock = not self.palette_lock if p.get("on") is None else bool(p["on"])
+            return f"palette lock {'on' if self.palette_lock else 'off'}"
+        elif action.startswith("ride_") and action[5:] in RANGES:
+            key = action[5:]
+            lo, hi = RANGES[key]
+            bank = p.get("bank")
+            v = lo + (hi - lo) * float(level if level is not None else p.get("value", 0.5)) if key != "speed" \
+                else 4 ** (2 * float(level if level is not None else p.get("value", 0.5)) - 1)
+            if p.get("value") is not None and level is None:
+                v = max(lo, min(hi, float(p["value"])))
+            target = pick.ride if not bank else pick.bank_ride.setdefault(bank, type(pick.ride)())
+            setattr(target, key, v)
+        else:
+            raise ValueError(f"unknown ride action {action!r}")
+        self.ride_play(pick.to_dict())
+        return f"{action} ok"
+
+    def learn_and_save(self, action: str, params: dict[str, Any] | None = None) -> str:
+        """MIDI learn from the Ride page: the next pad or pedal does `action`, and the map is saved."""
+        self.require_unlocked("MIDI learn")
+
+        def learned(_m: Any) -> None:
+            try:
+                with self.store.acting("ui"):
+                    self.save_midi_map()
+            except Exception as e:  # e.g. gig lock came on meanwhile: the mapping still works until restart
+                log.warning("couldn't save the learned mapping: %s", e)
+
+        self.router.learn(action, params or {}, learned)
+        return f"hit a pad or press a pedal for {action}"
 
     def flash_fx(self, kind: str, down: bool = True, colour: Any = None, side: str = "left",
                  length_ms: int | None = None) -> str:
@@ -517,8 +645,8 @@ class App:
 
         key = f"flashfx/{kind}"
         if not down:
-            if length_ms is None:
-                self.engine.release(key, 0.0)
+            if length_ms is None:  # control priority: releasing fades back to the level below
+                self.engine.release(key, self.engine.rig.release_fade_s)
             return f"{kind} off"
         lights, left = flashfx.lights_for(self)
         col = None
@@ -982,6 +1110,9 @@ class App:
             "node_setup": self.node_setup,
             "alerts": self.alerts[-5:],
             "alert_center": self.alerts_view(),
+            "autopilot": self.autopilot.status(e.clock()),
+            "ride": {"pick": self.ride_pick.to_dict(), "palette_lock": self.palette_lock},
+            "priority": self.priority(),
             "learning": self.router.learning,
             "rig": e.rig.name,
             "midi_inputs": self.midi_inputs.status() if self.midi_inputs is not None else [],

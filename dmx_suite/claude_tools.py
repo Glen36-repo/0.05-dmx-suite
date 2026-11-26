@@ -85,6 +85,12 @@ HEAD POINTS (v3, per rig file `positions:`): named aim points, e.g. drum_kit, au
   description, tags (band, audience, safe, floor, ceiling...), a rough stage place {x, y, z} and
   per-head pan/tilt 0-1. Scenes name them (`position: drum_kit`, sweep from/to). list_points shows
   them with descriptions: use them to work out where to aim. A head a point doesn't cover stays put.
+AUTOPILOT (v3.4): changes looks on a timer per mood (rig `autopilot:` moods {low, mid, high} seconds,
+  variation, no_repeat, fade per mood, energy {window_s, full_rate}, fill {window_s, hits, crash_s},
+  gap_s and count_in for between songs, talking / walk_on / walk_off looks, palettes). Energy comes
+  from named input roles. autopilot_status shows what it's doing and the decision log (why each look
+  was chosen); save_autopilot_settings tunes it, e.g. "less movement, more blue in the verses" ->
+  palettes: [cool, ice], and quality busy scores for the move items.
 AUTO SHOW (v3.3): list_fx shows the FX banks for this rig (Move, Colour, Flash, drum-reactive), how the
   lights are classified, and the palettes. preview_look tries a pick {move, colour, drum, palette, ride:
   {speed, fade, fan, size, shift}, mood} and says what the look quality rules think (get_quality_rules,
@@ -288,6 +294,16 @@ class DmxTools:
         msg = self._live("POST", "/api/preview", {"scene_data": r["scene"], "seconds": seconds})["message"]
         issues = r["issues"]
         return msg + (". Quality: " + "; ".join(issues) if issues else ". Quality: fine")
+
+    def autopilot_status(self, n: int = 20) -> str:
+        r = self._live("GET", f"/api/autopilot?n={int(n)}")
+        return _dump(r)
+
+    def save_autopilot_settings(self, rig: str, yaml_text: str) -> str:
+        data = _yaml(yaml_text, "autopilot settings")
+        cur = self.local.read("rig", rig)
+        cur["autopilot"] = {**(cur.get("autopilot") or {}), **data}
+        return self._write("PUT", f"/api/store/rig/{rig}", {"data": cur}, lambda: self.local.put("rig", rig, cur))
 
     def get_alerts(self) -> str:
         return _dump(self._live("GET", "/api/alerts"))

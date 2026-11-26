@@ -35,6 +35,7 @@
   <nav class="menu" id="menu" aria-label="Pages">
     <button class="collapse" id="collapse" data-i18n-title="menu.collapse"><span class="ic">☰</span></button>
     <button data-page="live" class="on"><span class="ic">◉</span><span class="lbl" data-i18n="menu.live"></span></button>
+    <button data-page="ride"><span class="ic">◎</span><span class="lbl" data-i18n="menu.ride"></span></button>
     <button data-page="layout"><span class="ic">▦</span><span class="lbl" data-i18n="menu.layout"></span></button>
     <button data-page="scenes"><span class="ic">◆</span><span class="lbl" data-i18n="menu.scenes"></span></button>
     <button data-page="shows"><span class="ic">▶</span><span class="lbl" data-i18n="menu.shows"></span></button>
@@ -266,6 +267,57 @@
       <div class="row wrap"><button id="point-walk" data-i18n="heads.walk"></button></div>
       <div id="point-problems"></div>
       <ul class="point-list" id="point-list"></ul>
+    </section>
+
+    <!-- RIDE -->
+    <section id="page-ride" class="page">
+      <div class="row wrap ride-top">
+        <button id="ap-toggle" class="toggle big" data-i18n="ride.autopilot_off"></button>
+        <span class="row" id="ride-moods">
+          <button data-mood="low" class="big" data-i18n="ride.mood_low"></button>
+          <button data-mood="mid" class="big" data-i18n="ride.mood_mid"></button>
+          <button data-mood="high" class="big" data-i18n="ride.mood_high"></button>
+          <button data-mood="auto" data-i18n="ride.mood_auto"></button>
+        </span>
+        <button id="ap-hold" class="toggle big" data-i18n="ride.hold"></button>
+        <button id="ap-prev" class="big" data-i18n="ride.prev"></button>
+        <button id="ap-next" class="big" data-i18n="ride.next"></button>
+        <button id="ride-learn" data-i18n="ride.learn" data-i18n-title="ride.learn_help"></button>
+      </div>
+      <div class="row wrap">
+        <div class="energy" data-i18n-title="ride.energy"><i id="ap-energy"></i></div>
+        <span class="muted" id="ap-state"></span>
+      </div>
+      <div class="grid-host strip" id="ride-grid"></div>
+      <div class="ride-banks">
+        <div><h2 data-i18n="ride.move_fx"></h2><div class="ride-col" id="ride-move"></div></div>
+        <div><h2 data-i18n="ride.flash_fx"></h2><div class="ride-col" id="ride-flash"></div></div>
+        <div><h2 data-i18n="ride.colour_fx"></h2><div class="ride-col" id="ride-colour"></div></div>
+      </div>
+      <h2 data-i18n="ride.drum_fx"></h2>
+      <div class="row wrap" id="ride-drum"></div>
+      <h2 data-i18n="ride.palette"></h2>
+      <div class="row wrap"><span id="ride-palettes" class="row wrap"></span><button id="ride-lock" class="toggle" data-i18n="ride.lock"></button></div>
+      <h2 data-i18n="ride.controls"></h2>
+      <div class="tabs" id="ride-tabs" role="tablist"></div>
+      <div class="ride-faders" id="ride-faders"></div>
+      <div class="row wrap" id="ride-presets"></div>
+      <h2 data-i18n="ride.haze"></h2>
+      <div class="row wrap">
+        <button data-haze="off" data-i18n="haze.off"></button>
+        <button data-haze="manual" data-i18n="haze.manual"></button>
+        <button data-haze="pulse" data-i18n="haze.pulse"></button>
+        <button id="ride-boost" class="hold" data-i18n="haze.boost"></button>
+        <button id="ride-walk-on" data-i18n="ride.walk_on"></button>
+        <button id="ride-walk-off" data-i18n="ride.walk_off"></button>
+      </div>
+      <h2 data-i18n="ride.why"></h2>
+      <ul class="ride-why" id="ride-why"></ul>
+      <details class="scene-more">
+        <summary data-i18n="ride.lights"></summary>
+        <p class="muted" data-i18n="ride.lights_help"></p>
+        <ul class="point-list" id="ride-lights"></ul>
+      </details>
     </section>
 
     <!-- PALETTES -->
