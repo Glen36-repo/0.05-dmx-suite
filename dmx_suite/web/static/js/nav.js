@@ -43,6 +43,8 @@ export function init() {
     d.open = remember.get(key, d.open);
     d.addEventListener("toggle", () => remember.set(key, d.open));
   });
-  const page = remember.get("page", "live");
+  const RENAMED = { busk: "override", ride: "autopilot" }; // v4 page names; a screen may remember the old one
+  const saved = remember.get("page", "live");
+  const page = RENAMED[saved] || saved;
   go($(`#page-${page}`) ? page : "live");
 }

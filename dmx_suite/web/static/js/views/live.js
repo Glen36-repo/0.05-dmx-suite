@@ -103,7 +103,7 @@ function render(s) {
   renderHazePanel(h);
 
   grid.update(s.fixtures, s.haze);
-  grid.mark(Object.keys(s.busk?.lights || {})); // lights held by busk buttons
+  grid.mark(Object.keys(s.override?.lights || {})); // lights held by Override buttons
 }
 
 export function init() {

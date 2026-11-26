@@ -1139,7 +1139,7 @@ class App:
         """Live control priority, highest first, and which level is in charge now."""
         e = self.engine
         levels = [("blackout", e.blackout), ("drum_flash", e.rig.profile.master_gate and not e.master),
-                  ("flash_busk", bool(e.held())), ("hold", self.autopilot.st.hold), ("autopilot", self.autopilot.st.on)]
+                  ("flash_override", bool(e.held())), ("hold", self.autopilot.st.hold), ("autopilot", self.autopilot.st.on)]
         top = next((k for k, on in levels if on), "show")
         return {"levels": [k for k, on in levels if on], "top": top}
 
@@ -1516,7 +1516,7 @@ class App:
         or MIDI / OSC (action busk)."""
         panel = self.files.panels.get(panel_key)
         if panel is None:
-            raise ValueError(f"no busk panel {panel_key!r}")
+            raise ValueError(f"no Override panel {panel_key!r}")
         w = panel.widget(wid)
         e, key = self.engine, f"{panel_key}/{wid}"
         present = frozenset(f for f in w.fixtures if f in e.rig.present)
@@ -1689,7 +1689,7 @@ class App:
             "master": e.master,
             "profile": e.rig.profile.summary(),
             "tempo": self.ctl.tempo.status(e.clock()),
-            "busk": self._busk_state(),
+            "override": self._busk_state(),
             "fault": {"message": e.fault, "count": e.faults} if e.fault else None,
             "show_problem": self.show_problem,
             "project": self.project_info(),

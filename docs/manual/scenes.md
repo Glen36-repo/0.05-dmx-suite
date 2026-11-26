@@ -85,7 +85,7 @@ A step scene is made of steps you program by hand, like Daslight: each step is a
 
 Set it for the scene, or per step.
 
-**Live:** busk faders or MIDI faders `step_speed` (0.25× to 4×) and `step_fade` (no fades to 2× fades) change the step scene that's playing.
+**Live:** Override faders or MIDI faders `step_speed` (0.25× to 4×) and `step_fade` (no fades to 2× fades) change the step scene that's playing.
 
 Colours fade; colour wheels and gobos change halfway through a fade; lights the new step doesn't use fade to off. A step scene can also have **effects on top** (e.g. a sparkle over the steps): the normal layers list.
 

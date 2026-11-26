@@ -132,7 +132,7 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
         c.select_scene(a["scene"], int(a.get("step", 0)))
     elif cmd == "speed":
         c.set_speed(float(a["value"]))
-    elif cmd == "busk":
+    elif cmd in ("override", "busk"):  # Override panels ("busk" before v4)
         v = a.get("value")
         return {"result": app.busk(str(a["panel"]), str(a["widget"]), bool(a.get("down", True)),
                                    None if v is None else float(v))}

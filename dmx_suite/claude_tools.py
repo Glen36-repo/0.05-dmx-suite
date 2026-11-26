@@ -79,7 +79,9 @@ SHOW (shows/<name>.yaml): sets; each set has `steps` [{scene, repeats N | hold_s
   energy: low|mid|high, head_mix: [matching, white, contrast], patterns: [all, heads_only,
   bars_only, kit], movement: [random, sweep, static], flash, fades} with `step_s`.
   (Old files with `scenes` + `step_s` still load.) Layers may time effects in `beats`.
-BUSK PANELS (panels.yaml): panels of widgets (colour, flash, solo, effect, go, fader, haze).
+OVERRIDE PANELS (panels.yaml; "busk" before v4): panels of widgets (colour, flash, solo, effect, go, fader, haze)
+  played by hand over the show; Override sits above the show and the autopilot (control priority).
+  MIDI action `override` (panel, widget); `busk` still works.
 SETLIST (setlists/<name>.yaml): songs: [{name, show, set} or {name, scene}, optional master: on/off].
 PALETTES: colours / gobos (DMX value, or per fixture type) / palettes (named colour sets with tags).
 HEAD POINTS (v3, per rig file `positions:`): named aim points, e.g. drum_kit, audience_l, each with a

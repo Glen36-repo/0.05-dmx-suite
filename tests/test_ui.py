@@ -194,7 +194,8 @@ def test_theme_switch(ui):
     assert page.locator("link[href='/static/themes/005/theme.css']").count() == 1
 
 
-PAGES = ("live", "ride", "busk", "scenes", "shows", "review", "palettes", "layout", "fixtures", "heads", "midi", "setup", "files")
+PAGES = ("live", "ride", "override", "scenes", "shows", "review", "palettes", "layout", "fixtures", "heads", "midi", "monitor",
+         "setup", "files")
 
 
 def test_phone_layout_has_bottom_menu(ui):
@@ -371,7 +372,7 @@ def test_mute_and_reorder(ui):
     assert len(data["layers"]) == n and data["layers"][1].get("mute") is True
 
 
-# ------------------------------------------------------------------ shows, setlists, busk (v2 R5)
+# ------------------------------------------------------------------ shows, setlists, Override (v2 R5 busk)
 
 
 def test_edit_a_show_into_steps_with_repeats(ui):
@@ -436,29 +437,29 @@ def test_setlist_editor(ui):
     assert data["songs"][-1]["name"] == "Encore" and data["songs"][-1]["master"] is False
 
 
-def test_make_and_play_a_busk_panel(ui):
+def test_make_and_play_an_override_panel(ui):
     page, app, root, _ = ui
-    go(page, "busk")
-    page.check("#busk-edit")
-    page.wait_for_selector("#busk-editor[data-ready='1']")
+    go(page, "override")
+    page.check("#override-edit")
+    page.wait_for_selector("#override-editor[data-ready='1']")
     page.fill("#panel-key", "band")
-    page.fill("#panel-name", "Band busk")
+    page.fill("#panel-name", "Band override")
     page.click("#panel-new")
     page.select_option("#widget-type", "colour")
     page.click("#widget-add")
     page.select_option("#widget-type", "solo")
     page.click("#widget-add")
     page.click("#panels-save")
-    page.wait_for_function("document.querySelectorAll('#busk [data-widget]').length === 2")
+    page.wait_for_function("document.querySelectorAll('#override [data-widget]').length === 2")
     assert (root / "panels.yaml").exists() and "band" in app.files.panels
-    page.uncheck("#busk-edit")
-    page.click("#busk [data-widget=colour1]")  # a latch: on
-    page.wait_for_selector("#busk [data-widget=colour1].on")
+    page.uncheck("#override-edit")
+    page.click("#override [data-widget=colour1]")  # a latch: on
+    page.wait_for_selector("#override [data-widget=colour1].on")
     go(page, "live")
     page.wait_for_selector("#live-grid .fx.held")  # the held lights are marked on the layout
-    go(page, "busk")
-    page.click("#busk-release")
-    page.wait_for_selector("#busk [data-widget=colour1]:not(.on)")
+    go(page, "override")
+    page.click("#override-release")
+    page.wait_for_selector("#override [data-widget=colour1]:not(.on)")
     assert app.engine.held() == []
 
 

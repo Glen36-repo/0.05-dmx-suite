@@ -166,7 +166,7 @@ def load_panels(path: Path, patch: Patch, pal: Palettes, scenes: dict, shows: di
 def _busk_target(params: dict, panels: dict[str, Panel]) -> None:
     panel = panels.get(str(params.get("panel")))
     if panel is None:
-        raise ConfigError(f"MIDI map busk: unknown panel {params.get('panel')!r}")
+        raise ConfigError(f"MIDI map override: unknown panel {params.get('panel')!r}")
     panel.widget(str(params.get("widget")))
 
 

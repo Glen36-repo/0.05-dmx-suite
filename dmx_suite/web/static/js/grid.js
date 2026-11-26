@@ -472,7 +472,7 @@ export class LightGrid {
     this.onChange("select");
   }
 
-  // a dashed outline on lights something is holding (busk buttons)
+  // a dashed outline on lights something is holding (Override buttons)
   mark(ids) {
     const set = new Set(ids);
     for (const [id, it] of Object.entries(this.items)) it.g.classList.toggle("held", set.has(id));

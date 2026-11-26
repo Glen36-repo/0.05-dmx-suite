@@ -9,7 +9,7 @@ Pages are filled in as each release lands (v2, then v3). Where a page says "comi
 3. [Light layout and groups](layout.md): arranging the lights on screen, making groups
 4. [Scenes](scenes.md): colours, effects, positions, layers
 5. [Shows and setlists](shows.md): steps, repeats, fades, auto shows, setlists
-6. [Busking](busking.md): live buttons and faders
+6. [Override panels](override.md): live buttons and faders
 7. [MIDI and OSC](midi-osc.md): named inputs and devices, mapping pedals, drums and controllers
 8. [Moving heads and head points](heads.md): aiming heads, named points per rig
 9. [Colours and palettes](palettes.md): the colour wheel, named colours, palettes

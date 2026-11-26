@@ -274,9 +274,9 @@ def test_priority_levels(app):
     app.autopilot.set_on(True, app.t.t)
     assert app.priority()["top"] == "autopilot"
     app.flash_fx("blinder", True)
-    assert app.priority()["top"] == "flash_busk"
+    assert app.priority()["top"] == "flash_override"
     app.engine.set_blackout(True)
-    assert app.priority()["top"] == "blackout" and app.priority()["levels"][:2] == ["blackout", "flash_busk"]
+    assert app.priority()["top"] == "blackout" and app.priority()["levels"][:2] == ["blackout", "flash_override"]
 
 
 def test_release_crossfades_back(app):

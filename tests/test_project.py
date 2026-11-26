@@ -120,8 +120,8 @@ def test_every_ui_text_key_exists():
     used |= {f"shows.mix_{m}" for m in ("matching", "white", "contrast")}
     used |= {f"shows.pattern_{p}" for p in ("all", "heads_only", "bars_only", "kit")}
     used |= {f"shows.move_{m}" for m in ("random", "sweep", "static")}
-    used |= {f"busk.type_{k}" for k in ("colour", "flash", "solo", "effect", "go", "fader", "haze")}
-    used |= {f"busk.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
+    used |= {f"override.type_{k}" for k in ("colour", "flash", "solo", "effect", "go", "fader", "haze")}
+    used |= {f"override.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
     used |= {f"wizard.{s}_{x}" for s in ("interface", "lights", "profile", "starter", "pin") for x in ("title", "help")}
     used |= {f"wizard.drv_{d}" for d in ("node", "usb_dmx_open", "usb_dmx_pro")}
     # v3.1
@@ -142,7 +142,7 @@ def test_every_ui_text_key_exists():
     used |= {f"ride.bank_{b}" for b in ("move", "colour", "drum")} | {"ride.autopilot_on"}
     used |= {f"ride.class_{c}" for c in ("head", "wash", "pixel", "strobe", "effect")}
     used |= {f"ride.fader_{k}" for k in ("speed", "fade", "fan", "size", "shift")}
-    used |= {f"ride.priority_{k}" for k in ("blackout", "drum_flash", "flash_busk", "hold", "autopilot", "show")}
+    used |= {f"ride.priority_{k}" for k in ("blackout", "drum_flash", "flash_override", "hold", "autopilot", "show")}
     used |= {"review.banned_toast", "review.rated"}
     # v4
     used |= {f"layout.need_{n}" for n in ("one", "two", "three", "pixels")}

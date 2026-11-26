@@ -18,12 +18,12 @@ Type `help` at the `dmx>` prompt, or open http://localhost:8505/ for the screens
 
 ## What's where
 
-- **Show file (`.dms`):** your fixtures, rigs, scenes, shows, setlists, busk panels and MIDI maps in one file. Every change is saved into it straight away; back it up like any document (OneDrive does this for you). Double-click a `.dms` to open it. On the **Files** page: Open, Save as, New from starter show, Download / Upload (from a phone) and recent files, plus undo and redo for every change since the app started, and the backups. Older versions kept a show folder instead; that still works, and Files → Save as makes a `.dms` of it.
+- **Show file (`.dms`):** your fixtures, rigs, scenes, shows, setlists, Override panels and MIDI maps in one file. Every change is saved into it straight away; back it up like any document (OneDrive does this for you). Double-click a `.dms` to open it. On the **Files** page: Open, Save as, New from starter show, Download / Upload (from a phone) and recent files, plus undo and redo for every change since the app started, and the backups. Older versions kept a show folder instead; that still works, and Files → Save as makes a `.dms` of it.
 - **App data** (`%LOCALAPPDATA%\0.05 DMX Suite`): the log file and where the show was up to, for carrying on after a restart.
 
 ## Finding your way round
 
-The menu on the left is grouped: **Perform** (Live, Ride, Busk), **Build** (Scenes, Shows, Review, Palettes), **Rig** (Layout, Fixtures, Heads, MIDI) and **System** (Setup, Files). ☰ folds it to icons. On a phone it's a bar along the bottom with Live, Ride, Busk, Scenes and Shows; **More** opens the rest. Folding sections (Addresses, the MIDI mapping table, the generator) stay as you last left them on that screen.
+The menu on the left is grouped: **Perform** (Live, Ride, Override), **Build** (Scenes, Shows, Review, Palettes), **Rig** (Layout, Fixtures, Heads, MIDI) and **System** (Setup, Files). ☰ folds it to icons. On a phone it's a bar along the bottom with Live, Ride, Override, Scenes and Shows; **More** opens the rest. Folding sections (Addresses, the MIDI mapping table, the generator) stay as you last left them on that screen.
 
 ## Phones and the PIN
 

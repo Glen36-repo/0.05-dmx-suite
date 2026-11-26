@@ -391,7 +391,7 @@ class ShowStore:
         return out
 
     def colour_users(self, name: str) -> list[str]:
-        """Show files that use named colour `name` (scenes, looks, busk panels, palettes...)."""
+        """Show files that use named colour `name` (scenes, looks, Override panels, palettes...)."""
         def count(d: Any) -> int:
             if isinstance(d, dict) and "colours" in d and isinstance(d.get("colours"), dict):
                 d = {k: v for k, v in d.items() if k != "colours"}  # palettes.yaml's own definitions
@@ -571,7 +571,7 @@ class ShowStore:
         return self.apply({p: self.text_for(p, data)}, f"delete point {name} from rig {rig}")
 
     def rename_point(self, old: str, new: str) -> str:
-        """Rename a point in every rig and every scene, look, show and busk panel that names it."""
+        """Rename a point in every rig and every scene, look, show and Override panel that names it."""
         self._check_name(new)
         changes: dict[Path, str | None] = {}
         found = False

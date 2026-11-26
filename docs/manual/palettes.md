@@ -2,7 +2,7 @@
 
 ## The colour wheel
 
-Wherever you pick a colour (scene builder, busk colour buttons, the Palettes page), the **◐** button opens the colour wheel:
+Wherever you pick a colour (scene builder, Override colour buttons, the Palettes page), the **◐** button opens the colour wheel:
 
 - the wheel sets hue and saturation; the slider sets brightness; type a hex value or RGB 0-255 if you know it
 - **White**, **Amber** and **UV** sliders appear when the lights you're colouring have those emitters

@@ -37,7 +37,7 @@
     <div class="menu-group" data-i18n="menu.group_perform"></div>
     <button data-page="live" class="on"><span class="ic">◉</span><span class="lbl" data-i18n="menu.live"></span></button>
     <button data-page="ride"><span class="ic">◎</span><span class="lbl" data-i18n="menu.ride"></span></button>
-    <button data-page="busk"><span class="ic">◍</span><span class="lbl" data-i18n="menu.busk"></span></button>
+    <button data-page="override"><span class="ic">◍</span><span class="lbl" data-i18n="menu.override"></span></button>
     <div class="menu-group" data-i18n="menu.group_build"></div>
     <button data-page="scenes"><span class="ic">◆</span><span class="lbl" data-i18n="menu.scenes"></span></button>
     <button data-page="shows"><span class="ic">▶</span><span class="lbl" data-i18n="menu.shows"></span></button>
@@ -369,28 +369,28 @@
       <button id="song-add" data-i18n="setlists.add_song"></button>
     </section>
 
-    <!-- BUSK -->
-    <section id="page-busk" class="page">
+    <!-- OVERRIDE (v3 "busk") -->
+    <section id="page-override" class="page">
       <div class="row wrap">
         <select id="panel-pick"></select>
-        <button id="busk-release" class="danger" data-i18n="busk.release_all"></button>
-        <label class="check"><input type="checkbox" id="busk-edit"><span data-i18n="busk.edit"></span></label>
+        <button id="override-release" class="danger" data-i18n="override.release_all"></button>
+        <label class="check"><input type="checkbox" id="override-edit"><span data-i18n="override.edit"></span></label>
       </div>
-      <div class="busk" id="busk"></div>
-      <div id="busk-editor" class="hidden">
+      <div class="override-pads" id="override"></div>
+      <div id="override-editor" class="hidden">
         <div class="row wrap">
-          <input id="panel-key" maxlength="40" data-i18n-placeholder="busk.panel_key">
-          <input id="panel-name" maxlength="60" data-i18n-placeholder="busk.panel_name">
-          <label class="field-inline"><span data-i18n="busk.release_fade"></span><input id="panel-fade" type="number" min="0" max="30" step="0.1" class="narrow"></label>
-          <button id="panel-new" data-i18n="busk.new_panel"></button>
-          <button id="panel-del" class="danger-text" data-i18n="busk.delete_panel"></button>
+          <input id="panel-key" maxlength="40" data-i18n-placeholder="override.panel_key">
+          <input id="panel-name" maxlength="60" data-i18n-placeholder="override.panel_name">
+          <label class="field-inline"><span data-i18n="override.release_fade"></span><input id="panel-fade" type="number" min="0" max="30" step="0.1" class="narrow"></label>
+          <button id="panel-new" data-i18n="override.new_panel"></button>
+          <button id="panel-del" class="danger-text" data-i18n="override.delete_panel"></button>
         </div>
         <ol class="widgets-edit" id="widgets-edit"></ol>
         <div class="row wrap">
           <select id="widget-type"></select>
-          <button id="widget-add" data-i18n="busk.add_widget"></button>
-          <button id="panels-save" data-i18n="busk.save"></button>
-          <span class="muted" id="busk-state"></span>
+          <button id="widget-add" data-i18n="override.add_widget"></button>
+          <button id="panels-save" data-i18n="override.save"></button>
+          <span class="muted" id="override-state"></span>
         </div>
       </div>
     </section>

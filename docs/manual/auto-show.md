@@ -31,7 +31,7 @@ No `activity` hits for 4 seconds = the song has ended: the lights fade to a calm
 
 ### Control priority
 
-Highest first: **1** blackout, **2** MASTER off (drum flash), **3** Flash FX and busk buttons, **4** hold (the look stays, the autopilot stops changing), **5** the autopilot or the running show. Pedals: `autopilot`, `hold`, `look_next`, `look_prev`, `mood`, `walk_on`, `walk_off`, plus `ride_fx`, `ride_palette`, `palette_lock` and the faders `ride_speed`, `ride_fade`, `ride_fan`, `ride_size`, `ride_shift`.
+Highest first: **1** blackout, **2** MASTER off (drum flash), **3** Flash FX and Override buttons, **4** hold (the look stays, the autopilot stops changing), **5** the autopilot or the running show. Pedals: `autopilot`, `hold`, `look_next`, `look_prev`, `mood`, `walk_on`, `walk_off`, plus `ride_fx`, `ride_palette`, `palette_lock` and the faders `ride_speed`, `ride_fade`, `ride_fan`, `ride_size`, `ride_shift`.
 
 Set `release_fade_s` in the rig file (e.g. `0.5`) and letting go of a higher level fades back to the one below (MASTER back on, blackout off, a held Flash FX) instead of cutting.
 
