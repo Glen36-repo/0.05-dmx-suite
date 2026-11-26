@@ -11,7 +11,7 @@ from ..engine import Engine
 from .map import ACTIONS, Mapping, MidiMap, validate
 from .monitor import MidiMonitor, MonitorEntry
 
-PHASE4 = {"select_show", "select_set", "next_song"}
+SHOW_ACTIONS = {"select_show", "select_set", "select_scene", "next_step", "next_song", "prev_song", "tap_tempo"}
 
 
 @dataclass
@@ -41,8 +41,9 @@ class Incoming:
 
 
 class MidiRouter:
-    def __init__(self, engine: Engine, midimap: MidiMap, monitor: MidiMonitor | None = None) -> None:
+    def __init__(self, engine: Engine, midimap: MidiMap, monitor: MidiMonitor | None = None, shows: Any = None) -> None:
         self.engine = engine
+        self.shows = shows  # ShowController
         self.map = midimap
         self.monitor = monitor or MidiMonitor()
         self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None] | None = None
@@ -127,8 +128,8 @@ class MidiRouter:
             vel = m.value if m.type == "note" else 127
             ok = e.flash(fixtures, vel, p.get("colour", "show"), int(p.get("length_ms", 100)), float(p.get("min_level", 0)))
             return f"flash {','.join(p['fixtures'])} vel {vel}" if ok else "flash ignored (MASTER on)"
-        if a in PHASE4:
-            return f"{mp.describe()} (not available until phase 4)"
+        if a in SHOW_ACTIONS:
+            return self._show_action(a, p)
         simple = {
             "master_on": lambda: e.set_master(True),
             "master_off": lambda: e.set_master(False),
@@ -141,8 +142,34 @@ class MidiRouter:
             "haze_pulse": lambda: e.haze_mode("pulse"),
         }
         simple[a]()
+        if a.startswith("master") and self.shows is not None:
+            self.shows.save()  # a restart comes back with the same MASTER state
         if a == "master_toggle":
             return f"MASTER {'on' if e.master else 'off'}"
         if a == "blackout_toggle":
             return f"blackout {'on' if e.blackout else 'off'}"
         return a
+
+    def _show_action(self, a: str, p: dict[str, Any]) -> str:
+        c = self.shows
+        if c is None:
+            return f"{a}: no show control running"
+        try:
+            if a == "tap_tempo":
+                bpm = c.tap()
+                return f"tap: {bpm:.0f} BPM" if bpm else "tap"
+            if a == "select_show":
+                c.select_show(p["show"], p.get("set"))
+            elif a == "select_set":
+                c.select_set(p["set"])
+            elif a == "select_scene":
+                c.select_scene(p["scene"])
+            elif a == "next_step":
+                c.next_step()
+            elif a == "next_song":
+                c.next_song()
+            elif a == "prev_song":
+                c.prev_song()
+        except Exception as e:  # a bad pedal press must never stop the show
+            return f"{a} failed: {e}"
+        return c.describe()

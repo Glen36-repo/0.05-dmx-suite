@@ -142,6 +142,12 @@ class Engine:
             self.look = look
         self._changed()
 
+    def set_source(self, source: Callable[[float], Look], scene: Scene | None = None) -> None:
+        """Play any look source (a show, a scene with tap tempo). The rule layer still applies."""
+        with self.lock:
+            self.source, self.scene = source, scene
+        self._changed()
+
     def set_scene(self, scene: Scene) -> None:
         """Play a scene from its start. The rule layer still applies to every frame."""
         with self.lock:

@@ -279,6 +279,13 @@ Decided 26/11/2026:
 | Missing fixtures in a scene | Skipped for now; moving their effects to fixtures that are present comes with auto shows (phase 4) |
 | Fixture import | Open Fixture Library JSON first (`dmx-suite import-ofl`); always lands as `verified: false` |
 | Setup page | Console commands for now; the browser page comes in phase 5 |
+| Auto shows | Generated per step from a style (colours, energy, head mix, patterns, movement), deterministic per seed, checked against the hard rules like any scene |
+| Set steps | Fixed timers (`step_s`); tap tempo changes effect speed only, never step length |
+| Tap tempo | Effects are timed at 120 BPM reference; a tapped tempo (pedal or a mapped drum note) scales effect time and lines up on the tap |
+| Set pedal outside a show | LOW / MID / HIGH goes to the current show if it has that set, otherwise the first show that does |
+| Resume after restart | Live runs save show/set/setlist song/MASTER to `shows/.state.json` on every change; restored on start if under 12 hours old |
+| Missing fixtures in shows | Auto shows only use fixtures in the rig; hand-written scene layers can name a `fallback` group |
+| Kick light in auto shows | White most steps, the show colour about 30 % of steps |
 
 Open:
 
@@ -288,6 +295,7 @@ Open:
 - [ ] MH-A tilt limit value (placeholder 75 % in `shows/rigs/full.yaml`)
 - [ ] Daslight import: need a sample Daslight show/patch file to read its format
 - [ ] Palette positions and gobo values (`shows/palettes.yaml`): set at rehearsal
+- [ ] Rehearsal: tune auto-show styles (colours, step times, energy) and write the real setlist
 - [ ] 0.05 brand assets: logo files (SVG preferred), colours, font
 - [ ] Unit DMX (U183) wiring: confirm TX/RX pins and whether a direction (DE/RE) pin is needed, before first flash (`firmware/include/config.h`)
 - [ ] Node status: CoreS3 screen (0.05 logo, status) not built yet; identify on the node only logs

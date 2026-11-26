@@ -63,8 +63,8 @@ def test_haze_boost_held_on_cc(engine, midi, view):
     assert midi.cc(80, 127).startswith("haze boost refused")  # cooldown
 
 
-def test_phase4_actions_accepted_but_inactive(midi):
-    assert "phase 4" in midi.program(3)
+def test_show_actions_without_show_control(midi):
+    assert "no show control" in midi.program(3)
 
 
 def test_monitor_records_results(router, midi):
