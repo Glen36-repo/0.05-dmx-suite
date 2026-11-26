@@ -259,8 +259,16 @@ Decided 26/11/2026:
 | Presets | Rig configs (sizes / layouts), not venues |
 | Show files | OneDrive Music folder, next to the Daslight files |
 | Other Daslight features | None needed |
+| USB protocol | `0xA5` framing with CRC-16, full spec in `docs/PROTOCOL.md` |
+| Node ↔ receiver radio | ESP-NOW broadcast, 512 channels as 3 chunks, no reassembly wait |
+| Pairing key | Compiled into all firmware (build flag); radio packets carry a hash of it. Filters other gear, not encryption |
+| Blackout | Sticky panic: stays black, does not time out into the fallback look |
+| Unassigned receivers | Follow universe 0 so a fresh rig works before naming |
+| Receiver with no node | Holds the last frame 5 s, then black |
 
 Open:
 
 - [ ] Drum flash map: which pads flash which fixtures (later)
 - [ ] 0.05 brand assets: logo files (SVG preferred), colours, font
+- [ ] Unit DMX (U183) wiring: confirm TX/RX pins and whether a direction (DE/RE) pin is needed, before first flash (`firmware/include/config.h`)
+- [ ] Node status: CoreS3 screen (0.05 logo, status) not built yet; identify on the node only logs
