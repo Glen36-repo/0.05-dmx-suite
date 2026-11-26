@@ -3,48 +3,48 @@ every frame. Everything is time-based (period_s), so the same scene runs at any 
 
     name: Blue kit
     show_colour: blue                     # drum flashes use this (palette name or colour)
+    length_s: 8                           # one cycle (shows repeat scenes by it; default: longest period)
     layers:
       - {fixtures: [bars], effect: pixel_chase, colour: blue, background: off, width: 3, period_s: 2}
       - {fixtures: [washes], colour: blue}
       - {fixtures: [movers], effect: colour_chase, colours: [blue, white], period_s: 4, spread: 0.5}
       - {fixtures: [movers], position: drum_kit, gobo: dots}
-      - {fixtures: [movers], effect: random_move, period_s: 6, dark_move_s: 1.0}
+      - {fixtures: [all], effect: linear_wave, colour: white, angle: 45, level: 0.6, blend: max}
 
-Timing: `period_s` is one full cycle. `spread` (0-1) is how much of a cycle is spread across the
-layer's fixtures in order: 0 = all in step, 1 = evenly round the whole cycle.
+Effects come from the registry (effects/); each lists its own settings. Every effect that runs
+across several lights also takes `mapping` (order | spatial), `direction`, `angle` and `groups_of`.
+`period_s` is one full cycle; `spread` is how much of a cycle lies across the layer's lights.
 
-Layers apply in order; a later layer overrides what an earlier one set on the same fixture.
+Layers apply in order. `blend` says how a layer's colour meets what's under it: replace (default),
+max or add; `level` (0-1) is how strongly. `mute: true` skips a layer. Static settings (colour,
+position, gobo, ...) can sit alongside an effect, except a position with a movement effect.
 No layer can set haze (rule 5) or move a colour-only head (rule 7). A layer may set `intensity`
 (0-1) only where the rig's profile doesn't make MASTER own on/off (rule 1, see profile.py).
-Fixtures missing from the active rig are skipped.
+Fixtures missing from the active rig are skipped, or moved to the layer's `fallback` group.
 """
 
 from __future__ import annotations
 
-import math
-import random
-import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import effects
+from .effects import BLENDS, ParseCtx, Run, Unit, place_units
+from .effects.base import num as _num_any
 from .fixtures import EMITTERS, ConfigError, Patch
+from .layout import cell_positions, full_layout
 from .look import FORBIDDEN, Colour, FixtureLook, Look, LookError
 from .palettes import Palettes
 from .rig import Rig
 from .versions import read_doc
 
-EFFECTS = {
-    "colour_chase": {"colours", "period_s", "spread", "fade"},
-    "pixel_chase": {"colour", "background", "width", "tail", "period_s", "bounce", "reverse"},
-    "flash": {"colour", "rate_hz", "duty", "spread"},
-    "sweep": {"from", "to", "period_s", "spread", "speed"},
-    "random_move": {"period_s", "pan", "tilt", "dark_move_s", "stagger", "speed", "seed"},
-}
-MOVEMENT = {"sweep", "random_move"}
+# effect name -> its setting keys, and the effects that move heads (for older callers)
+EFFECTS = {name: e.keys() for name, e in effects.REGISTRY.items()}
+MOVEMENT = {name for name, e in effects.REGISTRY.items() if e.movement}
 STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe"}
-COMMON = {"fixtures", "effect", "name", "fallback", "intensity"}
+COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute"}
 
 
 # --------------------------------------------------------------------------- model
@@ -57,6 +57,13 @@ class Layer:
     params: dict[str, Any]
     name: str = ""
     fallback: list[str] = field(default_factory=list)  # used when none of `fixtures` is in the rig
+    level: float = 1.0  # how strongly this layer's colour counts (0-1)
+    blend: str = "replace"  # replace | max | add
+    mute: bool = False
+
+    def period(self) -> float | None:
+        e = effects.get(self.effect) if self.effect else None
+        return e.period(self.params) if e else None
 
 
 @dataclass
@@ -64,10 +71,19 @@ class Scene:
     name: str
     layers: list[Layer]
     show_colour: Colour = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
+    length_s: float | None = None  # one cycle, if set in the file
 
     @property
     def uses_intensity(self) -> bool:
         return any("intensity" in ly.params for ly in self.layers)
+
+    @property
+    def length(self) -> float | None:
+        """Seconds for one cycle: `length_s`, else the longest effect period (None if nothing moves)."""
+        if self.length_s:
+            return self.length_s
+        periods = [p for ly in self.layers if not ly.mute and (p := ly.period())]
+        return max(periods) if periods else None
 
 
 # --------------------------------------------------------------------------- parsing / validation
@@ -80,17 +96,7 @@ def _forbid(d: dict, what: str) -> None:
 
 
 def _num(v: Any, what: str, lo: float, hi: float | None = None) -> float:
-    f = float(v)
-    if f < lo or (hi is not None and f > hi):
-        raise LookError(f"{what} must be {lo}-{hi}" if hi is not None else f"{what} must be >= {lo}")
-    return f
-
-
-def _range(v: Any, what: str) -> tuple[float, float]:
-    lo, hi = (_num(x, what, 0, 1) for x in v)
-    if lo > hi:
-        raise LookError(f"{what}: min above max")
-    return (lo, hi)
+    return _num_any(v, what, lo, hi)
 
 
 def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
@@ -101,15 +107,18 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     fids = patch.resolve(names)
     fb = patch.resolve(d["fallback"] if isinstance(d.get("fallback"), list) else [d["fallback"]]) if "fallback" in d else []
     targets = fids + [f for f in fb if f not in fids]  # params cover both, checks apply to both
-    eff = d.get("effect")
-    allowed = COMMON | (EFFECTS[eff] if eff in EFFECTS else STATIC_KEYS)
-    if eff is not None and eff not in EFFECTS:
-        raise LookError(f"{what}: unknown effect {eff!r}; one of {sorted(EFFECTS)}")
-    bad = set(d) - allowed
+    name = d.get("effect")
+    eff = effects.get(name) if name is not None else None
+    if name is not None and eff is None:
+        raise LookError(f"{what}: unknown effect {name!r}; one of {sorted(effects.REGISTRY)}")
+    eff_keys = eff.keys() if eff else set()
+    bad = set(d) - (COMMON | STATIC_KEYS | eff_keys)
     if bad:
         raise LookError(f"{what}: unknown keys {sorted(bad)}")
+    if eff is not None and eff.movement and "position" in d:
+        raise LookError(f"{what}: a position can't go with the {name} movement effect; use a separate layer")
 
-    moves = eff in MOVEMENT or "position" in d
+    moves = (eff is not None and eff.movement) or "position" in d
     if moves:
         stuck = [f for f in targets if patch.fixtures[f].type.colour_only]
         if stuck:
@@ -119,12 +128,12 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
             raise LookError(f"{what}: {', '.join(no_pt)} have no pan/tilt")
 
     p: dict[str, Any] = {}
-    # static attributes
-    if "colour" in d:
+    # static attributes (an effect's own setting of the same name wins)
+    if "colour" in d and "colour" not in eff_keys:
         p["colour"] = pal.colour(d["colour"], what)
     if "pixels" in d:
         p["pixels"] = [pal.colour(c, f"{what} pixel {i + 1}") for i, c in enumerate(d["pixels"])]
-    if "position" in d and eff is None:
+    if "position" in d:
         p["position"] = {f: pal.position(d["position"], f, what) for f in targets}
     if "gobo" in d:
         p["gobo"] = {f: pal.gobo(d["gobo"], patch.fixtures[f].type.key, what) for f in targets}
@@ -136,51 +145,18 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
         p["intensity"] = _num(d["intensity"], f"{what} intensity", 0, 1)
     if "speed" in d:
         p["speed"] = _num(d["speed"], f"{what} speed", 0, 1)
-
-    # effect parameters
-    if eff == "colour_chase":
-        cols = d.get("colours") or []
-        if len(cols) < 2:
-            raise LookError(f"{what}: colour_chase needs at least 2 colours")
-        p["colours"] = [pal.colour(c, what) for c in cols]
-        p["period_s"] = _num(d.get("period_s", 4), f"{what} period_s", 0.05)
-        p["spread"] = _num(d.get("spread", 0), f"{what} spread", 0, 1)
-        p["fade"] = bool(d.get("fade", False))
-    elif eff == "pixel_chase":
-        p.setdefault("colour", pal.colour("white", what))
-        p["background"] = pal.colour(d.get("background", "off"), what)
-        p["width"] = int(_num(d.get("width", 1), f"{what} width", 1))
-        p["tail"] = int(_num(d.get("tail", 0), f"{what} tail", 0))
-        p["period_s"] = _num(d.get("period_s", 2), f"{what} period_s", 0.05)
-        p["bounce"] = bool(d.get("bounce", False))
-        p["reverse"] = bool(d.get("reverse", False))
-    elif eff == "flash":
-        p.setdefault("colour", pal.colour("white", what))
-        p["rate_hz"] = _num(d.get("rate_hz", 4), f"{what} rate_hz", 0.1, 25)
-        p["duty"] = _num(d.get("duty", 0.5), f"{what} duty", 0.01, 0.99)
-        p["spread"] = _num(d.get("spread", 0), f"{what} spread", 0, 1)
-    elif eff == "sweep":
-        if "from" not in d or "to" not in d:
-            raise LookError(f"{what}: sweep needs from and to positions")
-        p["from"] = {f: pal.position(d["from"], f, what) for f in targets}
-        p["to"] = {f: pal.position(d["to"], f, what) for f in targets}
-        p["period_s"] = _num(d.get("period_s", 8), f"{what} period_s", 0.2)
-        p["spread"] = _num(d.get("spread", 0), f"{what} spread", 0, 1)
-    elif eff == "random_move":
-        p["period_s"] = _num(d.get("period_s", 6), f"{what} period_s", 0.5)
-        p["pan"] = _range(d.get("pan", [0, 1]), f"{what} pan")
-        p["tilt"] = _range(d.get("tilt", [0, 1]), f"{what} tilt")
-        p["dark_move_s"] = _num(d.get("dark_move_s", 0), f"{what} dark_move_s", 0)
-        if p["dark_move_s"] >= p["period_s"]:
-            raise LookError(f"{what}: dark_move_s must be shorter than period_s")
-        p["stagger"] = bool(d.get("stagger", True))  # independent timing per head
-        p["seed"] = str(d.get("seed", what))
-    return Layer(fids, eff, p, d.get("name", ""), fb)
+    if eff is not None:
+        p.update(eff.parse(d, ParseCtx(patch, pal, targets, what)))
+    blend = d.get("blend", "replace")
+    if blend not in BLENDS:
+        raise LookError(f"{what}: blend must be one of {', '.join(BLENDS)}")
+    level = _num(d.get("level", 1.0), f"{what} level", 0, 1)
+    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)))
 
 
 def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") -> Scene:
     _forbid(data, name)
-    bad = set(data) - {"name", "show_colour", "layers"}
+    bad = set(data) - {"name", "show_colour", "layers", "length_s"}
     if bad:
         raise LookError(f"{name}: unknown keys {sorted(bad)}")
     layers = [parse_layer(d or {}, patch, pal, f"{name} layer {i + 1}") for i, d in enumerate(data.get("layers") or [])]
@@ -189,6 +165,8 @@ def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") ->
     sc = Scene(data.get("name", name), layers)
     if "show_colour" in data:
         sc.show_colour = pal.colour(data["show_colour"], f"{name} show_colour")
+    if "length_s" in data:
+        sc.length_s = _num(data["length_s"], f"{name} length_s", 0.1)
     return sc
 
 
@@ -207,19 +185,6 @@ def load_scenes(folder: str | Path, patch: Patch, pal: Palettes) -> dict[str, Sc
 # --------------------------------------------------------------------------- playback
 
 
-def _mix(a: Colour, b: Colour, f: float) -> Colour:
-    keys = set(a) | set(b)
-    return {k: a.get(k, 0.0) * (1 - f) + b.get(k, 0.0) * f for k in keys}
-
-
-def _scale(c: Colour, f: float) -> Colour:
-    return {k: v * f for k, v in c.items()}
-
-
-def _seed(*parts: Any) -> int:
-    return zlib.crc32("|".join(map(str, parts)).encode())
-
-
 class ScenePlayer:
     """Callable(now) -> Look. Starts its clock when created."""
 
@@ -231,20 +196,22 @@ class ScenePlayer:
         self.timebase = timebase or (lambda now: now)  # tap tempo: effect time vs real time
         self.start = self.timebase(start)
         present = set(rig.present)
-        self._layers = []
+        self._layers: list[tuple[Layer, list[str]]] = []
         for ly in scene.layers:
             fids = [f for f in ly.fixtures if f in present]
             if not fids:  # shows adapt: move the layer to what's there
                 fids = [f for f in ly.fallback if f in present]
             self._layers.append((ly, fids))
+        self._units: dict[tuple[int, bool], list[Unit]] = {}
+        self._cells: dict[str, list[tuple[float, float]]] | None = None
 
     def __call__(self, now: float) -> Look:
         t = self.timebase(now) - self.start
         look = Look(show_colour=self.scene.show_colour)
         dark: set[str] = set()
-        for layer, fids in self._layers:
-            if fids:
-                self._apply(layer, fids, t, look, dark)
+        for i, (layer, fids) in enumerate(self._layers):
+            if fids and not layer.mute:
+                self._apply(i, layer, fids, t, look, dark)
         for f in dark:  # heads move between positions dark
             fl = look.fixtures.get(f)
             if fl:
@@ -254,16 +221,60 @@ class ScenePlayer:
     def _fl(self, look: Look, fid: str) -> FixtureLook:
         return look.fixtures.setdefault(fid, FixtureLook())
 
-    def _apply(self, ly: Layer, fids: list[str], t: float, look: Look, dark: set[str]) -> None:
+    def _pixels(self, fid: str) -> int:
+        return self.rig.patch.fixtures[fid].type.pixels
+
+    def _cell_map(self) -> dict[str, list[tuple[float, float]]]:
+        """Where every light's cells are on the layout (spatial effects), worked out once."""
+        if self._cells is None:
+            layout = full_layout(self.rig)
+            self._cells = {fid: cell_positions(pl, self._pixels(fid)) for fid, pl in layout.items()}
+        return self._cells
+
+    def _units_for(self, i: int, per_pixel: bool) -> list[Unit]:
+        key = (i, per_pixel)
+        if key not in self._units:
+            layer, fids = self._layers[i]
+            cells = self._cell_map()
+            units: list[Unit] = []
+            raw: list[tuple[float, float]] = []
+            for f in fids:
+                where = cells.get(f) or [(0.0, 0.0)]
+                n = self._pixels(f)
+                if per_pixel and n:
+                    for px in range(n):
+                        units.append(Unit(f, px, len(units)))
+                        raw.append(where[px] if px < len(where) else where[0])
+                else:
+                    units.append(Unit(f, None, len(units)))
+                    raw.append((sum(x for x, _ in where) / len(where), sum(y for _, y in where) / len(where)))
+            if raw:  # one scale both ways so angles stay true
+                xs, ys = [x for x, _ in raw], [y for _, y in raw]
+                span = max(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
+                for un, (x, y) in zip(units, raw):
+                    un.x, un.y = (x - min(xs)) / span, (y - min(ys)) / span
+            place_units(units, layer.params, f"{self.scene.name}|{i}")
+            self._units[key] = units
+        return self._units[key]
+
+    def _apply(self, i: int, ly: Layer, fids: list[str], t: float, look: Look, dark: set[str]) -> None:
         p = ly.params
-        n = len(fids)
-        # static attributes (also allowed alongside an effect's own keys)
+        run = Run(t, fids, look, dark, self._pixels, lambda per_pixel: self._units_for(i, per_pixel),
+                  ly.blend, ly.level, f"{self.scene.name}|{i}")
+        plain = ly.blend == "replace" and ly.level >= 1
+        # static attributes (also allowed alongside an effect's own settings)
         for f in fids:
             fl = self._fl(look, f)
-            if ly.effect is None and "colour" in p:
-                fl.colour, fl.pixels = dict(p["colour"]), None
+            if "colour" in p and (ly.effect is None or "colour" not in EFFECTS[ly.effect]):
+                if plain:
+                    fl.colour, fl.pixels = dict(p["colour"]), None
+                else:
+                    run.set_colour(f, p["colour"])
             if "pixels" in p:
-                fl.pixels = [dict(c) for c in p["pixels"]]
+                if plain:
+                    fl.pixels = [dict(c) for c in p["pixels"]]
+                else:
+                    run.set_pixels(f, [dict(c) for c in p["pixels"]])
             if "position" in p:
                 fl.pan, fl.tilt = p["position"][f]
             if "gobo" in p:
@@ -276,79 +287,8 @@ class ScenePlayer:
                 fl.speed = p["speed"]
             if "intensity" in p:
                 fl.intensity = p["intensity"]
-
-        eff = ly.effect
-        if eff == "colour_chase":
-            cols, k = p["colours"], len(p["colours"])
-            for i, f in enumerate(fids):
-                phase = (t / p["period_s"] + p["spread"] * i / n) % 1.0
-                pos = phase * k
-                idx, frac = int(pos) % k, pos - int(pos)
-                c = _mix(cols[idx], cols[(idx + 1) % k], frac) if p["fade"] else cols[idx]
-                fl = self._fl(look, f)
-                fl.colour, fl.pixels = dict(c), None
-        elif eff == "pixel_chase":
-            self._pixel_chase(p, fids, t, look)
-        elif eff == "flash":
-            for i, f in enumerate(fids):
-                phase = (t * p["rate_hz"] + p["spread"] * i / n) % 1.0
-                fl = self._fl(look, f)
-                fl.colour, fl.pixels = (dict(p["colour"]) if phase < p["duty"] else {}), None
-        elif eff == "sweep":
-            for i, f in enumerate(fids):
-                phase = (t / p["period_s"] + p["spread"] * i / n) % 1.0
-                x = 0.5 - 0.5 * math.cos(2 * math.pi * phase)  # smooth there and back
-                (p0, t0), (p1, t1) = p["from"][f], p["to"][f]
-                fl = self._fl(look, f)
-                fl.pan, fl.tilt = p0 + (p1 - p0) * x, t0 + (t1 - t0) * x
-        elif eff == "random_move":
-            period = p["period_s"]
-            for f in fids:
-                offset = (_seed(p["seed"], f, "offset") % 1000) / 1000 * period if p["stagger"] else 0.0
-                slot = math.floor((t + offset) / period)
-                first = math.floor(offset / period)
-                rng = random.Random(_seed(p["seed"], f, slot))
-                fl = self._fl(look, f)
-                fl.pan = rng.uniform(*p["pan"])
-                fl.tilt = rng.uniform(*p["tilt"])
-                # dark for dark_move_s after each new position (not at scene start)
-                if p["dark_move_s"] and slot > first and (t + offset) - slot * period < p["dark_move_s"]:
-                    dark.add(f)
-
-    def _pixel_chase(self, p: dict, fids: list[str], t: float, look: Look) -> None:
-        # one strip made of every fixture's pixels in layer order (bars: 8 each)
-        strip: list[tuple[str, int]] = []
-        for f in fids:
-            px = self.rig.patch.fixtures[f].type.pixels or 1
-            strip += [(f, i) for i in range(px)]
-        total = len(strip)
-        phase = (t / p["period_s"]) % 1.0
-        if p["bounce"]:
-            head = (1 - abs(1 - 2 * phase)) * (total - 1)  # end to end and back
-        else:
-            head = phase * total
-        width, tail = p["width"], p["tail"]
-        values: list[Colour] = []
-        for j in range(total):
-            d = head - j  # distance behind the head
-            if not p["bounce"]:
-                d %= total  # wrap round the strip
-            if 0 <= d < width:
-                values.append(dict(p["colour"]))
-            elif tail and width <= d < width + tail:
-                f = 1 - (d - width + 1) / (tail + 1)
-                values.append(_mix(p["background"], p["colour"], max(0.0, f)))
-            else:
-                values.append(dict(p["background"]))
-        if p["reverse"]:
-            values.reverse()
-        for f in fids:
-            fl = self._fl(look, f)
-            mine = [values[j] for j, (ff, _) in enumerate(strip) if ff == f]
-            if self.rig.patch.fixtures[f].type.pixels:
-                fl.pixels, fl.colour = mine, {}
-            else:
-                fl.colour, fl.pixels = mine[0], None
+        if ly.effect is not None:
+            effects.REGISTRY[ly.effect].render(p, run)
 
 
 def static_source(look: Look) -> Callable[[float], Look]:
