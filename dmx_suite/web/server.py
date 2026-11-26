@@ -33,6 +33,7 @@ from ..app import App
 from ..fixtures import ConfigError
 from ..setup import patch_report
 from ..store import LockedError, StoreError
+from .feed import HEARTBEAT_S, LiveFeed
 
 log = logging.getLogger(__name__)
 
@@ -151,8 +152,10 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
 # --------------------------------------------------------------------------- handler
 
 
-def make_handler(app: App, token: str, access: Access, claude: str,
-                 on_lan: Any = None) -> type[BaseHTTPRequestHandler]:
+def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any = None,
+                 feed: LiveFeed | None = None) -> type[BaseHTTPRequestHandler]:
+    live = feed or LiveFeed(app.snapshot)
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "dmx-suite"
         protocol_version = "HTTP/1.1"
@@ -402,6 +405,7 @@ def make_handler(app: App, token: str, access: Access, claude: str,
             self.send_header("Connection", "close")
             self.end_headers()
             self.close_connection = True
+            self.connection.settimeout(5.0)  # a phone that stops reading can't hold this thread forever
             seq = since
             sid = id(self)
             app.screens[sid] = {"ip": self.client_address[0], "local": self._local(), "since": time.time()}
@@ -411,17 +415,28 @@ def make_handler(app: App, token: str, access: Access, claude: str,
                 app.screens.pop(sid, None)
 
         def _stream(self, seq: int) -> None:
+            """Send the shared state when it changes, new MIDI monitor lines, else a heartbeat."""
             local, sid = self._local(), self._sid()
-            while not app_stopping.is_set():
+            seen, quiet = -1, time.monotonic()
+            while not app_stopping.is_set() and not live.stopped:
                 if not local and (not access.lan or access.session(sid, touch=False) is None):
                     return
+                version, state = live.wait(seen, live.tick_s * 2)
                 midi = [asdict(e) for e in app.monitor.since(seq)]
+                parts = []
+                if version != seen:
+                    parts.append(f'"state": {state}')
+                    seen = version
                 if midi:
                     seq = midi[-1]["seq"]
-                payload = json.dumps({"state": app.snapshot(), "midi": midi}, default=str)
-                self.wfile.write(f"data: {payload}\n\n".encode())
+                    parts.append(f'"midi": {json.dumps(midi, default=str)}')
+                if not parts:
+                    if time.monotonic() - quiet < HEARTBEAT_S:
+                        continue
+                    parts.append('"beat": 1')
+                quiet = time.monotonic()
+                self.wfile.write(("data: {" + ", ".join(parts) + "}\n\n").encode())
                 self.wfile.flush()
-                time.sleep(0.1)
 
         def _write(self, method: str) -> None:
             path = urlparse(self.path).path
@@ -551,7 +566,8 @@ class WebServer:
         self.claude_token = claude_token or default_claude_token()
         self.follow = host is None
         self.host = self._wanted() if host is None else host
-        self.handler = make_handler(app, self.token, self.access, self.claude_token, self.lan_changed)
+        self.feed = LiveFeed(app.snapshot)  # one snapshot a tick, shared by every screen
+        self.handler = make_handler(app, self.token, self.access, self.claude_token, self.lan_changed, self.feed)
         self.httpd = self._serve(self.host, port)
         self.thread: threading.Thread | None = None
         self._swap = threading.Lock()
@@ -570,11 +586,13 @@ class WebServer:
 
     def start(self) -> None:
         app_stopping.clear()
+        self.feed.start()
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="web", daemon=True)
         self.thread.start()
 
     def stop(self) -> None:
         app_stopping.set()
+        self.feed.stop()
         self.httpd.shutdown()
         self.httpd.server_close()
 

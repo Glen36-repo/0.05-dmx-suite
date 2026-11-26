@@ -223,18 +223,18 @@ def test_icon_only_passed_off_windows(tray, monkeypatch):
 
 def test_closed_window_connection_is_not_an_error(caplog):
     """Closing the window drops its live-update stream; Windows reports that as ConnectionAbortedError."""
-    import urllib.request
+    import http.client
+    import time
 
     session = start_session(app_args())
     try:
-        def gone():
-            raise ConnectionAbortedError(10053, "aborted")
-
-        session.app.snapshot = gone
-        try:
-            urllib.request.urlopen(desktop.ui_url(session.web.port) + "api/events", timeout=2).read()
-        except OSError:
-            pass
+        conn = http.client.HTTPConnection("127.0.0.1", session.web.port, timeout=2)
+        conn.request("GET", "/api/events")
+        r = conn.getresponse()
+        assert r.fp.readline().startswith(b"data: ")
+        r.close()  # the window goes away mid-stream
+        conn.close()
+        time.sleep(0.5)  # the server's next write finds the connection gone
         assert "API error" not in caplog.text
     finally:
         session.stop()
