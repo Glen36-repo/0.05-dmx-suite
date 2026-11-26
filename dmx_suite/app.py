@@ -99,7 +99,7 @@ class App:
         out: list[dict[str, Any]] = []
         for d in self.engine.drivers:
             if isinstance(d, NodeSerialDriver):
-                for r in d.link.health.nodes.values():
+                for r in d.link.health.records():
                     hb = r.heartbeat
                     out.append({
                         "mac": r.mac, "name": r.name, "state": r.state.value, "expected": r.expected,
@@ -187,6 +187,10 @@ class App:
     # ------------------------------------------------------------------ reload after edits
 
     def reload(self) -> list[str]:
+        with self._lock:  # the web page, Claude and a restore can all reload at once
+            return self._reload()
+
+    def _reload(self) -> list[str]:
         """Pick up edited scenes, palettes, shows, setlists and MIDI map without stopping.
         Fixture and rig changes need a restart (the patch is live on the rig)."""
         rig, look, midi = self.names

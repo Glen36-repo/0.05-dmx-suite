@@ -4,10 +4,13 @@ after a laptop restart mid-gig. Driven by the FCB1010 (MIDI map), the console, a
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,8 +41,19 @@ class Now:
     bpm: float | None = None
 
 
+
+def _locked(fn: Callable[..., Any]) -> Callable[..., Any]:
+    @functools.wraps(fn)
+    def run(self: Any, *a: Any, **k: Any) -> Any:
+        with self._lock:
+            return fn(self, *a, **k)
+
+    return run
+
 class ShowController:
     def __init__(self, engine: Engine, files: Any, state_path: Path | None = None) -> None:
+        # MIDI, OSC, the web page, Claude and the console can all pick shows at once
+        self._lock = threading.RLock()
         self.e = engine
         self.files = files  # ShowFiles (with shows/setlists)
         self.tempo = TempoClock(engine.clock())
@@ -54,11 +68,13 @@ class ShowController:
 
     # ------------------------------------------------------------------ selection
 
+    @_locked
     def select_look(self) -> None:
         self.mode, self.show, self.set_name, self.scene_key, self.player = "look", None, None, None, None
         self.e.set_look(self.files.look)
         self._save()
 
+    @_locked
     def select_scene(self, key: str) -> None:
         if key not in self.files.scenes:
             raise ConfigError(f"no scene {key!r}")
@@ -67,6 +83,7 @@ class ShowController:
         self.e.set_source(ScenePlayer(sc, self.e.rig, self.e.clock(), self.tempo.eff), sc)
         self._save()
 
+    @_locked
     def select_show(self, key: str, set_name: str | None = None) -> None:
         if key not in self.files.shows:
             raise ConfigError(f"no show {key!r}")
@@ -77,6 +94,7 @@ class ShowController:
         self.e.set_source(self.player, self.player.scene)
         self._save()
 
+    @_locked
     def select_set(self, set_name: str) -> None:
         """Switch LOW / MID / HIGH: in the current show if it has that set, otherwise in the first
         show that does (so the LOW pedal during Opera goes to the band show's LOW set)."""
@@ -87,6 +105,7 @@ class ShowController:
                 return self.select_show(show.key, set_name)
         raise ConfigError(f"no show has a set {set_name!r}")
 
+    @_locked
     def next_step(self) -> None:
         if self.player is None:
             raise ConfigError("no show playing")
@@ -96,12 +115,14 @@ class ShowController:
 
     # ------------------------------------------------------------------ setlist
 
+    @_locked
     def load_setlist(self, key: str, song: int = 0) -> None:
         if key not in self.files.setlists:
             raise ConfigError(f"no setlist {key!r}")
         self.setlist = self.files.setlists[key]
         self.go_song(song)
 
+    @_locked
     def go_song(self, index: int) -> None:
         if self.setlist is None:
             raise ConfigError("no setlist loaded")
@@ -116,26 +137,32 @@ class ShowController:
             assert s.scene is not None
             self.select_scene(s.scene)
 
+    @_locked
     def next_song(self) -> None:
         self.go_song((self.song if self.song is not None else -1) + 1)
 
+    @_locked
     def prev_song(self) -> None:
         self.go_song((self.song or 0) - 1)
 
+    @_locked
     def clear_setlist(self) -> None:
         self.setlist, self.song = None, None
         self._save()
 
     # ------------------------------------------------------------------ tempo
 
+    @_locked
     def tap(self) -> float | None:
         return self.tempo.tap(self.e.clock())
 
+    @_locked
     def set_tempo(self, bpm: float | None) -> None:
         self.tempo.set_bpm(bpm, self.e.clock())
 
     # ------------------------------------------------------------------ status
 
+    @_locked
     def now(self) -> Now:
         n = Now(self.mode, "static look", bpm=self.tempo.bpm)
         if self.mode == "scene" and self.scene_key:
@@ -149,6 +176,7 @@ class ShowController:
             n.setlist, n.song, n.song_name = self.setlist.key, self.song, self.setlist.songs[self.song].name
         return n
 
+    @_locked
     def describe(self) -> str:
         n = self.now()
         parts = [n.label]
@@ -182,10 +210,12 @@ class ShowController:
         except OSError:
             log.exception("couldn't save show state")
 
+    @_locked
     def save(self) -> None:
         """Call after MASTER changes so a restart comes back the same way."""
         self._save()
 
+    @_locked
     def restore(self) -> bool:
         """Pick up where we were if the laptop restarted mid-gig. Returns True if resumed."""
         if not self.state_path or not self.state_path.exists():

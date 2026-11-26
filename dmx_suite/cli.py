@@ -233,13 +233,13 @@ def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path
                 if not nodes:
                     print("no node output in use (third-party interfaces show as connected/disconnected only)")
                 for node in nodes:
-                    for r in node.link.health.nodes.values():
+                    for r in node.link.health.records():
                         hb = r.heartbeat
                         sig = f"rssi {hb.rssi} loss {hb.loss_pct}%" if hb and hb.rssi is not None else ""
                         print(f"  {r.mac}  {r.state.value:7}  {r.name or '(new node)':16}  {sig}")
             elif cmd == "monitor":
                 n = int(rest[0]) if rest else 15
-                for e in list(router.monitor.entries)[-n:]:
+                for e in router.monitor.since(0)[-n:]:
                     print(e.format())
             elif cmd == "learn":
                 params: dict = {}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -64,25 +65,39 @@ class HealthTracker:
         self.nodes: dict[str, NodeRecord] = {}
         self.log: list[HealthEvent] = []
         self.listeners: list[Callable[[HealthEvent], None]] = []
+        self._seen: set[str] = set()  # macs with a logged first state
+        # heartbeats arrive on the node reader thread; the UI, CLI and app read from others
+        self._lock = threading.RLock()
+
+    def records(self) -> list[NodeRecord]:
+        """A copy of the node list, safe to loop over while heartbeats keep arriving."""
+        with self._lock:
+            return list(self.nodes.values())
 
     # rig config lists the expected nodes: missing ones show offline straight away
     def expect(self, nodes: Iterable[tuple[str, str]]) -> None:
+        with self._lock:
+            self._expect(nodes)
+
+    def _expect(self, nodes: Iterable[tuple[str, str]]) -> None:
         for mac, name in nodes:
             rec = self.nodes.setdefault(mac.upper(), NodeRecord(mac.upper()))
             rec.expected = True
             rec.expected_name = name
 
     def update(self, hb: Heartbeat) -> NodeRecord:
-        mac = mac_str(hb.mac)
-        rec = self.nodes.setdefault(mac, NodeRecord(mac))
-        rec.heartbeat = hb
-        rec.last_seen = self._clock()
-        self._set(rec, self._classify(rec))
-        return rec
+        with self._lock:
+            mac = mac_str(hb.mac)
+            rec = self.nodes.setdefault(mac, NodeRecord(mac))
+            rec.heartbeat = hb
+            rec.last_seen = self._clock()
+            self._set(rec, self._classify(rec))
+            return rec
 
     def tick(self) -> None:
-        for rec in self.nodes.values():
-            self._set(rec, self._classify(rec))
+        with self._lock:
+            for rec in list(self.nodes.values()):
+                self._set(rec, self._classify(rec))
 
     def _classify(self, rec: NodeRecord) -> State:
         if rec.last_seen is None or self._clock() - rec.last_seen > self.t.offline_after_s:
@@ -98,12 +113,14 @@ class HealthTracker:
         return State.ONLINE
 
     def _set(self, rec: NodeRecord, state: State) -> None:
-        first = not any(e.mac == rec.mac for e in self.log)
+        first = rec.mac not in self._seen
         if state == rec.state and not first:
             return
         ev = HealthEvent(self._wall(), rec.mac, rec.name, None if first else rec.state, state)
         rec.state = state
+        self._seen.add(rec.mac)
         self.log.append(ev)
+        del self.log[:-1000]  # keep the last thousand changes (the app writes them to the gig log)
         for fn in self.listeners:
             fn(ev)
 
@@ -111,6 +128,6 @@ class HealthTracker:
         """Nodes needing attention: expected but offline, or weak."""
         return [
             r
-            for r in self.nodes.values()
+            for r in self.records()
             if (r.state == State.OFFLINE and (r.expected or r.heartbeat)) or r.state == State.WEAK
         ]

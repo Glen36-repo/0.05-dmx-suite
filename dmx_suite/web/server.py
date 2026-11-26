@@ -301,7 +301,7 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 return self._events(int(q.get("since", 0)))
             if path == "/api/midi":
                 since = int(q.get("since", 0))
-                return self._json(200, [asdict(e) for e in app.monitor.entries if e.seq > since])
+                return self._json(200, [asdict(e) for e in app.monitor.since(since)])
             if path == "/api/midi/map":
                 return self._json(200, app.router.map.to_dict())
             if path == "/api/addresses":
@@ -338,7 +338,7 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
 
         def _stream(self, seq: int) -> None:
             while not app_stopping.is_set():
-                midi = [asdict(e) for e in list(app.monitor.entries) if e.seq > seq]
+                midi = [asdict(e) for e in app.monitor.since(seq)]
                 if midi:
                     seq = midi[-1]["seq"]
                 payload = json.dumps({"state": app.snapshot(), "midi": midi}, default=str)
