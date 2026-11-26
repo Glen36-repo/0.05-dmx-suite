@@ -4,14 +4,17 @@ Nov 26, 2026 · @Glen Mahony
 
 ## Purpose and goals
 
-Replace Daslight 5 and the LR512 with a self-built show engine on the laptop, driving the band's own ESP32 DMX nodes over USB. No subscription, no locked hardware, and the show rules are written into the software instead of worked around.
+A general-use live lighting program for Windows: build scenes and shows on screen, run them from MIDI or OSC with no operator at the laptop, and output DMX through USB interfaces, Art-Net/sACN or the 0.05 ESP32 nodes. No subscription, no locked hardware, and the show rules are written into the software instead of worked around.
 
-- Run the band's rig live from MIDI (FCB1010, TD-25, SamplePad) with no operator at the laptop
-- Automatic shows that follow the band's lighting rules out of the box
+The band 0.05 is the reference setup: it replaces their Daslight 5 and LR512, and the "0.05 band" rule profile matches their rig rules.
+
+- Everything can be done in the UI with no YAML or Claude; Claude (MCP) is an optional extra
+- Run a rig live from MIDI (e.g. FCB1010, TD-25, SamplePad) or OSC with no operator at the laptop
+- Automatic shows that follow the active rule profile out of the box
 - Laptop talks straight to the CoreS3 node by USB serial; node handles DMX out and wireless to the receivers
-- Simple enough for one person (Glen) to maintain, edit and fix at a gig
+- Simple enough for one person to maintain, edit and fix at a gig
 
-Out of scope for v1: video, timecode, audio-reactive BPM, multi-universe, and a general-purpose fixture editor.
+Out of scope: video, timecode and audio-reactive BPM (v1 and v2); macOS/Linux builds.
 
 ## Rig and I/O
 
@@ -37,17 +40,24 @@ One DMX universe (512 ch) covers the rig now; the engine supports more for phase
 
 ## Functional requirements
 
-The engine enforces the rig rules itself, so no look can break them.
+The engine enforces the rules itself in the rule layer, so no look can break them. From v2 the rules are split in two.
 
-**Hard rules (engine-level):**
+**Safety rules (always on, for every user; scenes can't turn them off):**
 
-- MASTER owns on/off; scenes never set dimmer channels, only colour
-- MASTER off → drum hits flash the rig (see Drum flash, priority feature)
-- MASTER does not affect the kick-drum light
-- No background glow: any channel not in the active effect is fully off
-- HAZE is never set by scenes or auto shows; it runs only from the Haze controls
-- Kick light bright most of the time, follows the active effect on bars or movers
-- U'King heads colour only; MHL36 speed channel 0 = fastest
+- No background glow: any channel not in the active effect is fully off (rule 4)
+- HAZE is never set by scenes or auto shows; it runs only from the Haze controls (rule 5)
+- Grand master scales intensity only: never pan/tilt, colour choice or haze (rule 6)
+- Moving head pan/tilt limits from the active rig config are always enforced (rule 8)
+- Strobe rate limit: flashes per second across the rig capped, default 3 Hz (v2)
+
+**Profile rules (settings per rig config; "Generic" and "0.05 band" profiles ship):**
+
+- MASTER owns on/off; scenes never set dimmer channels, only colour (rule 1)
+- MASTER off → drum hits flash the rig (rule 2, see Drum flash)
+- Fixtures excluded from MASTER, e.g. the kick-drum light (rule 3)
+- Colour-only heads and speed-channel direction are set in the fixture definition (rule 7), e.g. U'King heads colour only, MHL36 speed channel 0 = fastest
+
+The "0.05 band" profile turns on rules 1-3 with the kick light excluded from MASTER (bright most of the time, follows the active effect on bars or movers). "Generic" uses standard dimmer behaviour with no drum flash.
 
 **Drum flash (priority feature):**
 
@@ -239,6 +249,20 @@ Each phase ends with something usable at rehearsal; Daslight stays as backup unt
 5. **Browser UI and MCP:** preview, overrides, position picker, node status page; MCP server for Claude to read, edit, validate and preview scenes
 6. **Phase 2 MIDI:** SamplePad via H2MIDI Pro, drummer triggers, guitar boards; second DMX universe for receiver-per-light
 
+## v2 (general release)
+
+Planned 26/11/2026. One release per branch, hardening and features side by side; every item has tests and is tested against every rule under both shipped profiles.
+
+1. **R1 Rule profiles and safety net:** safety/profile rule split (first; later releases depend on it), Generic and 0.05 band profiles, strobe rate limit, `version:` in every show file with automatic upgrade, engine loop timing fix, crash-proof render with fallback to the last good show files, value range checks, comment-keeping YAML saves, MIT licence and project files, user manual, CI (tests, lint, type-check, firmware build), file log, signed installer and update check
+2. **R2 Layout, groups, themes:** left-hand page menu; grid light layout (one square per light or pixel, live colours, group tabs, select, arrange, zoom, beam-line overlay) replacing the metre stage plan; groups made from a selection; themes (neutral default + 0.05); all UI text in one strings file
+3. **R3 Effects and scene builder:** effect registry; layer level and blend; new effects; spatial (matrix) mapping across the layout; spread, direction, width, waveform and groups-of on every effect; on-screen scene builder with live preview
+4. **R4 Outputs and OSC:** non-blocking driver threads; Art-Net and sACN; OSC input sharing the MIDI map and learn; thread-safety fixes
+5. **R5 Fades, shows, beat sync, busking:** crossfades; Daslight super-scene style show steps (repeat a scene N times, hold for time or bars, fade per step); show and setlist builders; beat sync (tap, kick taps, MIDI Clock); Busk page of user-built buttons and faders
+6. **R6 Security, undo, copy/paste:** PIN/password, localhost by default, LAN with QR code; Claude bound by gig lock server-side; shared live feed; undo/redo; copy/paste a look across fixture types
+7. **R7 Fixtures and setup wizard:** colour mixing to RGBW/amber/wheel, fuller fixture model, fixture editor and patch with auto-patch, OFL import and export, live rig changes, first-run wizard, starter shows
+8. **R8 Node and firmware:** per-universe radio sequence, fallback and blackout on every universe, fallback pushed by the app, firmware version check, CoreS3 screen, node LED and identify
+9. **R9 Rehearsal sign-off:** the open items below that need the real rig
+
 ## Decisions and open questions
 
 Decided 26/11/2026:
@@ -280,9 +304,9 @@ Decided 26/11/2026:
 | Heads move dark | `random_move` has `dark_move_s`: the head is blacked (via colour) for that long after each new position |
 | Find fixture | Lights the one fixture full white, ignoring MASTER, grand master and the kick light; head limits still apply |
 | Channel tester | Raw values over the show output until cleared; refuses the haze channel |
-| Missing fixtures in a scene | Skipped for now; moving their effects to fixtures that are present comes with auto shows (phase 4) |
+| Missing fixtures in a scene | Skipped; a layer can name a `fallback` group to use instead (see "Missing fixtures in shows") |
 | Fixture import | Open Fixture Library JSON first (`dmx-suite import-ofl`); always lands as `verified: false` |
-| Setup page | Console commands for now; the browser page comes in phase 5 |
+| Setup page | Setup tab in the UI (phase 5); console commands kept |
 | Auto shows | Generated per step from a style (colours, energy, head mix, patterns, movement), deterministic per seed, checked against the hard rules like any scene |
 | Set steps | Fixed timers (`step_s`); tap tempo changes effect speed only, never step length |
 | Tap tempo | Effects are timed at 120 BPM reference; a tapped tempo (pedal or a mapped drum note) scales effect time and lines up on the tap |
@@ -304,6 +328,26 @@ Decided 26/11/2026:
 | Status bar | Engine fps, every output driver, MIDI inputs, Claude (MCP check-in every 20 s; last tool), open screens, nodes; red banner + beep when anything drops |
 | USB DMX unplug | Enttec Open/Pro and the node keep the show running when unplugged and reopen the port every 2 s |
 | MIDI hot-plug | Wanted ports (rig `midi_inputs`) rescanned every 2 s; reconnect under a new name; status shown as connected/unplugged |
+
+Decided 26/11/2026 (v2):
+
+| Item | Decision |
+| --- | --- |
+| Audience | General use, not just 0.05; 0.05 is the reference setup |
+| Platform | Windows only |
+| Licence | MIT; no telemetry |
+| Name | "0.05 DMX Suite" kept for now |
+| UI first | Everything can be done in the UI with no YAML or Claude; MCP is an optional extra |
+| Rule profiles | Rules split into safety rules (always on) and profile rules (per rig config); "Generic" and "0.05 band" profiles ship; existing 0.05 shows run under "0.05 band" unchanged |
+| Strobe limit | Safety rule, on by default at 3 Hz across the rig (drum flash, strobe effects, busk flashes); can be raised per rig config with a warning |
+| File versions | `version:` in every show file; older files upgraded automatically after a backup; newer files refused with a clear message |
+| Light layout | Grid layout (one square per light or pixel, group tabs, zoom) replaces the metre-based stage plan; beam lines kept as an overlay |
+| Navigation | Page menu down the left-hand side; bottom bar on a phone |
+| UI stack | HTML/JS in the desktop window, plain ES modules, no build step, works offline |
+| Scenes and shows | Scenes built on screen from a selection; shows hold steps (Daslight super-scene style) that repeat a scene N times or hold for a time or bars, with an optional fade per step |
+| v2 features | Spatial effects, effect spread, busking page, beat sync, undo/redo + copy/paste, OSC input added to v2 (26/11/2026), alongside fades, Art-Net/sACN and the fixture editor |
+| Access | PIN or password on the UI and API; localhost only until LAN/phone access is turned on |
+| Set steps (v2) | Fixed timers stay the default; a step can instead follow the tempo (`hold_beats` / `hold_bars`) |
 
 Open:
 
