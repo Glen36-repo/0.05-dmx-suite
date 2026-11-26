@@ -362,6 +362,15 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.routing())
             if path == "/api/devices/list":  # v4: devices plugged in, by USB identity / MIDI port name
                 return self._json(200, app.devices_view())
+            if path == "/api/monitor/status":  # v4 Monitor page: MIDI ports, rates, energy
+                return self._json(200, app.monitor_status())
+            if path == "/api/monitor/midi":
+                ch = q.get("channel")
+                return self._json(200, app.monitor_midi(q.get("dir", "in"), int(q.get("n", 200)), int(q.get("since", 0)),
+                                                        q.get("port") or None, int(ch) if ch else None, q.get("type") or None,
+                                                        q.get("unmapped") == "1"))
+            if path == "/api/monitor/channels":
+                return self._json(200, app.channel_names(int(q.get("u", 0))))
             if path == "/api/frame":  # one look at what an interface sent (Monitor, Claude)
                 return self._json(200, app.frame_view(int(q.get("u", 0)), q.get("out")))
             if path == "/api/events/frames":  # live frames, only while a page shows them
@@ -727,6 +736,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/layout" and method == "PUT":
                 bid = app.save_layout(body.get("layout") or {})
                 return self._json(200, {"ok": True, "backup": bid})
+            if path == "/api/monitor/send" and method == "POST":  # MIDI test send (gig-locked)
+                sent = app.midi_send(str(body.get("port", "")), str(body.get("type", "note_on")), int(body.get("channel", 1)),
+                                     int(body.get("number", 60)), int(body.get("value", 100)))
+                return self._json(200, {"ok": True, "port": sent})
             if path == "/api/devices/replace" and method == "POST":  # mid-gig recovery: allowed under gig lock
                 r = app.replace_device(str(body.get("missing", "")), str(body.get("use", "")))
                 return self._json(200, {"ok": True, **r})

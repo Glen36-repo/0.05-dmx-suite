@@ -281,7 +281,7 @@ def test_setup_claude_section_folds(ui):
     page.click("#claude-section > summary")
     assert page.get_attribute("#claude-section", "open") is None
     go(page, "live")
-    page.click(".tile.link")  # the Claude tile opens it again
+    page.click(".tile.link[data-key^='claude:']")  # the Claude tile opens it again
     page.wait_for_selector("#page-setup.on")
     assert page.get_attribute("#claude-section", "open") is not None
 

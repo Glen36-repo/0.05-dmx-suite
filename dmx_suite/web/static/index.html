@@ -49,6 +49,7 @@
     <button data-page="heads" class="extra"><span class="ic">✥</span><span class="lbl" data-i18n="menu.heads"></span></button>
     <button data-page="midi" class="extra"><span class="ic">♪</span><span class="lbl" data-i18n="menu.midi"></span></button>
     <div class="menu-group" data-i18n="menu.group_system"></div>
+    <button data-page="monitor" class="extra"><span class="ic">⌁</span><span class="lbl" data-i18n="menu.monitor"></span></button>
     <button data-page="setup" class="extra"><span class="ic">⚙</span><span class="lbl" data-i18n="menu.setup"></span></button>
     <button data-page="files" class="extra"><span class="ic">▤</span><span class="lbl" data-i18n="menu.files"></span></button>
     <button id="menu-more" class="more" aria-expanded="false"><span class="ic">⋯</span><span class="lbl" data-i18n="menu.more"></span></button>
@@ -100,6 +101,71 @@
           <span class="muted" data-i18n="haze.live_note"></span>
         </div>
       </details>
+    </section>
+
+    <!-- MONITOR (v4): watch DMX out, MIDI in, MIDI out; read-only, works under gig lock -->
+    <section id="page-monitor" class="page wide">
+      <div class="mon-panes" id="mon-panes">
+        <div class="mon-pane" id="mon-dmx" data-pane="dmx">
+          <div class="mon-head"><h2 data-i18n="monitor.dmx"></h2><span class="grow"></span>
+            <select id="mon-uni" data-i18n-title="monitor.universe"></select>
+            <select id="mon-out" data-i18n-title="monitor.interface"></select>
+            <div class="seg-row" id="mon-dmx-view">
+              <button data-view="grid" class="sel" data-i18n="monitor.v_grid"></button>
+              <button data-view="fixture" data-i18n="monitor.v_fixture"></button>
+              <button data-view="changed" data-i18n="monitor.v_changed"></button>
+              <button data-view="hex" data-i18n="monitor.v_hex"></button>
+            </div>
+            <button class="mini" data-act="pause" data-i18n="monitor.pause"></button>
+            <button class="mini" data-act="csv" data-i18n="monitor.csv"></button>
+            <button class="mini" data-act="full" data-i18n="monitor.full"></button>
+          </div>
+          <div class="mon-stats" id="mon-dmx-stats"></div>
+          <div class="mon-flag hidden" id="mon-dmx-flag"></div>
+          <div class="mon-body" id="mon-dmx-body"></div>
+        </div>
+        <div class="mon-pane" id="mon-midi-in" data-pane="midi-in">
+          <div class="mon-head"><h2 data-i18n="monitor.midi_in"></h2><span class="grow"></span>
+            <input id="mon-in-port" class="mini" data-i18n-placeholder="monitor.f_port">
+            <input id="mon-in-ch" class="mini num" type="number" min="0" max="16" data-i18n-placeholder="monitor.f_channel">
+            <select id="mon-in-type"><option value="" data-i18n="monitor.f_all_types"></option>
+              <option value="note" data-i18n="monitor.t_note"></option><option value="control_change" data-i18n="monitor.t_cc"></option><option value="program_change" data-i18n="monitor.t_pc"></option>
+              <option value="pitchwheel" data-i18n="monitor.t_bend"></option><option value="sysex" data-i18n="monitor.t_sysex"></option><option value="osc" data-i18n="monitor.t_osc"></option></select>
+            <label class="check"><input type="checkbox" id="mon-in-unmapped"><span data-i18n="monitor.f_unmapped"></span></label>
+            <button class="mini" data-act="pause" data-i18n="monitor.pause"></button>
+            <button class="mini" data-act="clear" data-i18n="monitor.clear"></button>
+            <button class="mini" data-act="csv" data-i18n="monitor.csv"></button>
+            <button class="mini" data-act="full" data-i18n="monitor.full"></button>
+          </div>
+          <div class="mon-stats" id="mon-in-ports"></div>
+          <div class="mon-heat" id="mon-heat"></div>
+          <div class="mon-body"><table class="mon-log"><thead><tr><th data-i18n="monitor.c_time"></th><th data-i18n="monitor.c_port"></th>
+            <th data-i18n="monitor.c_ch"></th><th data-i18n="monitor.c_type"></th><th data-i18n="monitor.c_num"></th>
+            <th data-i18n="monitor.c_val"></th><th data-i18n="monitor.c_input"></th><th data-i18n="monitor.c_action"></th><th></th></tr></thead>
+            <tbody id="mon-in-log"></tbody></table></div>
+        </div>
+        <div class="mon-pane" id="mon-midi-out" data-pane="midi-out">
+          <div class="mon-head"><h2 data-i18n="monitor.midi_out"></h2><span class="grow"></span>
+            <button class="mini" data-act="pause" data-i18n="monitor.pause"></button>
+            <button class="mini" data-act="clear" data-i18n="monitor.clear"></button>
+            <button class="mini" data-act="csv" data-i18n="monitor.csv"></button>
+            <button class="mini" data-act="full" data-i18n="monitor.full"></button>
+          </div>
+          <div class="mon-stats" id="mon-out-ports"></div>
+          <div class="row wrap" id="mon-send">
+            <select id="send-port"></select>
+            <select id="send-type"><option value="note_on" data-i18n="monitor.t_note"></option><option value="control_change" data-i18n="monitor.t_cc"></option><option value="program_change" data-i18n="monitor.t_pc"></option></select>
+            <input id="send-ch" class="mini num" type="number" min="1" max="16" value="1" data-i18n-title="monitor.f_channel">
+            <input id="send-num" class="mini num" type="number" min="0" max="127" value="60" data-i18n-title="monitor.c_num">
+            <input id="send-val" class="mini num" type="number" min="0" max="127" value="100" data-i18n-title="monitor.c_val">
+            <button id="send-go" data-i18n="monitor.send"></button>
+          </div>
+          <div class="mon-body"><table class="mon-log"><thead><tr><th data-i18n="monitor.c_time"></th><th data-i18n="monitor.c_port"></th>
+            <th data-i18n="monitor.c_ch"></th><th data-i18n="monitor.c_type"></th><th data-i18n="monitor.c_num"></th>
+            <th data-i18n="monitor.c_val"></th><th data-i18n="monitor.c_action"></th></tr></thead>
+            <tbody id="mon-out-log"></tbody></table></div>
+        </div>
+      </div>
     </section>
 
     <!-- LAYOUT -->

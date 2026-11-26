@@ -44,6 +44,8 @@ class App:
         self.engine = Engine(files.rig, drivers, files.look, **({"clock": clock} if clock else {}))
         self.ctl = ShowController(self.engine, files, state_path)
         self.monitor = MidiMonitor()
+        self.midi_out_monitor = MidiMonitor()  # v4: everything the app sends out over MIDI
+        self.midi_outputs: Any = None  # midi.outputs.MidiOutputs when the rig lists midi_outputs
         self.router = MidiRouter(self.engine, files.midimap, self.monitor, self.ctl, files.inputs)
         self.router.busk = self.busk  # MIDI / OSC action `busk`
         self.router.input_listeners.append(self._input_hit)  # step scenes waiting on an input (v3.2)
@@ -553,6 +555,45 @@ class App:
     def haze_test(self, mode: str) -> float:
         self.require_unlocked("testing the haze")
         return self.engine.haze_test(mode)
+
+    # ------------------------------------------------------------------ Monitor page (v4)
+
+    def channel_names(self, universe: int) -> dict[int, str]:
+        """Channel number (1-512) -> 'bar_2 red px5' for the lights patched on a universe."""
+        out: dict[int, str] = {}
+        for f in self.engine.rig.patch.fixtures.values():
+            if f.universe != universe:
+                continue
+            for ch in f.type.channels:
+                px = f" px{ch.pixel + 1}" if ch.pixel is not None else ""
+                out[f.address + ch.offset] = f"{f.id} {ch.role}{px}"
+        return out
+
+    def monitor_status(self) -> dict[str, Any]:
+        """MIDI ports in and out with their state, hit and clock rates, the autopilot's energy."""
+        ins = self.midi_inputs.status() if self.midi_inputs is not None else []
+        outs = self.midi_outputs.status() if self.midi_outputs is not None else []
+        aliases = self.engine.rig.midi_aliases
+        now = self.engine.clock()
+        last_in: dict[str, float] = {}
+        for e in self.monitor.query(200):
+            last_in[e.port] = e.time
+        return {"midi_in": [{**m, "alias": aliases.get(m["name"]), "last": last_in.get(m.get("port") or "")} for m in ins],
+                "midi_in_sim": self.midi_inputs is None, "midi_out": outs,
+                "rates": self.monitor.rates(), "energy": round(self.autopilot.energy.level(now), 3)}
+
+    def monitor_midi(self, direction: str = "in", n: int = 200, since: int = 0, port: str | None = None,
+                     channel: int | None = None, kind: str | None = None, unmapped: bool = False) -> list[dict[str, Any]]:
+        from dataclasses import asdict
+
+        mon = self.monitor if direction != "out" else self.midi_out_monitor
+        return [asdict(e) for e in mon.query(n, port, channel, kind, unmapped, since)]
+
+    def midi_send(self, port: str, kind: str, channel: int, number: int, value: int = 0) -> str:
+        self.require_unlocked("a MIDI test send")
+        if self.midi_outputs is None:
+            raise ValueError("no MIDI outputs are set up (Setup > Plugged in: tick MIDI out on a port)")
+        return self.midi_outputs.send(port, kind, channel, number, value)
 
     def frame_view(self, universe: int, out: str | int | None = None) -> dict[str, Any]:
         """The 512 channels an interface really sent on a universe (Monitor, address map). `out` is an

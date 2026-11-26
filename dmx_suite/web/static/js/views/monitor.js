@@ -1,0 +1,265 @@
+// Monitor page (v4): watch what goes out over DMX and what comes in / goes out over MIDI. Read-only:
+// nothing here changes the output (works under gig lock); only Learn (inputs.yaml) and the MIDI test send
+// write anything, and those follow the usual locks.
+import { api, attempt, get, toast } from "../api.js";
+import { $, $$, el, remember } from "../dom.js";
+import { watchFrames } from "../frames.js";
+import { t } from "../i18n.js";
+import { onLeave, onShow } from "../nav.js";
+import { live, onCatalogue } from "../state.js";
+
+let uni = remember.get("monitor.uni", 0);
+let out = remember.get("monitor.out", "");
+let view = remember.get("monitor.view", "grid");
+let stopFeed = null;
+let names = {}; // channel -> "bar_2 red px5"
+let frame = null; // Uint8Array of what the interface sent, or null
+let lastFrame = null;
+const movedAt = new Float64Array(512); // when each channel last changed (changed-only view)
+const paused = { dmx: false, "midi-in": false, "midi-out": false };
+let inSeq = 0, outSeq = 0;
+let inRows = [], outRows = [];
+const heat = new Map(); // note -> last velocity (drum pad check)
+let timer = null;
+const KEEP = 2000; // rows kept on screen per log (the server keeps 5000)
+
+const shown = () => $("#page-monitor").classList.contains("on");
+const ms = (v) => (v === null || v === undefined ? t("layout.never") : t("layout.ms_ago", { n: v }));
+const clock = (ts) => new Date(ts * 1000).toLocaleTimeString("en-AU", { hour12: false }) + "." + String(Math.floor((ts * 1000) % 1000)).padStart(3, "0");
+
+// ---------------------------------------------------------------- DMX out
+
+async function loadSources() {
+  const r = await get("/api/routing").catch(() => null);
+  if (!r) return;
+  const us = r.universes.length ? r.universes : [0];
+  if (!us.includes(uni)) uni = us[0];
+  $("#mon-uni").replaceChildren(...us.map((u) => el("option", { value: u, selected: u === uni }, t("monitor.u", { u }))));
+  const outs = r.rows.filter((x) => x.universe === uni && x.output !== null && x.output !== undefined);
+  $("#mon-out").replaceChildren(...outs.map((x) => el("option", { value: String(x.output), selected: String(x.output) === out }, x.interface)),
+    el("option", { value: "engine", selected: out === "engine" }, t("monitor.engine")));
+  if (!outs.some((x) => String(x.output) === out) && out !== "engine") out = outs.length ? String(outs[0].output) : "engine";
+  $("#mon-out").value = out;
+  names = await get(`/api/monitor/channels?u=${uni}`).catch(() => ({}));
+}
+
+function watch() {
+  stopFeed?.();
+  stopFeed = null;
+  if (!shown()) return;
+  stopFeed = watchFrames(uni, out, (f) => {
+    if (paused.dmx) return;
+    frame = f.values;
+    const now = performance.now();
+    if (frame && lastFrame) for (let i = 0; i < 512; i++) if (frame[i] !== lastFrame[i]) movedAt[i] = now;
+    lastFrame = frame;
+    const s = f.stats || {};
+    $("#mon-dmx-stats").textContent = t("monitor.stats", { source: f.source, fps: s.fps ?? "-", frames: s.frames ?? "-",
+      errors: s.errors ?? "-", jitter: s.jitter_ms ?? "-", last: ms(s.last_frame_age_ms) });
+    const flag = f.no_frames ? t("monitor.no_frames", { source: f.source, u: uni })
+      : s.all_zero ? t("monitor.all_zero")
+      : s.last_frame_age_ms > 2000 ? t("monitor.stale", { s: Math.round(s.last_frame_age_ms / 1000) }) : "";
+    $("#mon-dmx-flag").textContent = flag;
+    $("#mon-dmx-flag").classList.toggle("hidden", !flag);
+    drawDmx();
+  });
+}
+
+function drawDmx() {
+  const body = $("#mon-dmx-body");
+  if (view === "hex") {
+    const lines = [];
+    for (let r = 0; r < 32; r++) {
+      const row = frame ? [...frame.slice(r * 16, r * 16 + 16)].map((v) => v.toString(16).padStart(2, "0")).join(" ") : "";
+      lines.push(String(r * 16 + 1).padStart(3, " ") + ": " + row);
+    }
+    body.replaceChildren(el("div", { class: "dmx-hex", text: lines.join("\n") }));
+    return;
+  }
+  if (view === "fixture") {
+    const by = {};
+    for (const [c, n] of Object.entries(names)) { const [fid, ...rest] = n.split(" "); (by[fid] ||= []).push([+c, rest.join(" ")]); }
+    body.replaceChildren(el("div", { class: "dmx-fx" }, ...Object.entries(by).map(([fid, chs]) => el("div", { class: "fxbox" },
+      el("strong", { text: fid }), ...chs.map(([c, n]) => {
+        const v = frame ? frame[c - 1] : null;
+        return el("div", { class: "ch", title: `ch ${c}` }, el("span", { text: n }), el("span", { text: v ?? "" }),
+          el("div", { class: "bar", style: `width:${v ? (v / 255) * 100 : 0}%` }));
+      })))));
+    return;
+  }
+  let grid = body.querySelector(".dmx-grid");
+  if (!grid) {
+    grid = el("div", { class: "dmx-grid" });
+    for (let c = 1; c <= 512; c++) grid.append(el("div", { class: "dc", "data-ch": c }, el("span", { class: "n", text: c }), el("span", { class: "v" })));
+    body.replaceChildren(grid);
+  }
+  const now = performance.now();
+  grid.querySelectorAll(".dc").forEach((cell, i) => {
+    const v = frame ? frame[i] : null;
+    const name = names[i + 1];
+    cell.classList.toggle("patched", !!name);
+    cell.title = `ch ${i + 1}${name ? " · " + name : ""}${v !== null ? " = " + v : ""}`;
+    const recent = now - movedAt[i] < 3000;
+    cell.classList.toggle("moved", recent);
+    const hide = view === "changed" && !recent;
+    cell.querySelector(".v").textContent = v === null || hide ? "" : v || "";
+    cell.style.setProperty("--v", v && !hide ? v / 255 : 0);
+  });
+}
+
+function dmxCsv() {
+  const rows = [["channel", "name", "value"], ...[...Array(512).keys()].map((i) => [i + 1, names[i + 1] || "", frame ? frame[i] : ""])];
+  return rows.map((r) => r.join(",")).join("\n");
+}
+
+// ---------------------------------------------------------------- MIDI in / out
+
+function inQuery() {
+  const qs = new URLSearchParams({ dir: "in", since: String(inSeq), n: "500" });
+  if ($("#mon-in-port").value.trim()) qs.set("port", $("#mon-in-port").value.trim());
+  if (+$("#mon-in-ch").value) qs.set("channel", $("#mon-in-ch").value);
+  if ($("#mon-in-type").value) qs.set("type", $("#mon-in-type").value);
+  if ($("#mon-in-unmapped").checked) qs.set("unmapped", "1");
+  return qs;
+}
+
+async function poll() {
+  if (!shown()) return;
+  const st = await get("/api/monitor/status").catch(() => null);
+  if (st) drawPorts(st);
+  if (!paused["midi-in"]) {
+    const rows = await get(`/api/monitor/midi?${inQuery()}`).catch(() => []);
+    if (rows.length) {
+      inSeq = rows[rows.length - 1].seq;
+      inRows = [...inRows, ...rows].slice(-KEEP);
+      for (const r of rows) if (r.type === "note_on" && r.value > 0) heat.set(r.number, r.value);
+      drawIn(rows);
+    }
+  }
+  if (!paused["midi-out"]) {
+    const rows = await get(`/api/monitor/midi?dir=out&since=${outSeq}&n=500`).catch(() => []);
+    if (rows.length) {
+      outSeq = rows[rows.length - 1].seq;
+      outRows = [...outRows, ...rows].slice(-KEEP);
+      drawOut(rows);
+    }
+  }
+}
+
+function drawPorts(st) {
+  const ins = st.midi_in_sim ? [el("span", { text: t("monitor.sim_in") })]
+    : st.midi_in.map((m) => el("span", { class: "port" },
+      el("span", { class: "led " + (m.connected ? (m.last && Date.now() / 1000 - m.last < 0.5 ? "act" : "ok") : "bad") }),
+      `${m.alias || m.name}${m.port && m.port !== m.name ? ` (${m.port})` : ""} · ${t(m.connected ? "monitor.connected" : "monitor.unplugged")}  `));
+  $("#mon-in-ports").replaceChildren(...ins, el("span", { class: "muted",
+    text: " " + t("monitor.rates", { hits: st.rates.hits_per_s, clock: st.rates.clock_per_s, energy: st.energy }) }));
+  $("#mon-out-ports").replaceChildren(...(st.midi_out.length ? st.midi_out.map((m) => el("span", {},
+    el("span", { class: "led " + (m.connected ? "ok" : "bad") }), `${m.name} · ${t(m.connected ? "monitor.connected" : "monitor.unplugged")}  `))
+    : [el("span", { text: t("monitor.no_out") }), " ", el("a", { href: "#", onclick: (e) => { e.preventDefault(); goSetup(); } }, t("menu.setup"))]));
+  const ports = st.midi_out.filter((m) => m.connected);
+  const sel = $("#send-port");
+  if (sel.dataset.k !== ports.map((p) => p.port).join("|")) {
+    sel.dataset.k = ports.map((p) => p.port).join("|");
+    sel.replaceChildren(...ports.map((p) => el("option", { value: p.port }, p.name)));
+  }
+  $("#send-go").disabled = !ports.length || !!live.state?.gig_lock;
+  $("#mon-heat").replaceChildren(...[...heat.entries()].sort((a, b) => a[0] - b[0]).map(([n, v]) =>
+    el("span", { class: "hn", style: `--v:${v / 127}`, title: `note ${n} vel ${v}` }, `${n}:${v}`)));
+}
+
+function inRow(r) {
+  const learn = el("button", { class: "mini", title: t("monitor.learn_tip"), onclick: () => learnFrom(r) }, t("monitor.learn"));
+  return el("tr", { class: r.result === "unmapped" ? "unmapped" : "" },
+    el("td", { text: clock(r.time), title: `+${r.since_start}s` }), el("td", { text: r.port }), el("td", { text: r.channel }),
+    el("td", { text: r.type }), el("td", { text: r.note ? `${r.number} ${r.note}` : r.number }), el("td", { text: r.value }),
+    el("td", { text: r.input + (r.roles ? ` (${r.roles})` : "") }), el("td", { text: r.result }), el("td", {}, r.input ? "" : learn));
+}
+
+function drawIn(rows) {
+  const body = $("#mon-in-log");
+  body.prepend(...rows.slice().reverse().map(inRow));
+  while (body.children.length > KEEP) body.lastChild.remove();
+}
+
+function drawOut(rows) {
+  const body = $("#mon-out-log");
+  body.prepend(...rows.slice().reverse().map((r) => el("tr", {},
+    el("td", { text: clock(r.time) }), el("td", { text: r.port }), el("td", { text: r.channel }), el("td", { text: r.type }),
+    el("td", { text: r.note ? `${r.number} ${r.note}` : r.number }), el("td", { text: r.value }), el("td", { text: r.result }))));
+  while (body.children.length > KEEP) body.lastChild.remove();
+}
+
+// an event -> a named input in inputs.yaml (the same store path as the MIDI page's inputs)
+async function learnFrom(r) {
+  const name = (prompt(t("monitor.learn_prompt")) || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+  if (!name) return;
+  const type = r.type.startsWith("note") ? "note" : r.type;
+  const value = { name, type, channel: r.channel, ...(type === "note" ? { notes: [r.number] } : { number: r.number }) };
+  if (await attempt(() => api("POST", "/api/store/input", { action: "put", device: "learned", name, value }),
+    t("monitor.learned", { name }))) inRows = [];
+}
+
+const csvLog = (rows) => [["time", "since_start_s", "port", "channel", "type", "number", "note", "value", "input", "roles", "result"],
+  ...rows.map((r) => [new Date(r.time * 1000).toISOString(), r.since_start, r.port, r.channel, r.type, r.number, r.note, r.value,
+    r.input, r.roles, r.result].map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`))].map((r) => r.join(",")).join("\n");
+
+function download(name, text) {
+  const a = el("a", { download: name, href: URL.createObjectURL(new Blob([text], { type: "text/csv" })) });
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+function goSetup() { $("#menu [data-page=setup]").click(); }
+
+// the status bar's DMX / MIDI tiles open the matching pane
+export function focusPane(pane) {
+  const p = $(`#page-monitor [data-pane="${pane}"]`);
+  if (p) p.scrollIntoView({ block: "nearest" });
+}
+
+export function init() {
+  $("#mon-uni").onchange = async (e) => { uni = +e.target.value; remember.set("monitor.uni", uni); out = ""; lastFrame = null; await loadSources(); watch(); };
+  $("#mon-out").onchange = (e) => { out = e.target.value; remember.set("monitor.out", out); lastFrame = null; watch(); };
+  $$("#mon-dmx-view [data-view]").forEach((b) => {
+    b.classList.toggle("sel", b.dataset.view === view);
+    b.onclick = () => {
+      view = b.dataset.view;
+      remember.set("monitor.view", view);
+      $$("#mon-dmx-view [data-view]").forEach((x) => x.classList.toggle("sel", x === b));
+      $("#mon-dmx-body").replaceChildren();
+      drawDmx();
+    };
+  });
+  for (const pane of $$("#page-monitor .mon-pane")) {
+    const key = pane.dataset.pane;
+    pane.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => {
+      const act = b.dataset.act;
+      if (act === "pause") { paused[key] = !paused[key]; b.textContent = t(paused[key] ? "monitor.resume" : "monitor.pause"); b.classList.toggle("sel", paused[key]); }
+      if (act === "full") pane.classList.toggle("full");
+      if (act === "clear" && key === "midi-in") { inRows = []; heat.clear(); $("#mon-in-log").replaceChildren(); }
+      if (act === "clear" && key === "midi-out") { outRows = []; $("#mon-out-log").replaceChildren(); }
+      if (act === "csv") {
+        if (key === "dmx") download(`dmx-U${uni}.csv`, dmxCsv());
+        else download(`midi-${key === "midi-in" ? "in" : "out"}.csv`, csvLog(key === "midi-in" ? inRows : outRows));
+      }
+    }));
+  }
+  ["#mon-in-port", "#mon-in-ch", "#mon-in-type", "#mon-in-unmapped"].forEach((s) => $(s).addEventListener("change", () => {
+    inSeq = 0; inRows = []; $("#mon-in-log").replaceChildren(); poll();
+  }));
+  $("#send-go").onclick = async () => {
+    const r = await attempt(() => api("POST", "/api/monitor/send", { port: $("#send-port").value, type: $("#send-type").value,
+      channel: +$("#send-ch").value, number: +$("#send-num").value, value: +$("#send-val").value }));
+    if (r) toast(t("monitor.sent", { port: r.port }));
+  };
+  onShow("monitor", async () => {
+    await loadSources();
+    watch();
+    poll();
+    clearInterval(timer);
+    timer = setInterval(poll, 300);
+  });
+  onLeave("monitor", () => { stopFeed?.(); stopFeed = null; clearInterval(timer); });
+  onCatalogue(() => { if (shown()) loadSources(); });
+}

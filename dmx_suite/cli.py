@@ -387,6 +387,11 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
         if not args.sim:
             session.real = MidiInputs(args.midi_port or show.rig.midi_inputs or None, router.handle_mido)
             app.midi_inputs = session.real
+            if show.rig.midi_outputs:  # v4: MIDI out (test sends, feedback), logged on the Monitor page
+                from .midi.outputs import MidiOutputs
+
+                names = [o["device"].split(":", 1)[-1] for o in show.rig.midi_outputs]
+                app.midi_outputs = MidiOutputs(names, app.midi_out_monitor)
             out("MIDI in:", ", ".join(session.real.open) or "none yet (plug in and it connects by itself)")
         if show.rig.osc.port:
             from .osc import OscServer

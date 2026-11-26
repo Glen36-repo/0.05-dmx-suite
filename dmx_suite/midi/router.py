@@ -10,7 +10,7 @@ from typing import Any
 
 from ..engine import Engine
 from .map import ACTIONS, AUTOPILOT_ACTIONS, CONTINUOUS, Mapping, MidiMap, canonical, validate
-from .monitor import MidiMonitor, MonitorEntry
+from .monitor import MidiMonitor, MonitorEntry, note_name
 from .named import InputDef, Inputs, suggest
 
 SHOW_ACTIONS = {"select_show", "select_set", "select_scene", "next_step", "next_song", "prev_song", "tap_tempo"}
@@ -122,11 +122,15 @@ class MidiRouter:
 
     def handle(self, m: Incoming, port: str = "") -> str:
         if m.type in ("clock", "start", "continue", "stop"):  # 24 a beat: not worth a monitor row each
+            if m.type == "clock":
+                self.monitor.clock()
             return self._clock(m)
         result, names = self._route(m, port)
         kind = f"osc {m.address}" if m.type == "osc" else m.raw_type
+        roles = sorted({r for i in self.inputs.inputs.values() if i.name in names for r in i.roles})
         self.monitor.add(
-            MonitorEntry(time.time(), port, m.channel, kind, m.number, m.value, result, ", ".join(names))
+            MonitorEntry(time.time(), port, m.channel, kind, m.number, m.value, result, ", ".join(names),
+                         note=note_name(m.number) if m.type == "note" else "", roles=", ".join(roles))
         )
         return result
 

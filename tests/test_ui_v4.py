@@ -362,3 +362,41 @@ def test_haze_settings_panel(ui):
     assert yaml.safe_load((root / "rigs" / "full.yaml").read_text())["haze"]["level"] == 41
     page.click("[data-test=manual]")
     page.wait_for_function("document.querySelector('#haze').textContent.includes('testing')")
+
+
+# ---------------------------------------------------------------- Monitor page (item 15)
+
+
+def test_monitor_page_dmx_and_midi(ui):
+    import mido
+
+    page, app, root, _ = ui
+    go(page, "monitor")
+    page.wait_for_selector("#mon-dmx-body .dmx-grid .dc[data-ch='512']")
+    page.wait_for_function("document.querySelector('#mon-dmx-stats').textContent.includes('Simulator')")
+    app.engine.channel_test[(0, 3)] = 123
+    page.wait_for_function("document.querySelector('#mon-dmx-body .dc[data-ch=\"3\"] .v').textContent === '123'")
+    assert "bar_1" in page.get_attribute("#mon-dmx-body .dc[data-ch='27']", "title")
+    page.click("#mon-dmx-view [data-view=fixture]")
+    page.wait_for_selector("#mon-dmx-body .fxbox")
+    page.click("#mon-dmx-view [data-view=hex]")
+    assert "  1: " in page.inner_text("#mon-dmx-body")
+    del app.engine.channel_test[(0, 3)]
+    # MIDI in: the event, its note name, the named input and what it did
+    app.router.handle_mido(mido.Message("note_on", channel=9, note=38, velocity=100), "TD-25")
+    page.wait_for_selector("#mon-in-log tr")
+    row = page.inner_text("#mon-in-log tr:first-child")
+    assert "D2" in row and "Snare" in row and "TD-25" in row
+    assert "Simulated MIDI input" in page.inner_text("#mon-in-ports")
+    assert "No MIDI outputs set up" in page.inner_text("#mon-out-ports") and page.is_disabled("#send-go")
+    with page.expect_download() as dl:
+        page.click("#mon-midi-in [data-act=csv]")
+    assert dl.value.suggested_filename == "midi-in.csv"
+    page.click("#mon-midi-in [data-act=full]")
+    assert "full" in page.get_attribute("#mon-midi-in", "class")
+
+
+def test_status_tile_opens_monitor(ui):
+    page, *_ = ui
+    page.click(".tile.link[data-key^='midi:']")
+    page.wait_for_selector("#page-monitor.on")

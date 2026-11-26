@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -119,6 +120,20 @@ def guide() -> str:
 class Offline(Exception):
     pass
 
+
+
+def _channel_list(text: str) -> list[int]:
+    """'1-14, 300' -> [1, 2, ... 14, 300]."""
+    out: list[int] = []
+    for part in (text or "").replace(" ", "").split(","):
+        if not part:
+            continue
+        a, _, b = part.partition("-")
+        try:
+            out += list(range(int(a), int(b or a) + 1))
+        except ValueError as e:
+            raise StoreError(f"channels: numbers or ranges like 1-14, 300 (not {part!r})") from e
+    return out
 
 def _dump(data: Any) -> str:
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True, default_flow_style=None, width=110)
@@ -389,6 +404,39 @@ class DmxTools:
         notes = "; ".join(r.get("notes") or [])  # outputs are rebuilt live
         return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
 
+    def monitor_dmx(self, universe: int = 0, output: str = "", channels: str = "") -> str:
+        """What one interface really sent on a universe: stats and channel values with names."""
+        import base64
+
+        q = f"/api/frame?u={int(universe)}" + (f"&out={output}" if output != "" else "")
+        v = self._live("GET", q)
+        names = {int(k): n for k, n in self._live("GET", f"/api/monitor/channels?u={int(universe)}").items()}
+        out: dict[str, Any] = {k: v[k] for k in ("universe", "out", "source", "no_frames", "stats")}
+        if v.get("frame"):
+            frame = base64.b64decode(v["frame"])
+            want = _channel_list(channels) or sorted(set(names) | {i + 1 for i, x in enumerate(frame) if x})
+            out["channels"] = {c: {"value": frame[c - 1], "name": names.get(c, "")} for c in want if 1 <= c <= 512}
+            out["non_zero"] = sum(1 for x in frame if x)
+        else:
+            out["channels"] = {}
+            out["note"] = "this interface hasn't sent a frame on this universe: nothing is going out"
+        return _dump(out)
+
+    def monitor_midi(self, direction: str = "in", n: int = 50, port: str = "", channel: int = 0, type: str = "",
+                     unmapped_only: bool = False) -> str:
+        qs = f"dir={direction}&n={int(n)}&unmapped={'1' if unmapped_only else '0'}"
+        if port:
+            qs += f"&port={urllib.parse.quote(port)}"
+        if channel:
+            qs += f"&channel={int(channel)}"
+        if type:
+            qs += f"&type={urllib.parse.quote(type)}"
+        rows = self._live("GET", f"/api/monitor/midi?{qs}")
+        status = self._live("GET", "/api/monitor/status")
+        keep = ("time", "port", "channel", "type", "number", "note", "value", "input", "roles", "result")
+        return _dump({"events": [{k: r[k] for k in keep} for r in rows], "ports_in": status["midi_in"],
+                      "ports_out": status["midi_out"], "rates": status["rates"], "energy": status["energy"]})
+
     def list_devices(self) -> str:
         r = self._live("GET", "/api/devices/list")
         if not r.get("scanning"):
@@ -418,10 +466,13 @@ class DmxTools:
                 out[r] = pts
         return _dump(out) if out else "no head points yet (Heads page: aim, then store to a point)"
 
-    def save_input(self, device: str, name: str, value_yaml: str) -> str:
+    def save_input(self, device: str, name: str, value_yaml: str, device_info_yaml: str = "") -> str:
+        if not device:
+            raise StoreError("save_input needs device (the device id the input belongs to, e.g. td25)")
         value = _yaml(value_yaml, "input")
-        return self._write("POST", "/api/store/input", {"action": "put", "device": device, "name": name, "value": value},
-                           lambda: self.local.put_input(device, name, value))
+        info = _yaml(device_info_yaml, "device info") if device_info_yaml.strip() else None
+        body = {"action": "put", "device": device, "name": name, "value": value, "device_info": info}
+        return self._write("POST", "/api/store/input", body, lambda: self.local.put_input(device, name, value, info))
 
     def rename_input(self, name: str, new_name: str) -> str:
         return self._write("POST", "/api/store/input", {"action": "rename", "name": name, "new_name": new_name},

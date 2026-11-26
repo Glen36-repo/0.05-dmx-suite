@@ -524,3 +524,38 @@ table.lp-routing tr.on td { background: color-mix(in srgb, var(--accent) 14%, tr
   .stage-wrap { grid-template-columns: minmax(0, 1fr); }
   .arrange { flex-direction: row; flex-wrap: wrap; width: auto; }
 }
+
+/* ---------------------------------------------------------------- v4 Monitor page */
+body:has(#page-monitor.on) main { max-width: none; }
+.mon-panes { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); grid-template-rows: auto auto; gap: 10px; }
+.mon-pane { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--panel-pad); background: var(--panel); min-width: 0;
+  resize: vertical; overflow: auto; min-height: 220px; }
+#mon-dmx { grid-row: span 2; }
+.mon-pane.full { position: fixed; inset: 60px 10px 10px; z-index: 8; resize: none; }
+.mon-head { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: center; }
+.mon-head h2 { margin: 0; }
+.seg-row { display: inline-flex; gap: 2px; }
+.mon-stats { font-size: 12px; color: var(--muted); margin: 4px 0; }
+.mon-flag { font-size: 13px; font-weight: 600; color: var(--bad); margin: 4px 0; }
+.mon-body { overflow: auto; max-height: 60vh; }
+.mon-pane.full .mon-body { max-height: none; }
+.dmx-grid { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 1px; background: var(--line); font-size: 9px; }
+.dmx-grid .dc { position: relative; background: var(--bg); padding: 1px 2px; min-height: 26px; }
+.dmx-grid .dc .n { color: var(--muted); opacity: .7; }
+.dmx-grid .dc .v { position: absolute; right: 2px; bottom: 1px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dmx-grid .dc::after { content: ""; position: absolute; inset: 0; background: var(--accent); opacity: calc(var(--v, 0) * .6); pointer-events: none; }
+.dmx-grid .dc.moved { outline: 1px solid var(--warn); outline-offset: -1px; }
+.dmx-grid .dc.patched { background: color-mix(in srgb, var(--panel-2) 70%, var(--bg)); }
+.dmx-fx { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.dmx-fx .fxbox { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-size: 11px; }
+.dmx-fx .ch { display: grid; grid-template-columns: 1fr 34px 60px; gap: 4px; align-items: center; }
+.dmx-fx .bar { height: 6px; background: var(--accent); border-radius: 3px; }
+.dmx-hex { font: 11px/1.4 ui-monospace, monospace; white-space: pre; }
+table.mon-log td { font-size: 12px; padding: 1px 4px; }
+table.mon-log tr.unmapped td { color: var(--muted); }
+.mon-heat { display: flex; flex-wrap: wrap; gap: 2px; margin: 4px 0; }
+.mon-heat .hn { font-size: 10px; padding: 1px 3px; border-radius: 3px; background: color-mix(in srgb, var(--accent) calc(var(--v) * 100%), var(--panel-2)); }
+.led { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 4px; }
+.led.ok { background: var(--ok); } .led.bad { background: var(--bad); } .led.act { background: #fff; box-shadow: 0 0 6px #fff; }
+@media (max-width: 1000px) { .mon-panes { grid-template-columns: minmax(0, 1fr); } #mon-dmx { grid-row: auto; } }
+.tile.link { cursor: pointer; }

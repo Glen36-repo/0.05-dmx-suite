@@ -142,12 +142,13 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.list_inputs()
 
     @tool
-    def save_input(device: str, name: str, value_yaml: str) -> str:
+    def save_input(device: str, name: str, value_yaml: str, device_info_yaml: str = "") -> str:
         """Add or change a named input in a device (made if new), e.g. device 'td25', name 'kick',
         value_yaml '{name: Kick, type: note, notes: [35], roles: [kick, activity]}'. Every MIDI map
         entry that names the input follows. Types: note (notes: [...]), program_change / control_change
-        (number), osc (address). Optional: channel (1-16 or any), port, velocity [lo, hi], shared, colour."""
-        return t.save_input(device, name, value_yaml)
+        (number), osc (address). Optional: channel (1-16 or any), port, velocity [lo, hi], shared, colour.
+        device_info_yaml names a new device: '{name: TD-25 drums, port: TD-25, channel: 10}'. device is required."""
+        return t.save_input(device, name, value_yaml, device_info_yaml)
 
     @tool
     def rename_input(name: str, new_name: str) -> str:
@@ -298,6 +299,22 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         artnet, sacn), port (COM3), universe (0-15), alias (e.g. Stage DMX). With mac: set a wireless node's
         universe instead. Not during gig lock. Applied live: the outputs are rebuilt between frames."""
         return t.set_output(index, driver, port, universe, mac, alias)
+
+    @tool
+    def monitor_dmx(universe: int = 0, output: str = "", channels: str = "") -> str:
+        """Fault-find 'software running, rig dark': the frame one interface really sent on a universe (default:
+        the first output carrying it; output = an index from list_outputs, or 'engine' for the engine's frame
+        before the outputs), with fps, frames, errors, last frame age, all-zero flag, and each channel's value
+        and name (bar_2 red px5). channels: '1-14, 300' (default: patched and non-zero ones)."""
+        return t.monitor_dmx(universe, output, channels)
+
+    @tool
+    def monitor_midi(direction: str = "in", n: int = 50, port: str = "", channel: int = 0, type: str = "",
+                     unmapped_only: bool = False) -> str:
+        """The last n MIDI events in (from the gear) or out (sent by the app): time, port, channel, type, number
+        and note name, velocity/value, the named input it matched and its roles, and what it triggered (or
+        'unmapped'); plus port states, hits a second and the autopilot's energy. Fault-find 'pedal does nothing'."""
+        return t.monitor_midi(direction, n, port, channel, type, unmapped_only)
 
     @tool
     def list_devices() -> str:

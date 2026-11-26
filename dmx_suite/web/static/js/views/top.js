@@ -2,7 +2,12 @@
 import { api, attempt, cmd } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
+import { go } from "../nav.js";
 import { openClaude } from "./claude.js";
+import { focusPane } from "./monitor.js";
+
+// status bar tiles that open a Monitor pane (v4)
+const PANE = { output: "dmx", routing: "dmx", device: "dmx", midi: "midi-in", device_new: "midi-in" };
 import { live, onConnection, onState } from "../state.js";
 
 let lastNewBanner = null;
@@ -57,8 +62,9 @@ function render(s) {
   const short = (d) => (d.kind === "output" || d.kind === "midi" ? d.detail.split(" · ")[0] : d.detail);
   $("#health").replaceChildren(
     ...s.devices.map((d) =>
-      el("div", { class: "tile" + (d.kind === "claude" ? " link" : ""), title: `${d.name}: ${d.detail}`, "data-key": `${d.kind}:${d.name}`,
-        onclick: d.kind === "claude" ? openClaude : undefined },
+      el("div", { class: "tile" + (d.kind === "claude" || PANE[d.kind] ? " link" : ""),
+        title: `${d.name}: ${d.detail}` + (d.model ? ` (${d.model})` : ""), "data-key": `${d.kind}:${d.name}`,
+        onclick: d.kind === "claude" ? openClaude : PANE[d.kind] ? () => { go("monitor"); focusPane(PANE[d.kind]); } : undefined },
         el("span", { class: `dot ${d.state}${d.active ? " active" : ""}`, "aria-label": d.state }),
         el("span", { text: d.name }),
         el("span", { class: "muted", text: d.state === "ok" && d.kind !== "claude" ? short(d) : d.detail }))),
