@@ -1,0 +1,116 @@
+"""What the show layer asks for. A Look has no dimmer and no haze: those belong to MASTER and
+the Haze controls (hard rules 1 and 5), so they can't even be expressed here.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from .fixtures import EMITTERS, ConfigError, Patch
+
+Colour = dict[str, float]  # emitter role -> 0..1
+
+FORBIDDEN = {"dimmer": "scenes never set dimmers; MASTER owns on/off (rule 1)",
+             "intensity": "scenes never set dimmers; MASTER owns on/off (rule 1)",
+             "haze": "haze is only set by the Haze controls (rule 5)"}
+
+
+class LookError(ConfigError):
+    pass
+
+
+@dataclass
+class FixtureLook:
+    colour: Colour = field(default_factory=dict)  # whole-fixture colour; empty = off
+    pixels: list[Colour] | None = None  # per-pixel colours (bars)
+    colour_wheel: int | None = None  # DMX value
+    gobo: int | None = None
+    pan: float | None = None  # 0..1, None = hold position
+    tilt: float | None = None
+    speed: float | None = None  # 0..1, 1 = fastest
+    strobe: int | None = None
+
+    def is_on(self) -> bool:
+        if any(v > 0 for v in self.colour.values()):
+            return True
+        if self.pixels and any(v > 0 for px in self.pixels for v in px.values()):
+            return True
+        return self.colour_wheel is not None and not self.colour
+
+
+@dataclass
+class Look:
+    fixtures: dict[str, FixtureLook] = field(default_factory=dict)
+    show_colour: Colour = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
+
+
+def _unit(v: Any, what: str) -> float:
+    f = float(v)
+    if not 0 <= f <= 1:
+        raise LookError(f"{what} must be 0-1")
+    return f
+
+
+def parse_colour(v: Any, what: str) -> Colour:
+    """[r, g, b], '#rrggbb', or {red: .., white: ..} (0-1)."""
+    if isinstance(v, str):
+        s = v.lstrip("#")
+        if len(s) != 6:
+            raise LookError(f"{what}: colour {v!r} not #rrggbb")
+        return {k: int(s[i : i + 2], 16) / 255 for k, i in (("red", 0), ("green", 2), ("blue", 4))}
+    if isinstance(v, (list, tuple)):
+        if len(v) != 3:
+            raise LookError(f"{what}: colour list must be [r, g, b]")
+        return {k: _unit(x, what) for k, x in zip(("red", "green", "blue"), v)}
+    if isinstance(v, dict):
+        bad = set(v) - set(EMITTERS)
+        if bad:
+            raise LookError(f"{what}: unknown colour channels {sorted(bad)}")
+        return {k: _unit(x, what) for k, x in v.items()}
+    raise LookError(f"{what}: bad colour {v!r}")
+
+
+def parse_fixture_look(d: dict, what: str) -> FixtureLook:
+    for k in d:
+        if k in FORBIDDEN:
+            raise LookError(f"{what}: {FORBIDDEN[k]}")
+    allowed = {"colour", "pixels", "colour_wheel", "gobo", "pan", "tilt", "speed", "strobe"}
+    bad = set(d) - allowed
+    if bad:
+        raise LookError(f"{what}: unknown keys {sorted(bad)}")
+    return FixtureLook(
+        colour=parse_colour(d["colour"], what) if "colour" in d else {},
+        pixels=[parse_colour(p, f"{what} pixel {i + 1}") for i, p in enumerate(d["pixels"])] if "pixels" in d else None,
+        colour_wheel=d.get("colour_wheel"),
+        gobo=d.get("gobo"),
+        pan=_unit(d["pan"], f"{what} pan") if "pan" in d else None,
+        tilt=_unit(d["tilt"], f"{what} tilt") if "tilt" in d else None,
+        speed=_unit(d["speed"], f"{what} speed") if "speed" in d else None,
+        strobe=d.get("strobe"),
+    )
+
+
+def parse_look(data: dict, patch: Patch) -> Look:
+    """`fixtures:` keys may be fixture ids or group names."""
+    for k in data:
+        if k in FORBIDDEN:
+            raise LookError(FORBIDDEN[k])
+    look = Look()
+    if "show_colour" in data:
+        look.show_colour = parse_colour(data["show_colour"], "show_colour")
+    for key, d in (data.get("fixtures") or {}).items():
+        fl = parse_fixture_look(d or {}, key)
+        for fid in patch.resolve([key]):
+            fx = patch.fixtures[fid]
+            if fx.type.colour_only and (fl.pan is not None or fl.tilt is not None):
+                raise LookError(f"{key}: {fx.type.name} is colour only, no pan/tilt (rule 7)")
+            look.fixtures[fid] = fl
+    return look
+
+
+def load_look(path: str | Path, patch: Patch) -> Look:
+    return parse_look(yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}, patch)

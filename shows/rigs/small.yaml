@@ -1,0 +1,15 @@
+# Small rig: bars and kick light only. Shows skip the missing fixtures automatically.
+name: Small rig
+fixtures: [bars, kick, smoke]
+
+grand_master: 100
+sub_masters: {bar: 100, kick: 100}
+
+haze:
+  enabled: false          # e.g. rooms with sensitive smoke detectors
+
+startup:
+  master: on
+
+outputs:
+  - {driver: enttec_open, port: COM3}
