@@ -105,7 +105,18 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 - **Setup:** find fixture, channel tester, drum flash test, node health (name/identify nodes), address check.
 - **Files:** preview or play scenes, and restore any file from the backups.
 
-A health strip across the top shows every node; a banner and a beep appear when one drops out or goes weak. Node changes are logged to `logs/health-<date>.jsonl`.
+**Status bar** (always across the top; full table on the Setup tab):
+
+| Item | Shows |
+| --- | --- |
+| Engine | Actual frame rate (amber under 35 fps) |
+| DMX outputs | Enttec Open DMX / Pro and the 0.05 node: connected, no reply, or not found / unplugged (retrying every 2 s) |
+| MIDI | Each input in the rig's `midi_inputs`: connected or unplugged |
+| Claude | Connected while Claude Desktop has the 0.05 tools loaded, the last tool it used, read-only during gig lock |
+| Screens | Browsers watching, and how many are phones/tablets |
+| Nodes | Every node and receiver: online / weak / offline / new, signal |
+
+A red banner and a beep appear when an output, MIDI interface or node drops out. USB DMX interfaces and the node reconnect by themselves when plugged back in. Node changes are logged to `logs/health-<date>.jsonl`.
 
 **Gig lock** (top right): Claude can still read everything, but can't change files, preview or change haze, and the MIDI map can't be saved. The band's live controls keep working.
 

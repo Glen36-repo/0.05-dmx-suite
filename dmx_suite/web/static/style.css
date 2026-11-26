@@ -31,7 +31,14 @@ button, input, select { font: inherit; color: var(--text); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .dot.online, .dot.connected { background: var(--ok); }
 .dot.weak, .dot.new { background: var(--warn); }
-.dot.offline { background: var(--bad); }
+.dot.offline, .dot.bad { background: var(--bad); }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.sim { background: #5b8cff; }
+.dot.idle { background: #44444f; }
+.dot.active { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 35%, transparent); } }
+.tile.sep { margin-left: 6px; }
 
 .banner { background: var(--bad); color: #fff; padding: 8px 16px; font-weight: 600; }
 .hidden { display: none !important; }
@@ -95,7 +102,7 @@ td.hit { color: var(--ok); }
 .list { display: grid; gap: 6px; }
 .item { display: flex; gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px; }
 .item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-table.monitor, table.map, table.nodes, table.addr { display: block; overflow-x: auto; }
+table.monitor, table.map, table.nodes, table.addr, table.devices { display: block; overflow-x: auto; }
 
 .toast { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 600px; margin: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; z-index: 10; }
 .toast.err { border-color: var(--bad); }

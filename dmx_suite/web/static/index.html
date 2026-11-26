@@ -15,7 +15,7 @@
   <div class="now" id="now">connecting…</div>
   <button class="lock" id="giglock" title="Gig lock: Claude can read but not change or preview anything">Gig lock</button>
 </header>
-<div class="health" id="health"></div>
+<div class="health" id="health" title="Status: engine, DMX outputs, MIDI, nodes, Claude, screens"></div>
 <div class="banner hidden" id="banner"></div>
 
 <nav class="tabs" id="tabs">
@@ -113,6 +113,8 @@
     </div>
     <h2>Drum flash test</h2>
     <div class="row"><button data-cmd="flash_test">Flash all (MASTER off)</button></div>
+    <h2>Devices</h2>
+    <table class="devices"><thead><tr><th>Device</th><th>Type</th><th>State</th><th>Detail</th></tr></thead><tbody id="devices"></tbody></table>
     <h2>Nodes</h2>
     <table class="nodes"><thead><tr><th>Name</th><th>MAC</th><th>State</th><th>Signal</th><th>Loss</th><th>Last data</th><th></th></tr></thead><tbody id="nodes"></tbody></table>
     <h2>Addresses</h2>

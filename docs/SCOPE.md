@@ -296,6 +296,8 @@ Decided 26/11/2026:
 | Claude without the engine | MCP edits the show files directly with the same checks; live tools report the engine isn't running |
 | Universes | 0-15 per fixture; every universe rendered and sent each frame (and on drum hits) |
 | Port-specific MIDI | Mappings can name an input (`port`, part of the port name); a port-specific mapping wins, so SamplePad and TD-25 can share ch 10 notes |
+| Status bar | Engine fps, every output driver, MIDI inputs, Claude (MCP check-in every 20 s; last tool), open screens, nodes; red banner + beep when anything drops |
+| USB DMX unplug | Enttec Open/Pro and the node keep the show running when unplugged and reopen the port every 2 s |
 | MIDI hot-plug | Wanted ports (rig `midi_inputs`) rescanned every 2 s; reconnect under a new name; status shown as connected/unplugged |
 
 Open:

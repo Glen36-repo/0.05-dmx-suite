@@ -39,6 +39,81 @@ class SerialTransport:
         self._s.close()
 
 
+class ReconnectingSerial:
+    """The node's USB port, surviving an unplug: writes are dropped and reads return nothing while
+    it's gone, and it's reopened every couple of seconds (Windows keeps the COM number for a device)."""
+
+    REOPEN_S = 2.0
+
+    def __init__(self, port: str, opener: Callable[[str], Transport] | None = None) -> None:
+        self.port = port
+        self._opener = opener or SerialTransport
+        self._t: Transport | None = None
+        self._last_try = -1e9
+        self.connected_once = False
+        self.errors = 0
+        self.last_error = ""
+        self._lock = threading.Lock()
+        self._ensure()
+
+    @property
+    def is_open(self) -> bool:
+        return self._t is not None
+
+    def _ensure(self) -> Transport | None:
+        if self._t is not None:
+            return self._t
+        now = time.monotonic()
+        if now - self._last_try < self.REOPEN_S:
+            return None
+        self._last_try = now
+        try:
+            self._t = self._opener(self.port)
+            self.connected_once = True
+        except Exception as e:
+            self.last_error = str(e) or type(e).__name__
+        return self._t
+
+    def _fail(self, e: Exception) -> None:
+        self.errors += 1
+        self.last_error = str(e) or type(e).__name__
+        try:
+            if self._t is not None:
+                self._t.close()
+        except Exception:
+            pass
+        self._t = None
+
+    def write(self, data: bytes) -> None:
+        with self._lock:
+            t = self._ensure()
+            if t is None:
+                return
+            try:
+                t.write(data)
+            except Exception as e:
+                self._fail(e)
+
+    def read(self) -> bytes:
+        with self._lock:
+            t = self._ensure()
+        if t is None:
+            time.sleep(0.05)
+            return b""
+        try:
+            return t.read()
+        except Exception as e:
+            with self._lock:
+                self._fail(e)
+            return b""
+
+    def close(self) -> None:
+        with self._lock:
+            if self._t is not None:
+                self._t.close()
+                self._t = None
+
+
 @dataclass
 class LinkStats:
     frames_sent: int = 0
@@ -173,8 +248,11 @@ class NodeLink:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            if not self.poll():
-                time.sleep(0.002)
+            try:
+                if not self.poll():
+                    time.sleep(0.002)
+            except Exception:  # a bad read must never stop the status/heartbeat reader
+                time.sleep(0.1)
 
     def close(self) -> None:
         self._stop.set()

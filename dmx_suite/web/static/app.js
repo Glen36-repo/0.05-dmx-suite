@@ -21,6 +21,7 @@ let cat = null;
 let midiSeq = 0;
 let lastAlert = 0;
 let midiChannel = "";
+let lastBadDevices = null;
 
 // ------------------------------------------------------------------ api
 
@@ -265,28 +266,37 @@ function render() {
   $$("#find [data-find]").forEach((b) => b.classList.toggle("sel", s.setup.find === b.dataset.find));
 
   // health strip + alerts
+  // status bar: engine, outputs, MIDI, Claude, screens, then every node/receiver
+  const realNodes = s.nodes.filter((n) => n.mac);
+  const short = (d) => (d.kind === "output" || d.kind === "midi" ? d.detail.split(" · ")[0] : d.detail);
   $("#health").replaceChildren(
-    ...s.midi_inputs.map((m) =>
-      el("div", { class: "tile", title: m.port || "" }, el("span", { class: "dot " + (m.connected ? "connected" : "offline") }),
-        el("span", { text: "MIDI " + m.name }), el("span", { class: "muted", text: m.connected ? "connected" : "unplugged" }))),
-    ...s.nodes.map((n) =>
-      el("div", { class: "tile", title: n.mac || "" }, el("span", { class: "dot " + n.state }), el("span", { text: n.name || n.mac || "node" }),
-        el("span", { class: "muted", text: n.rssi != null ? `${n.rssi} dBm` : n.state }))
-    )
+    ...s.devices.map((d) =>
+      el("div", { class: "tile", title: `${d.name}: ${d.detail}` },
+        el("span", { class: `dot ${d.state}${d.active ? " active" : ""}` }), el("span", { text: d.name }),
+        el("span", { class: "muted", text: d.state === "ok" && d.kind !== "claude" ? short(d) : d.detail }))),
+    ...realNodes.map((n, i) =>
+      el("div", { class: "tile" + (i === 0 ? " sep" : ""), title: n.mac || "" }, el("span", { class: "dot " + n.state }),
+        el("span", { text: n.name || n.mac }), el("span", { class: "muted", text: n.rssi != null ? `${n.rssi} dBm` : n.state })))
   );
+  $("#devices").replaceChildren(...s.devices.map((d) => el("tr", {},
+    el("td", { text: d.name }), el("td", { text: d.kind }), el("td", {}, el("span", { class: "dot " + d.state, style: "display:inline-block;margin-right:6px" }), d.state),
+    el("td", { text: d.detail }))));
   const latest = s.alerts[s.alerts.length - 1];
   const banner = $("#banner");
-  const bad = s.nodes.filter((n) => n.state === "offline" || n.state === "weak");
-  const unplugged = s.midi_inputs.filter((m) => !m.connected);
-  if (bad.length || unplugged.length) {
-    banner.textContent = [...bad.map((n) => `${n.name || n.mac} ${n.state.toUpperCase()}`),
-      ...unplugged.map((m) => `MIDI ${m.name} UNPLUGGED`)].join(" · ");
+  const bad = realNodes.filter((n) => n.state === "offline" || n.state === "weak");
+  const badDev = s.devices.filter((d) => d.state === "bad");
+  if (bad.length || badDev.length) {
+    banner.textContent = [...badDev.map((d) => `${d.name}: ${d.detail}`),
+      ...bad.map((n) => `${n.name || n.mac} ${n.state.toUpperCase()}`)].join(" · ");
     banner.classList.remove("hidden");
   } else banner.classList.add("hidden");
   if (latest && latest.time > lastAlert) {
     if (lastAlert) beep();
     lastAlert = latest.time;
   }
+  const badKeys = badDev.map((d) => d.name).join("|");
+  if (lastBadDevices !== null && badKeys && badKeys !== lastBadDevices) beep();  // an output or MIDI interface just dropped
+  lastBadDevices = badKeys;
 
   // nodes table
   $("#nodes").replaceChildren(
