@@ -18,6 +18,7 @@ from dmx_suite.web.server import WebServer
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"
 TOKEN = "test-token-0123456789abcdef"
+CLAUDE = "claude-token-0123456789abcdef"
 
 
 class Plug:
@@ -208,7 +209,7 @@ def server(tmp_path):
     root = tmp_path / "shows"
     shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups", ".state.json"))
     a = App(load_show(root), [LogDriver()])
-    web = WebServer(a, "127.0.0.1", 0, token=TOKEN)
+    web = WebServer(a, "127.0.0.1", 0, token=TOKEN, claude_token=CLAUDE)
     web.start()
     yield a, f"http://127.0.0.1:{web.port}", root
     web.stop()
@@ -217,13 +218,13 @@ def server(tmp_path):
 
 def test_claude_ping_and_calls_tracked(server):
     a, url, root = server
-    t = DmxTools(shows=root, url=url, token=TOKEN)
+    t = DmxTools(shows=root, url=url, token=CLAUDE)
     assert t.ping()
     assert a.clients["claude"]["calls"] == 0  # a check-in isn't a call
     t.call_label = "now_playing"
     t.now_playing()
     assert a.clients["claude"]["last_call"] == "now_playing"
-    assert not DmxTools(shows=root, url="http://127.0.0.1:9", token=TOKEN).ping()
+    assert not DmxTools(shows=root, url="http://127.0.0.1:9", token=CLAUDE).ping()
 
 
 def test_screens_counted(server):

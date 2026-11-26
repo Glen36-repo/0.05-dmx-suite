@@ -299,6 +299,27 @@
         <th data-i18n="setup.col_start"></th><th data-i18n="setup.col_end"></th><th data-i18n="setup.col_in_rig"></th><th data-i18n="setup.col_checked"></th>
       </tr></thead><tbody id="addr"></tbody></table>
       <div class="muted" id="addrnotes"></div>
+      <h2 data-i18n="access.title"></h2>
+      <div class="access" id="access">
+        <p class="muted" id="access-state"></p>
+        <div class="row wrap">
+          <input type="password" id="pin-old" autocomplete="current-password" data-i18n-placeholder="access.pin_old">
+          <input type="password" id="pin-new" autocomplete="new-password" data-i18n-placeholder="access.pin_new">
+          <button id="pin-set" data-i18n="access.pin_set"></button>
+          <button id="pin-clear" class="danger-text" data-i18n="access.pin_clear"></button>
+        </div>
+        <div class="row wrap">
+          <label class="check"><input type="checkbox" id="access-lan"><span data-i18n="access.lan"></span></label>
+          <label class="check"><input type="checkbox" id="access-local"><span data-i18n="access.pin_local"></span></label>
+          <label class="field-inline"><span data-i18n="access.session_hours"></span>
+            <input type="number" id="access-hours" min="0.25" max="168" step="0.25" class="num"></label>
+        </div>
+        <div class="lan-info hidden" id="lan-info">
+          <div class="qr" id="lan-qr"></div>
+          <div><p data-i18n="access.lan_help"></p><ul class="urls" id="lan-urls"></ul></div>
+        </div>
+        <button id="logout" class="hidden" data-i18n="access.logout"></button>
+      </div>
       <h2 data-i18n="setup.appearance"></h2>
       <div class="row wrap">
         <label class="muted" for="theme" data-i18n="setup.theme"></label>

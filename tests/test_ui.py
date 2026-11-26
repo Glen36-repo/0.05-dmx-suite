@@ -45,6 +45,7 @@ def ui(browser, tmp_path):
     web = WebServer(app, "127.0.0.1", 0, token=TOKEN)
     web.start()
     page = browser.new_page(viewport={"width": 1280, "height": 900})
+    page.web = web  # for tests that change access settings
     errors: list[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
@@ -340,6 +341,7 @@ def test_make_and_play_a_busk_panel(ui):
     page, app, root, _ = ui
     go(page, "busk")
     page.check("#busk-edit")
+    page.wait_for_selector("#busk-editor[data-ready='1']")
     page.fill("#panel-key", "band")
     page.fill("#panel-name", "Band busk")
     page.click("#panel-new")
@@ -359,3 +361,32 @@ def test_make_and_play_a_busk_panel(ui):
     page.click("#busk-release")
     page.wait_for_selector("#busk [data-widget=colour1]:not(.on)")
     assert app.engine.held() == []
+
+
+def test_set_a_pin_and_turn_on_phone_access(ui):
+    page, _, _, _ = ui
+    go(page, "setup")
+    page.wait_for_selector("#access-state:not(:empty)")
+    assert page.is_disabled("#access-lan")  # needs a PIN first
+    page.fill("#pin-new", "2468")
+    page.click("#pin-set")
+    page.wait_for_selector("#access-lan:not([disabled])")
+    page.check("#access-lan")
+    page.wait_for_selector("#lan-info:not(.hidden)")
+
+
+def test_sign_in_page(ui):
+    page, _, _, errors = ui
+    web = page.web
+    web.access.set_pin("2468")
+    web.access.configure(pin_local=True)
+    page.goto(f"http://127.0.0.1:{web.port}/")
+    page.wait_for_selector("body.ready #pin")
+    page.fill("#pin", "0000")
+    page.click("button[type=submit]")
+    page.wait_for_selector("#login-error:not(:empty)")
+    page.fill("#pin", "2468")
+    page.click("button[type=submit]")
+    page.wait_for_selector("#master")
+    page.wait_for_selector("body.ready")
+    errors[:] = [e for e in errors if "401" not in e]  # the wrong PIN, on purpose

@@ -337,13 +337,21 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     session = Session(app, show, router, FakeMidiIn(router.handle_mido))
     try:
         if not args.no_web:
+            from .access import Access, lan_addresses
             from .web.server import WebServer
 
-            session.web = WebServer(app, "0.0.0.0" if args.lan else "127.0.0.1", args.port)
+            access = Access()
+            if args.lan:
+                try:
+                    access.configure(lan=True)
+                except ValueError as e:
+                    out(f"phone/LAN access not turned on: {e} (Setup page)")
+            session.web = WebServer(app, None, args.port, access=access)
             session.web.start()
             out(f"browser UI: http://localhost:{session.web.port}/")
-            if args.lan:
-                out(f"from a phone on the same network: http://<this laptop's IP>:{session.web.port}/?t={session.web.token}")
+            if access.lan:
+                for ip in lan_addresses():
+                    out(f"from a phone on the same network: http://{ip}:{session.web.port}/ (sign in with the PIN)")
         if not args.sim:
             session.real = MidiInputs(args.midi_port or show.rig.midi_inputs or None, router.handle_mido)
             app.midi_inputs = session.real
@@ -462,7 +470,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--setlist", help="start a setlist at song 1")
         p.add_argument("--fresh", action="store_true", help="don't resume what was playing before a restart")
         p.add_argument("--port", type=int, default=8505, help="browser UI port")
-        p.add_argument("--lan", action="store_true", help="let phones on the network open the UI (needs the token link)")
+        p.add_argument("--lan", action="store_true", help="turn on phone/LAN access (needs a PIN, set on the Setup page)")
         p.add_argument("--no-web", action="store_true", help="no browser UI")
         p.add_argument("--headless", action="store_true", help="no console; run until stopped (e.g. as a service)")
 

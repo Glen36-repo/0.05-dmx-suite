@@ -19,6 +19,7 @@ from dmx_suite.web.server import WebServer
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"
 TOKEN = "test-token-0123456789abcdef"
+CLAUDE = "claude-token-0123456789abcdef"
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ def running(tmp_path):
     shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups", ".state.json"))
     app = App(load_show(root), [LogDriver()], state_path=root / ".state.json", log_dir=tmp_path / "logs")
     app.ctl.select_show("band", "mid")
-    web = WebServer(app, "127.0.0.1", 0, token=TOKEN)
+    web = WebServer(app, "127.0.0.1", 0, token=TOKEN, claude_token=CLAUDE)
     web.start()
     yield app, f"http://127.0.0.1:{web.port}", root
     web.stop()
@@ -158,7 +159,7 @@ def test_events_stream(running):
 
 def test_claude_tools_online(running):
     app, url, root = running
-    t = DmxTools(shows=root, url=url, token=TOKEN)
+    t = DmxTools(shows=root, url=url, token=CLAUDE)
     assert "Safety rules" in t.get_guide()
     assert "mh_a" in t.list_fixtures()
     scene = "name: Slow purple\nlayers:\n  - {fixtures: [bars], colour: purple}\n  - {fixtures: [movers], position: drum_kit}"
@@ -184,7 +185,7 @@ def test_claude_tools_online(running):
 def test_claude_tools_offline(tmp_path):
     root = tmp_path / "shows"
     shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups", ".state.json"))
-    t = DmxTools(shows=root, url="http://127.0.0.1:9", token=TOKEN)  # nothing listening
+    t = DmxTools(shows=root, url="http://127.0.0.1:9", token=CLAUDE)  # nothing listening
     assert "engine isn't running" in t.save("scene", "teal", "layers:\n  - {fixtures: [bars], colour: blue}")
     assert (root / "scenes" / "teal.yaml").exists()
     assert "colours:" in t.get_palettes()
@@ -197,7 +198,7 @@ def test_mcp_server_lists_tools(tmp_path):
     pytest.importorskip("mcp")
     from dmx_suite.mcp_server import build_server
 
-    server = build_server(DmxTools(shows=SHOWS, url="http://127.0.0.1:9", token=TOKEN))
+    server = build_server(DmxTools(shows=SHOWS, url="http://127.0.0.1:9", token=CLAUDE))
     names = {t.name for t in asyncio.run(server.list_tools())}
     assert {"get_guide", "save_item", "validate_scene", "preview_scene", "set_haze", "node_health"} <= names
     result = asyncio.run(server.call_tool("validate_scene", {"scene_yaml": "layers:\n  - {fixtures: [bars], dimmer: 1}"}))

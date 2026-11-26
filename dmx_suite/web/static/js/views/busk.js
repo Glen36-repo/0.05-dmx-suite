@@ -57,12 +57,14 @@ function renderHeld(s) {
 // ---------------------------------------------------------------- editing
 
 async function openEditor() {
+  $("#busk-editor").dataset.ready = "";
   file = await get("/api/store/panels");
   file.panels ||= {};
   colours = (await get("/api/effects")).colours;
   saved = JSON.stringify(file);
   if (!panelKey || !file.panels[panelKey]) panelKey = Object.keys(file.panels)[0] || null;
   renderEditor();
+  $("#busk-editor").dataset.ready = "1"; // loaded: typing now won't be overwritten
 }
 
 function panel() {

@@ -91,6 +91,18 @@ def state_file(shows: Path) -> Path:
     return data_dir() / "state" / f"{Path(shows).name}-{key}.json"
 
 
+def giglock_file() -> Path:
+    """Gig lock on this laptop (the running app writes it; Claude's tools read it when the app is off)."""
+    return data_dir() / "state" / ".giglock"
+
+
+def giglock_on() -> bool:
+    try:
+        return giglock_file().read_text(encoding="utf-8").strip() == "on"
+    except OSError:
+        return False
+
+
 def log_dir() -> Path:
     return data_dir() / "logs"
 

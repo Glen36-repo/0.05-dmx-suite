@@ -19,7 +19,7 @@ from . import effects
 from .fixtures import ConfigError, load_patch
 from .look import INTENSITY_RULE1
 from .palettes import load_palettes
-from .paths import default_shows
+from .paths import default_shows, giglock_on
 from .rig import load_rig
 from .scenes import parse_scene
 from .store import ShowStore, StoreError
@@ -107,7 +107,7 @@ class DmxTools:
         self.shows = Path(shows or default_shows())
         self.url = (url or os.environ.get("DMX_SUITE_URL") or DEFAULT_URL).rstrip("/")
         self._token = token
-        self.local = ShowStore(self.shows)
+        self.local = ShowStore(self.shows, giglock_on)  # the app's gig lock binds offline edits too
         self.call_label: str | None = None  # which Claude tool is running, for the status bar
 
     # ------------------------------------------------------------------ transport
@@ -115,10 +115,10 @@ class DmxTools:
     @property
     def token(self) -> str:
         if self._token is None:
-            from .web.server import TOKEN_FILE
+            from .access import claude_token
 
             try:
-                self._token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+                self._token = claude_token()
             except OSError:
                 self._token = ""
         return self._token

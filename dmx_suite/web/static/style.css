@@ -188,3 +188,15 @@ td.hit { color: var(--ok); }
 .fader-tile { background: var(--panel); border: 1px solid var(--line); padding: 10px; }
 .fader-tile input { width: 100%; }
 .lightgrid .fx.held .cell { stroke: var(--warn); stroke-width: 2.5; stroke-dasharray: 3 2; }
+
+/* ---------------------------------------------------------------- access, sign in */
+.access .row { margin: 6px 0; }
+.lan-info { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin: 8px 0; }
+.lan-info .qr svg { width: 180px; height: 180px; border-radius: 8px; }
+.urls { margin: 4px 0; padding-left: 18px; }
+.login-page { display: grid; place-items: center; min-height: 100vh; padding: 16px; }
+.login { display: grid; gap: 10px; width: min(340px, 100%); text-align: center; }
+.login .logo { height: 48px; margin: 0 auto; }
+.login input { font-size: 20px; text-align: center; padding: 10px; }
+.login button { font-size: 18px; padding: 10px; }
+.login .err { color: var(--danger, #e5484d); min-height: 1.2em; }

@@ -30,6 +30,43 @@ function render(s) {
     el("td", {}, n.mac ? el("button", { onclick: () => nodeAction(n) }, t(n.name ? "setup.identify" : "setup.name_node")) : ""))));
 }
 
+// ---------------------------------------------------------------- access (PIN, phones)
+
+let access = null;
+
+function renderAccess(a) {
+  access = a;
+  const bits = [t(a.pin_set ? "access.pin_is_set" : "access.no_pin"), t(a.lan ? "access.lan_on" : "access.lan_off")];
+  if (a.sessions) bits.push(t("access.sessions", { n: a.sessions }));
+  $("#access-state").textContent = bits.join(" · ");
+  $("#pin-old").classList.toggle("hidden", !a.pin_set);
+  $("#pin-clear").classList.toggle("hidden", !a.pin_set);
+  $("#access-lan").checked = a.lan;
+  $("#access-lan").disabled = !a.pin_set || !a.local;
+  $("#access-local").checked = a.pin_local;
+  $("#access-local").disabled = !a.pin_set || !a.local;
+  $("#access-hours").value = a.session_hours;
+  for (const id of ["#pin-old", "#pin-new", "#pin-set", "#pin-clear", "#access-hours"]) $(id).disabled = !a.local;
+  $("#lan-info").classList.toggle("hidden", !a.lan);
+  const qr = $("#lan-qr");
+  qr.replaceChildren();
+  if (a.qr) qr.append(new DOMParser().parseFromString(a.qr, "image/svg+xml").documentElement);
+  $("#lan-urls").replaceChildren(...a.urls.map((u) => el("li", {}, el("code", { text: u }))));
+  $("#logout").classList.toggle("hidden", a.local && !a.pin_local);
+}
+
+async function loadAccess() {
+  const a = await get("/api/access");
+  if (!a.error) renderAccess(a);
+}
+
+async function changeAccess(body, ok) {
+  const r = await attempt(() => api("POST", "/api/access", body), ok);
+  if (r) renderAccess(r);
+  else loadAccess();
+  return r;
+}
+
 async function loadAddresses() {
   const a = await get("/api/addresses");
   $("#addr").replaceChildren(...a.rows.map((r) => el("tr", {},
@@ -63,6 +100,22 @@ export function init() {
   };
   onCatalogue((cat) => $("#find").replaceChildren(...cat.fixtures.filter((x) => x.kind !== "haze").map((x) =>
     el("button", { "data-find": x.id, onclick: () => cmd("find", { fixture: live.state.setup.find === x.id ? null : x.id }) }, x.id))));
+  $("#pin-set").onclick = async () => {
+    const r = await changeAccess({ action: "set_pin", pin: $("#pin-new").value, old: $("#pin-old").value }, t("access.pin_saved"));
+    if (r) $("#pin-new").value = $("#pin-old").value = "";
+  };
+  $("#pin-clear").onclick = async () => {
+    if (!confirm(t("access.confirm_clear"))) return;
+    const r = await changeAccess({ action: "clear_pin", old: $("#pin-old").value }, t("access.pin_removed"));
+    if (r) $("#pin-old").value = "";
+  };
+  $("#access-lan").onchange = (e) => changeAccess({ action: "configure", lan: e.target.checked }, t(e.target.checked ? "access.lan_on" : "access.lan_off"));
+  $("#access-local").onchange = (e) => changeAccess({ action: "configure", pin_local: e.target.checked });
+  $("#access-hours").onchange = (e) => changeAccess({ action: "configure", session_hours: +e.target.value });
+  $("#logout").onclick = async () => {
+    await fetch("/api/logout", { method: "POST" });
+    location.replace("/login");
+  };
   onState(render);
-  onShow("setup", () => { loadAddresses(); loadThemes(); });
+  onShow("setup", () => { loadAddresses(); loadThemes(); loadAccess(); });
 }

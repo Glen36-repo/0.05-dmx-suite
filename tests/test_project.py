@@ -105,7 +105,8 @@ def test_every_ui_text_key_exists():
     """Text in the page and scripts comes from i18n/en.json; a missing key would show its name."""
     static = ROOT / "dmx_suite" / "web" / "static"
     strings = json.loads((static / "i18n" / "en.json").read_text(encoding="utf-8"))
-    used = set(re.findall(r'data-i18n(?:-title|-placeholder)?="([^"]+)"', (static / "index.html").read_text(encoding="utf-8")))
+    used = {k for page in ("index.html", "login.html")
+            for k in re.findall(r'data-i18n(?:-title|-placeholder)?="([^"]+)"', (static / page).read_text(encoding="utf-8"))}
     for js in (static / "js").rglob("*.js"):
         text = js.read_text(encoding="utf-8")
         used |= set(re.findall(r'\bt\(\s*"([a-z0-9_]+\.[a-z0-9_]+)"', text))
@@ -125,9 +126,10 @@ def test_every_ui_text_key_exists():
     assert sorted(set(strings) - used) == []  # nothing left over either
 
 
-def test_no_hard_coded_text_in_the_page():
-    html = (ROOT / "dmx_suite" / "web" / "static" / "index.html").read_text(encoding="utf-8")
-    body = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html.split("<body>", 1)[1], flags=re.S)
+@pytest.mark.parametrize("page", ["index.html", "login.html"])
+def test_no_hard_coded_text_in_the_page(page):
+    html = (ROOT / "dmx_suite" / "web" / "static" / page).read_text(encoding="utf-8")
+    body = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", re.split(r"<body[^>]*>", html, maxsplit=1)[1], flags=re.S)
     text = re.sub(r"<[^>]+>", " ", body)
     words = [w for w in text.split() if re.search(r"[A-Za-z]{3,}", w) and w not in ("MAC",)]
     assert words == []
