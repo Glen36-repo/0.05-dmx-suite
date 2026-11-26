@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .auto import generate
+from .busk import Panel, parse_panels
 from .fixtures import ConfigError, Patch, load_patch
 from .look import INTENSITY_RULE1, Look, load_look
 from .midi.map import MidiMap, load_map
@@ -41,6 +42,7 @@ class ShowFiles:
     scenes: dict[str, Scene]
     shows: dict[str, Show]
     setlists: dict[str, Setlist]
+    panels: dict[str, Panel] = field(default_factory=dict)  # busking (panels.yaml, optional)
 
 
 def _pick(folder: Path, name: str) -> Path:
@@ -82,7 +84,24 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
     bad = profile_problems(r, scenes, {look: lk})
     if bad:
         raise ConfigError(f"rig {rig} (profile {r.profile.name}): " + "; ".join(bad))
-    return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists)
+    panels = _load("panels.yaml", load_panels, root / "panels.yaml", patch, pal, scenes, shows)
+    for m in mp.mappings:  # busk mappings must name a real widget
+        if m.action == "busk":
+            _busk_target(m.params, panels)
+    return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists, panels)
+
+
+def load_panels(path: Path, patch: Patch, pal: Palettes, scenes: dict, shows: dict) -> dict[str, Panel]:
+    if not path.exists():
+        return {}
+    return parse_panels(read_doc(path, "panels"), patch, pal, scenes, shows)
+
+
+def _busk_target(params: dict, panels: dict[str, Panel]) -> None:
+    panel = panels.get(str(params.get("panel")))
+    if panel is None:
+        raise ConfigError(f"MIDI map busk: unknown panel {params.get('panel')!r}")
+    panel.widget(str(params.get("widget")))
 
 
 def check_all(root: str | Path) -> list[str]:
@@ -131,6 +150,11 @@ def check_all(root: str | Path) -> list[str]:
                 parse_setlist(p.stem, read_doc(p, "setlist"), shows, scenes)
             except FILE_ERRORS as e:
                 problems.append(f"setlists/{p.name}: {e}")
+        try:
+            panels = load_panels(root / "panels.yaml", patch, pal, scenes, shows)
+        except FILE_ERRORS as e:
+            problems.append(f"panels.yaml: {e}")
+            panels = {}
         # scenes and looks are shared: each must suit every rig's profile (rule 1)
         for rk, rig in rigs.items():
             problems += [f"rig {rk} (profile {rig.profile.name}): {p}" for p in profile_problems(rig, scenes, looks)]
@@ -149,6 +173,8 @@ def check_all(root: str | Path) -> list[str]:
         try:
             mp = load_map(p)
             for m in mp.mappings:
+                if m.action == "busk" and pal is not None:
+                    _busk_target(m.params, panels)
                 if m.action == "flash":
                     patch.resolve(m.params["fixtures"])
             if any(m.action == "flash" for m in mp.mappings):

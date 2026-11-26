@@ -118,6 +118,12 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
         c.go_step(int(a["step"]))
     elif cmd == "speed":
         c.set_speed(float(a["value"]))
+    elif cmd == "busk":
+        v = a.get("value")
+        return {"result": app.busk(str(a["panel"]), str(a["widget"]), bool(a.get("down", True)),
+                                   None if v is None else float(v))}
+    elif cmd == "release_all":
+        app.engine.release_all(float(a.get("fade_s", 0.5)))
     elif cmd == "tap":
         return {"bpm": c.tap()}
     elif cmd == "tempo":
@@ -317,7 +323,7 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 parts = path.split("/")[3:]
                 if len(parts) == 1:
                     kind = parts[0]
-                    if kind in ("palettes", "fixtures"):
+                    if kind in ("palettes", "fixtures", "panels"):
                         return self._json(200, app.store.read(kind))
                     return self._json(200, app.store.names(kind))
                 if len(parts) == 2:
@@ -437,6 +443,8 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 bid = s.edit_group(str(b.get("action", "")), str(b.get("name", "")), b.get("fixtures"), b.get("new_name"))
             elif len(parts) == 3 and parts[0] in ("palettes", "fixtures") and method in ("PUT", "DELETE"):
                 bid = s.put_entry(parts[0], parts[1], parts[2], None if method == "DELETE" else b.get("value"))
+            elif parts == ["panels"] and method == "PUT":
+                bid = s.put("panels", "", b.get("data"))
             elif len(parts) == 2 and method == "PUT":
                 bid = s.put(parts[0], parts[1], b.get("data"))
             elif len(parts) == 2 and method == "DELETE":

@@ -59,6 +59,7 @@ class MidiRouter:
         self.shows = shows  # ShowController
         self.map = midimap
         self.monitor = monitor or MidiMonitor()
+        self.busk: Callable[[str, str, bool, float | None], str] | None = None  # App.busk
         # (action, params, callback, port fragment the mapping is tied to)
         self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None, str | None] | None = None
         self._lock = threading.Lock()
@@ -156,6 +157,14 @@ class MidiRouter:
             if m.pressed and not ok:
                 return "haze boost refused (disabled or cooling down)"
             return "haze boost on" if m.pressed else "haze boost release"
+        if a == "busk":
+            if self.busk is None:
+                return "busk: not running"
+            level = m.level if m.level is not None else (m.value / 127 if m.type == "control_change" else None)
+            try:
+                return self.busk(p["panel"], p["widget"], m.pressed, level)
+            except Exception as err:  # a bad press must never stop the show
+                return f"busk failed: {err}"
         if a == "speed":
             level = m.level if m.level is not None else m.value / 127
             speed = 4 ** (2 * level - 1)  # fader bottom = quarter speed, middle = as set, top = 4x

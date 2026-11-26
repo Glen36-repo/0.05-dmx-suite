@@ -57,6 +57,8 @@ class ShowStore:
             return self.root / "palettes.yaml"
         if kind == "fixtures":
             return self.root / "fixtures.yaml"
+        if kind == "panels":
+            return self.root / "panels.yaml"
         if kind not in FOLDERS:
             raise StoreError(f"unknown kind {kind!r}")
         self._check_name(name)
@@ -73,7 +75,7 @@ class ShowStore:
         """Current-format data, without `version:` (writes add it back)."""
         p = self.path(kind, name)
         if not p.exists():
-            if kind == "palettes":
+            if kind in ("palettes", "panels"):
                 return {}
             raise StoreError(f"no {kind} {name!r}")
         try:
@@ -177,8 +179,8 @@ class ShowStore:
                 raise StoreError(f"not valid YAML: {e}") from e
         if not isinstance(data, dict):
             raise StoreError(f"{kind} must be a mapping")
-        p = self.path(kind, name)
-        return self.apply({p: self.text_for(p, data)}, note or f"put {kind} {name}")
+        p = self.path(kind, name) if kind != "panels" else self.root / "panels.yaml"
+        return self.apply({p: self.text_for(p, data)}, note or f"put {kind} {name}".strip())
 
     def delete(self, kind: str, name: str) -> str:
         p = self.path(kind, name)

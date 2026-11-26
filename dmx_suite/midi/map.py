@@ -50,6 +50,7 @@ ACTIONS: dict[str, set[str]] = {
     "prev_song": set(),
     "tap_tempo": set(),
     "speed": set(),
+    "busk": {"panel", "widget"},  # a busk widget: press / release, or a fader's value
 }
 CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed"}  # need a CC or OSC
 
@@ -113,6 +114,8 @@ def validate(m: Mapping) -> None:
     for action, key in (("select_show", "show"), ("select_set", "set"), ("select_scene", "scene")):
         if m.action == action and not m.params.get(key):
             raise ConfigError(f"{where}: {action} needs {key}")
+    if m.action == "busk" and (not m.params.get("panel") or not m.params.get("widget")):
+        raise ConfigError(f"{where}: busk needs panel and widget")
     if m.action == "sub_master":
         try:
             Kind(m.params.get("kind"))

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from . import effects
+from .busk import Override
 from .engine import Engine
 from .fixtures import EMITTERS, ConfigError, Kind
 from .layout import full_layout
@@ -35,13 +36,15 @@ log = logging.getLogger(__name__)
 
 class App:
     def __init__(self, files: ShowFiles, drivers: list[OutputDriver], state_path: Path | None = None,
-                 log_dir: Path | None = None, rig: str = "full", look: str = "default", midi: str = "default") -> None:
+                 log_dir: Path | None = None, rig: str = "full", look: str = "default", midi: str = "default",
+                 clock: Any = None) -> None:
         self.files = files
         self.names = (rig, look, midi)
-        self.engine = Engine(files.rig, drivers, files.look)
+        self.engine = Engine(files.rig, drivers, files.look, **({"clock": clock} if clock else {}))
         self.ctl = ShowController(self.engine, files, state_path)
         self.monitor = MidiMonitor()
         self.router = MidiRouter(self.engine, files.midimap, self.monitor, self.ctl)
+        self.router.busk = self.busk  # MIDI / OSC action `busk`
         self.gig_lock = False
         self.store = ShowStore(files.root, lambda: self.gig_lock)
         self.log_dir = log_dir
@@ -244,6 +247,74 @@ class App:
             msg += " (MASTER is off, so the rig stays dark)"
         return msg
 
+    # ------------------------------------------------------------------ busking
+
+    def busk(self, panel_key: str, wid: str, down: bool = True, level: float | None = None) -> str:
+        """A busk widget pressed (down), let go, or its fader moved (level 0-1). From the Busk page,
+        or MIDI / OSC (action busk)."""
+        panel = self.files.panels.get(panel_key)
+        if panel is None:
+            raise ValueError(f"no busk panel {panel_key!r}")
+        w = panel.widget(wid)
+        e, key = self.engine, f"{panel_key}/{wid}"
+        present = frozenset(f for f in w.fixtures if f in e.rig.present)
+        held = any(o.key == key for o in e.held())
+        if w.type in ("colour", "flash", "solo"):
+            momentary = w.type == "solo" or w.mode == "flash"
+            if momentary and not down:
+                e.release(key, 0.0 if w.type == "flash" or w.mode == "flash" else panel.release_fade_s)
+                return f"{w.label} off"
+            if not down:
+                return "release"
+            if held and not momentary:
+                e.release(key, panel.release_fade_s)
+                return f"{w.label} off"
+            if w.type == "solo":
+                keep = frozenset(e.rig.exempt) - present  # the kick light keeps its own rules (rule 3)
+                e.hold(Override(key, "solo", present, keep=keep))
+            else:
+                e.hold(Override(key, "colour", present, colour=w.colour))
+            return f"{w.label} on"
+        if w.type == "effect":
+            if not down:
+                return "release"
+            if held:
+                e.release(key, panel.release_fade_s)
+                return f"{w.label} off"
+            assert w.scene is not None
+            sc = self.files.scenes[w.scene]
+            e.hold(Override(key, "effect", source=ScenePlayer(sc, e.rig, e.clock(), self.ctl.tempo.eff)))
+            return f"{w.label} on"
+        if w.type == "go":
+            if not down:
+                return "release"
+            if w.scene:
+                self.ctl.select_scene(w.scene)
+            elif w.show:
+                self.ctl.select_show(w.show, w.set)
+            return self.ctl.describe()
+        if w.type == "fader":
+            if level is None:
+                return "fader: needs a value"
+            t = w.target or ""
+            if t == "grand":
+                e.set_grand(level)
+            elif t == "flash_level":
+                e.set_flash_level(level)
+            elif t == "speed":
+                self.ctl.set_speed(4 ** (2 * level - 1))
+            elif t.startswith("sub:"):
+                e.set_sub(t[4:], level)
+            return f"{w.label} {round(level * 100)}%"
+        # haze
+        if w.action == "boost":
+            ok = e.haze_boost(down)
+            return f"{w.label} {'on' if down and ok else 'off'}"
+        if not down:
+            return "release"
+        {"off": e.haze_stop, "manual": e.haze_toggle_manual, "pulse": lambda: e.haze_mode("pulse")}[str(w.action)]()
+        return f"haze {w.action}"
+
     def validate_scene(self, data: Any) -> dict[str, Any]:
         """Check scene data the way saving would, without saving (scene builder). Says which
         layer is at fault so the builder can mark it."""
@@ -258,6 +329,14 @@ class App:
             m = re.search(r"layer (\d+)", str(e))
             return {"ok": False, "error": str(e), "layer": int(m.group(1)) if m else None}
         return {"ok": True, "length_s": sc.length, "layers": len(sc.layers)}
+
+    def _busk_state(self) -> dict[str, Any]:
+        held = self.engine.held()
+        lights: dict[str, list[str]] = {}
+        for o in held:
+            for fid in (o.fixtures if o.kind != "effect" else []):
+                lights.setdefault(fid, []).append(o.key)
+        return {"held": [o.key for o in held], "lights": lights}
 
     def effects_catalogue(self) -> dict[str, Any]:
         """What the scene builder needs: every effect's settings, and the palette to pick from."""
@@ -327,6 +406,7 @@ class App:
             "master": e.master,
             "profile": e.rig.profile.summary(),
             "tempo": self.ctl.tempo.status(e.clock()),
+            "busk": self._busk_state(),
             "fault": {"message": e.fault, "count": e.faults} if e.fault else None,
             "show_problem": self.show_problem,
             "blackout": e.blackout,
@@ -372,6 +452,9 @@ class App:
             "rig_name": self.names[0],
             "groups": self.engine.rig.patch.groups(),
             "actions": sorted(ACTIONS),
+            "panels": {k: {"name": p.name, "widgets": [{"id": w.id, "type": w.type, "label": w.label, "mode": w.mode,
+                                                         "target": w.target, "action": w.action} for w in p.widgets]}
+                       for k, p in f.panels.items()},
         }
 
 

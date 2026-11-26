@@ -25,7 +25,7 @@ from .fixtures import ConfigError
 FORMAT = 3
 
 # show folder layout: single files, then one folder per kind
-FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes"}
+FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes", "panels.yaml": "panels"}
 FOLDERS = {"rigs": "rig", "looks": "look", "scenes": "scene", "shows": "show", "setlists": "setlist", "midi": "midi"}
 
 

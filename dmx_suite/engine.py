@@ -13,6 +13,7 @@ import threading
 import time
 from collections.abc import Callable
 
+from .busk import Override, apply_with_releases
 from .fade import Crossfade
 from .faders import Masters
 from .fixtures import DMX_CHANNELS, Kind
@@ -45,7 +46,8 @@ class Engine:
         now = clock()
         self.master = rig.startup_master  # safe default on (re)start
         self.blackout = False
-        self.look = look or Look()  # static look (or last look a scene produced)
+        self.look = look or Look()  # what's on the rig: the base look with positions and busking laid over
+        self.base_look = self.look  # the static look playing when no scene or show is
         self.static_look = self.look  # what the engine falls back to after a fault
         self.source: Callable[[float], Look] | None = None  # scene player
         self.scene: Scene | None = None
@@ -57,6 +59,7 @@ class Engine:
         # preview: play something for a while, then put back what was running
         self._preview: tuple[float, Callable[[float], Look] | None, Scene | None, Look] | None = None
         self.flashes: dict[str, Flash] = {}
+        self.overrides: list[Override] = []  # busking: laid over the show, under the rules
         self.masters = Masters(rig.grand_master, rig.sub_masters, rig.flash_level, rig.fade_s)
         self.haze = Haze(rig.haze, now)
         self.rules = RuleLayer(rig)
@@ -85,14 +88,17 @@ class Engine:
             for fid in [f for f, fl in self.flashes.items() if fl.until <= now]:
                 del self.flashes[fid]
             if self._preview is not None and now >= self._preview[0]:
-                _, self.source, self.scene, self.look = self._preview
+                _, self.source, self.scene, self.base_look = self._preview
                 self._preview = None
             if isinstance(self.source, Crossfade) and self.source.done(now):
                 self.source = self.source.new  # fade finished: drop the old look
-            if self.source is not None:
-                self.look = self.source(now)
+            # start from the clean base every frame: overrides are laid over it, never baked in
+            look = self.source(now) if self.source is not None else self.base_look
             if self.position_override:
-                self.look = self._with_positions(self.look)
+                look = self._with_positions(look)
+            if self.overrides:
+                look, self.overrides = apply_with_releases(look, self.overrides, now)
+            self.look = look
             if self.find is not None:
                 frames = self._render_find(now)
             else:
@@ -142,7 +148,7 @@ class Engine:
             # drop whatever was playing and fall back to the static look
             self._preview = None
             self.source, self.scene = None, None
-            self.look = self.static_look
+            self.look = self.base_look = self.static_look
             try:
                 self.output()
             except Exception as e2:  # noqa: BLE001
@@ -221,7 +227,7 @@ class Engine:
         with self.lock:
             self._preview = None
             self.source, self.scene = None, None
-            self.look = look
+            self.look = self.base_look = look
         self._changed()
 
     def _with_positions(self, look: Look) -> Look:
@@ -252,7 +258,7 @@ class Engine:
         if not 0 < seconds <= 300:
             raise ValueError("preview 0-300 s")
         with self.lock:
-            prev = self._preview[1:] if self._preview else (self.source, self.scene, self.look)
+            prev = self._preview[1:] if self._preview else (self.source, self.scene, self.base_look)
             self._preview = (self.clock() + seconds, *prev)
             self.source, self.scene = source, scene
         self._changed()
@@ -271,7 +277,7 @@ class Engine:
                 back = src if src is not None else (lambda now, lk=look: lk)
                 fade = self.rig.change_fade_s
                 self.source = Crossfade(self.source, back, self.clock(), fade) if fade and self.source else back
-                self.look = look
+                self.look = self.base_look = look
         self._changed()
 
     def set_source(self, source: Callable[[float], Look], scene: Scene | None = None, fade_s: float = 0.0) -> None:
@@ -280,7 +286,7 @@ class Engine:
         with self.lock:
             self._preview = None  # a real selection ends any preview
             if fade_s > 0:
-                old = self.source if self.source is not None else (lambda now, lk=self.look: lk)
+                old = self.source if self.source is not None else (lambda now, lk=self.base_look: lk)
                 source = Crossfade(old, source, self.clock(), fade_s)
             self.source, self.scene = source, scene
         self._changed()
@@ -345,6 +351,39 @@ class Engine:
             self.find = None
             self.channel_test.clear()
         self._changed()
+
+    # ------------------------------------------------------------------ busking
+
+    def hold(self, o: Override) -> None:
+        """Lay an override over the show (replacing one with the same key)."""
+        with self.lock:
+            self.overrides = [x for x in self.overrides if x.key != o.key] + [o]
+        self._changed()
+
+    def release(self, key: str, fade_s: float = 0.0) -> bool:
+        with self.lock:
+            found = False
+            for o in self.overrides:
+                if o.key == key and o.released_at is None:
+                    o.released_at, o.fade_s, found = self.clock(), fade_s, True
+            if fade_s <= 0:
+                self.overrides = [o for o in self.overrides if o.key != key]
+        self._changed()
+        return found
+
+    def release_all(self, fade_s: float = 0.0) -> None:
+        with self.lock:
+            now = self.clock()
+            for o in self.overrides:
+                if o.released_at is None:
+                    o.released_at, o.fade_s = now, fade_s
+            if fade_s <= 0:
+                self.overrides = []
+        self._changed()
+
+    def held(self) -> list[Override]:
+        with self.lock:
+            return [o for o in self.overrides if o.released_at is None]
 
     def set_master(self, on: bool) -> None:
         with self.lock:
