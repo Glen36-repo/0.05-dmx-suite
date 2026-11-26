@@ -74,20 +74,36 @@ function render(s) {
 
 const ago = (sec) => (sec < 90 ? t("alerts.secs", { n: Math.round(sec) }) : t("alerts.mins", { n: Math.round(sec / 60) }));
 
-function alertAction(action, id, extra = {}) {
-  return attempt(() => api("POST", "/api/alerts", { action, id, ...extra }));
+// Draw the banners and the bell's list only when something in them changes: the state comes in ~10
+// times a second, and redrawing every time swapped the button out from under a press, so ✕ never
+// fired. A press acts at once on the server's reply rather than the next state push.
+let bannerSig = "";
+let listSig = "";
+let shown = null; // the alerts view last drawn
+
+async function alertAction(action, id, extra = {}) {
+  if (action !== "quiet" && action !== "mute") $(`#banners [data-alert="${CSS.escape(id)}"]`)?.remove();
+  bannerSig = ""; // whatever happens, draw the reply (or the next state) afresh
+  const r = await attempt(() => api("POST", "/api/alerts", { action, id, ...extra }));
+  if (r) renderAlerts(r);
+  return r;
 }
 
 function renderAlerts(ac) {
   if (!ac) return;
+  shown = ac;
   // banners overlay the top of the page, just under the status strip: controls never move under a finger
   $("#banners").style.top = Math.round($("#health").getBoundingClientRect().bottom) + "px";
-  $("#banners").replaceChildren(...ac.banners.map((b) => el("div", { class: `banner ${b.severity}`, role: "alert", "data-alert": b.id },
-    el("span", { class: "msg", text: `${b.device}: ${b.message}` }),
-    ...(b.severity === "critical"
-      ? [el("button", { class: "x", title: t("alerts.minimise"), onclick: () => alertAction("minimise", b.id) }, "–")]
-      : [el("button", { class: "snooze", title: t("alerts.snooze"), onclick: () => alertAction("snooze", b.id, { for: "10min" }) }, t("alerts.snooze_10")),
-        el("button", { class: "x", title: t("alerts.dismiss"), onclick: () => alertAction("dismiss", b.id) }, "✕")]))));
+  const bSig = JSON.stringify(ac.banners.map((b) => [b.id, b.severity, b.device, b.message]));
+  if (bSig !== bannerSig) {
+    bannerSig = bSig;
+    $("#banners").replaceChildren(...ac.banners.map((b) => el("div", { class: `banner ${b.severity}`, role: "alert", "data-alert": b.id },
+      el("span", { class: "msg", text: `${b.device}: ${b.message}` }),
+      ...(b.severity === "critical"
+        ? [el("button", { class: "x", title: t("alerts.minimise"), onclick: () => alertAction("minimise", b.id) }, "–")]
+        : [el("button", { class: "snooze", title: t("alerts.snooze"), onclick: () => alertAction("snooze", b.id, { for: "10min" }) }, t("alerts.snooze_10")),
+          el("button", { class: "x", title: t("alerts.dismiss"), onclick: () => alertAction("dismiss", b.id) }, "✕")]))));
+  }
   const bell = $("#bell");
   bell.classList.toggle("on", ac.count > 0);
   bell.classList.toggle("critical", ac.critical);
@@ -96,16 +112,25 @@ function renderAlerts(ac) {
   lastNewBanner = ac.new_at;
   const now = Date.now() / 1000;
   $("#alerts-quiet").checked = ac.quiet;
-  $("#alerts-list").replaceChildren(...ac.list.map((a) => el("li", { class: `alert-row ${a.state} ${a.severity}`, "data-alert": a.id },
-    el("span", { class: "dot " + (a.state === "cleared" ? "ok" : a.severity === "info" ? "warn" : "bad") }),
-    el("b", { text: a.device }), el("span", { text: a.message }),
-    el("span", { class: "muted", text: `${t("alerts.state_" + a.state)} · ${ago(now - a.changed)}` }),
-    el("span", { class: "grow" }),
-    ...(a.state !== "cleared" && a.severity !== "critical" ? [
-      el("button", { class: "mini", onclick: () => alertAction("snooze", a.id, { for: "1h" }) }, t("alerts.snooze_1h")),
-      el("button", { class: "mini", onclick: () => alertAction("snooze", a.id, { for: "gig" }) }, t("alerts.snooze_gig"))] : []),
-    ...(a.severity !== "critical" ? [el("button", { class: "mini", onclick: () => alertAction("mute", a.id, { on: !ac.muted.includes(a.id) }) },
-      t(ac.muted.includes(a.id) ? "alerts.unmute" : "alerts.mute"))] : []))));
+  const lSig = JSON.stringify([ac.list.map((a) => [a.id, a.state, a.severity, a.device, a.message]), ac.muted]);
+  if (lSig !== listSig) {
+    listSig = lSig;
+    $("#alerts-list").replaceChildren(...ac.list.map((a) => el("li", { class: `alert-row ${a.state} ${a.severity}`, "data-alert": a.id },
+      el("span", { class: "dot " + (a.state === "cleared" ? "ok" : a.severity === "info" ? "warn" : "bad") }),
+      el("b", { text: a.device }), el("span", { text: a.message }),
+      el("span", { class: "muted when" }),
+      el("span", { class: "grow" }),
+      ...(a.state !== "cleared" && a.severity !== "critical" ? [
+        el("button", { class: "mini", onclick: () => alertAction("snooze", a.id, { for: "1h" }) }, t("alerts.snooze_1h")),
+        el("button", { class: "mini", onclick: () => alertAction("snooze", a.id, { for: "gig" }) }, t("alerts.snooze_gig"))] : []),
+      ...(a.severity !== "critical" ? [el("button", { class: "mini", onclick: () => alertAction("mute", a.id, { on: !shown.muted.includes(a.id) }) },
+        t(ac.muted.includes(a.id) ? "alerts.unmute" : "alerts.mute"))] : []))));
+  }
+  // the "x s ago" text changes every tick: update it in place
+  for (const a of ac.list) {
+    const when = $(`#alerts-list [data-alert="${CSS.escape(a.id)}"] .when`);
+    if (when) when.textContent = `${t("alerts.state_" + a.state)} · ${ago(now - a.changed)}`;
+  }
   // muted devices show greyed in the status strip
   for (const tile of document.querySelectorAll("#health .tile[data-key]")) tile.classList.toggle("muted-dev", ac.muted.includes(tile.dataset.key));
 }

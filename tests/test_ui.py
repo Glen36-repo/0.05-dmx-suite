@@ -697,6 +697,37 @@ class _Unplugged:
         return [{"name": "UM-ONE", "connected": self.connected, "port": None}]
 
 
+def slow_press(page, selector, hold=0.3):
+    """Press like a finger: down, hold while the state keeps streaming in, then up."""
+    page.hover(selector)
+    page.mouse.down()
+    time.sleep(hold)
+    page.mouse.up()
+
+
+def test_banner_buttons_work_with_a_slow_press(ui):
+    """The banners used to be redrawn ~10 times a second, so a real press never landed on ✕."""
+    page, app, *_ = ui
+    midi = _Unplugged()
+    app.midi_inputs = midi
+    banner = "#banners [data-alert='midi:MIDI UM-ONE']"
+    page.wait_for_selector(banner)
+    slow_press(page, f"{banner} .x")
+    page.wait_for_selector(banner, state="detached", timeout=2000)
+    time.sleep(1)
+    assert not page.is_visible(banner)  # and it stays gone
+    assert app.alert_center.alerts["midi:MIDI UM-ONE"].state == "dismissed"
+    # the bell's list: its buttons take a slow press too
+    page.click("#bell")
+    row = "#alerts-list [data-alert='midi:MIDI UM-ONE']"
+    page.wait_for_selector(row)
+    slow_press(page, f"{row} button:has-text('Not using this today')")
+    deadline = time.time() + 2
+    while time.time() < deadline and not app.alert_center.muted:
+        time.sleep(0.05)
+    assert app.alert_center.muted == {"midi:MIDI UM-ONE"}
+
+
 def test_banners_overlay_without_moving_controls(ui):
     """A banner lies over the top of the page: no button moves under a finger (scope 18)."""
     page, app, *_ = ui

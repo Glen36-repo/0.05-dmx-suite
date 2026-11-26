@@ -15,6 +15,7 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 - Phones: the top bar fits on one line and the status strip shows just the lights.
 
 ### Fixed
+- Alert banners: ✕ and Snooze work with a normal press. The banners were redrawn about ten times a second, so the button changed under your finger and the press was lost. The same goes for the buttons in the bell's list.
 - Fixtures: the empty red bar under the patch no longer shows when nothing clashes.
 - MIDI: the TD-25 buttons no longer run off the side of the card.
 
