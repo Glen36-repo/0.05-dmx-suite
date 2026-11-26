@@ -266,6 +266,9 @@ function render() {
 
   // health strip + alerts
   $("#health").replaceChildren(
+    ...s.midi_inputs.map((m) =>
+      el("div", { class: "tile", title: m.port || "" }, el("span", { class: "dot " + (m.connected ? "connected" : "offline") }),
+        el("span", { text: "MIDI " + m.name }), el("span", { class: "muted", text: m.connected ? "connected" : "unplugged" }))),
     ...s.nodes.map((n) =>
       el("div", { class: "tile", title: n.mac || "" }, el("span", { class: "dot " + n.state }), el("span", { text: n.name || n.mac || "node" }),
         el("span", { class: "muted", text: n.rssi != null ? `${n.rssi} dBm` : n.state }))
@@ -274,8 +277,10 @@ function render() {
   const latest = s.alerts[s.alerts.length - 1];
   const banner = $("#banner");
   const bad = s.nodes.filter((n) => n.state === "offline" || n.state === "weak");
-  if (bad.length) {
-    banner.textContent = bad.map((n) => `${n.name || n.mac} ${n.state.toUpperCase()}`).join(" · ");
+  const unplugged = s.midi_inputs.filter((m) => !m.connected);
+  if (bad.length || unplugged.length) {
+    banner.textContent = [...bad.map((n) => `${n.name || n.mac} ${n.state.toUpperCase()}`),
+      ...unplugged.map((m) => `MIDI ${m.name} UNPLUGGED`)].join(" · ");
     banner.classList.remove("hidden");
   } else banner.classList.add("hidden");
   if (latest && latest.time > lastAlert) {
@@ -372,11 +377,11 @@ async function loadMap() {
   const m = await get("/api/midi/map");
   $("#map").replaceChildren(
     ...m.mappings.map((x) => {
-      const { type, channel, number, action, ...p } = x;
+      const { type, channel, number, action, port, ...p } = x;
       const extra = Object.entries(p).map(([k, v]) => `${k}=${v}`).join(" ");
-      return el("tr", {}, el("td", { text: type }), el("td", { text: channel }), el("td", { text: number }),
+      return el("tr", {}, el("td", { text: type + (port ? ` [${port}]` : "") }), el("td", { text: channel }), el("td", { text: number }),
         el("td", { text: `${action} ${extra}` }),
-        el("td", {}, el("button", { onclick: async () => { await api("POST", "/api/midi/remove", { type, channel, number }); loadMap(); } }, "Remove")));
+        el("td", {}, el("button", { onclick: async () => { await api("POST", "/api/midi/remove", { type, channel, number, port }); loadMap(); } }, "Remove")));
     })
   );
 }
@@ -386,9 +391,9 @@ async function loadMap() {
 const chan = $("#chan"), chanval = $("#chanval");
 chanval.addEventListener("input", () => {
   $("#chanshow").textContent = chanval.value;
-  if (chan.value) cmd("chan", { channel: +chan.value, value: +chanval.value });
+  if (chan.value) cmd("chan", { channel: +chan.value, value: +chanval.value, universe: +$("#chanuni").value });
 });
-$("#chan-off").onclick = () => chan.value && cmd("chan", { channel: +chan.value, value: null });
+$("#chan-off").onclick = () => chan.value && cmd("chan", { channel: +chan.value, value: null, universe: +$("#chanuni").value });
 
 async function loadAddresses() {
   const a = await get("/api/addresses");

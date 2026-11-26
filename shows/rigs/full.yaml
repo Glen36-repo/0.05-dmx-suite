@@ -29,6 +29,10 @@ haze:
 startup:
   master: on              # state after a (re)start mid-gig
 
+# MIDI inputs to open (parts of the port names); leave out to open every port.
+# PLACEHOLDER names: check with `dmx-suite midi-ports` on the gig laptop.
+midi_inputs: [UM-ONE]          # phase 2: add H2MIDI for the SamplePad
+
 nodes: []                 # expected nodes, e.g. {mac: "F4:12:FA:00:A0:01", name: Left bars}
 
 outputs:

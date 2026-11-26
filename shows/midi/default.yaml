@@ -31,3 +31,10 @@ mappings:
   - {type: program_change, channel: 1, number: 11, action: prev_song}
   - {type: program_change, channel: 1, number: 12, action: next_step}
   - {type: program_change, channel: 1, number: 13, action: tap_tempo}
+
+  # SamplePad 4 through the H2MIDI Pro (phase 2). `port` ties a mapping to that input, so its pads
+  # can use the same ch 10 notes as the TD-25 and still do their own thing. Use MIDI learn with
+  # port=this to fill these in from the real pads. PLACEHOLDERS:
+  # - {type: note, channel: 10, number: 38, port: H2MIDI, action: flash, fixtures: [movers], length_ms: 150, colour: white}
+  # - {type: note, channel: 10, number: 48, port: H2MIDI, action: flash, fixtures: [washes], length_ms: 200, colour: show}
+  # - {type: note, channel: 10, number: 45, port: H2MIDI, action: select_scene, scene: strobe_hit}

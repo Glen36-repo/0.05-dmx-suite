@@ -128,6 +128,14 @@ Lets Claude read and build scenes, shows, setlists and palettes in plain words, 
 
 With `dmx-suite run` going, Claude's changes go through the engine: gig lock applies, scene/show/palette changes load straight away, and preview, haze and node tools work. With it stopped, Claude edits the show files directly (same checks and backups). Every change is checked against the whole show folder first and refused with the reason if it breaks a rule or a reference; the previous file is kept in `shows/.backups/`.
 
+## Phase 2 hardware (prepared)
+
+**Second universe / receiver per light:** give fixtures `universe: 1` (0-15) in `shows/fixtures.yaml`; the same address can be used on each universe. Every universe is rendered and sent each frame (drum hits too). The node outputs its own universe on its wired DMX and forwards the others over the air; name each AtomS3 receiver and set its universe from the Setup tab (or `dmx-node-test assign`). An Enttec output drives one universe: `{driver: enttec_open, port: COM7, universe: 1}`.
+
+**SamplePad through the H2MIDI Pro:** add `H2MIDI` to `midi_inputs` in the rig file. A mapping with `port: H2MIDI` only answers that input and wins over a mapping without a port, so pads can reuse the TD-25's ch 10 notes. MIDI learn with `port=this` ties the new mapping to whichever input you hit. Examples are commented at the end of `shows/midi/default.yaml`.
+
+**MIDI interfaces:** `midi_inputs` in the rig file lists parts of the port names to open (empty = every port). Ports are rescanned every 2 s, so an interface unplugged mid-gig reconnects by itself, even under a new Windows name. Each one shows connected/unplugged in the health strip, with the banner if it drops.
+
 ## Show files
 
 All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers and drum pad map (`shows/midi/default.yaml`), and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.

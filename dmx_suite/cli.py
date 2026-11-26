@@ -298,8 +298,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     fake = FakeMidiIn(router.handle_mido)
     real = None
     if not args.sim:
-        real = MidiInputs(args.midi_port or None, router.handle_mido)
-        print("MIDI in:", ", ".join(p.name for p in real.ports) or "none")
+        real = MidiInputs(args.midi_port or show.rig.midi_inputs or None, router.handle_mido)
+        app.midi_inputs = real
+        print("MIDI in:", ", ".join(real.open) or "none yet (plug in and it connects by itself)")
     engine.start()
     try:
         if not args.headless and (args.sim or sys.stdin.isatty()):
@@ -339,8 +340,8 @@ def cmd_midi_monitor(args: argparse.Namespace) -> int:
         lambda e: (args.channel is None or e.channel == args.channel) and print(e.format(), flush=True)
     )
     router = MidiRouter(engine, show.midimap, monitor)
-    inputs = MidiInputs(args.midi_port or None, router.handle_mido)
-    print(f"listening on: {', '.join(p.name for p in inputs.ports) or 'none'}  (ctrl+c to stop)")
+    inputs = MidiInputs(args.midi_port or show.rig.midi_inputs or None, router.handle_mido)
+    print(f"listening on: {', '.join(inputs.open) or 'none yet'}  (ctrl+c to stop; new ports connect by themselves)")
     print(f"{'time':12}  {'port':20}  {'ch':3}  {'type':14}  {'num':3}  {'val':3}  result")
     try:
         while True:

@@ -39,6 +39,7 @@ class App:
         self.store = ShowStore(files.root, lambda: self.gig_lock)
         self.log_dir = log_dir
         self.alerts: list[dict[str, Any]] = []  # node dropped / weak, newest last
+        self.midi_inputs: Any = None  # MidiInputs when running live
         self._lock = threading.RLock()
         self.started = time.time()
         for d in drivers:
@@ -201,6 +202,7 @@ class App:
             "alerts": self.alerts[-5:],
             "learning": self.router.learning,
             "rig": e.rig.name,
+            "midi_inputs": self.midi_inputs.status() if self.midi_inputs is not None else [],
         }
 
     def catalogue(self) -> dict[str, Any]:

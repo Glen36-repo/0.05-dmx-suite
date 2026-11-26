@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 DMX_CHANNELS = 512
+MAX_UNIVERSE = 15
 
 
 class ConfigError(ValueError):
@@ -192,6 +193,8 @@ def parse_patch(data: dict) -> Patch:
             raise ConfigError(f"{fid}: unknown type {d.get('type')!r}")
         t = types[d["type"]]
         uni, addr = int(d.get("universe", 0)), int(d["address"])
+        if not 0 <= uni <= MAX_UNIVERSE:
+            raise ConfigError(f"{fid}: universe must be 0-{MAX_UNIVERSE}")
         if addr < 1 or addr + t.footprint - 1 > DMX_CHANNELS:
             raise ConfigError(f"{fid}: address {addr} + {t.footprint} channels doesn't fit in 512")
         for s in range(addr, addr + t.footprint):
