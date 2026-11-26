@@ -227,6 +227,19 @@ class ShowController:
             log.exception("couldn't save show state")
 
     @_locked
+    def replay(self) -> None:
+        """After the rig or patch changed: build what's playing again on the new rig (same show and
+        set, scene or static look; the setlist and song stay)."""
+        self.tempo.config = self.e.rig.tempo
+        if self.mode == "show" and self.show and self.show.key in self.files.shows:
+            show = self.files.shows[self.show.key]
+            self.select_show(show.key, self.set_name if self.set_name in show.sets else None)
+        elif self.mode == "scene" and self.scene_key in self.files.scenes:
+            self.select_scene(self.scene_key)
+        else:
+            self.select_look()
+
+    @_locked
     def save(self) -> None:
         """Call after MASTER changes so a restart comes back the same way."""
         self._save()

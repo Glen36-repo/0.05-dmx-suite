@@ -65,6 +65,7 @@ class App:
                 d.link.health.expect(files.rig.nodes)
                 d.link.health.listeners.append(self._health_event)
         self._load_lock_state(state_path)
+        self._loaded_sig = self._rig_sig()
 
     # ------------------------------------------------------------------ gig lock
 
@@ -219,14 +220,60 @@ class App:
         with self._lock:  # the web page, Claude and a restore can all reload at once
             return self._reload()
 
+    def _rig_sig(self) -> str:
+        """What the patch and rig were loaded from (a change means the rig is rebuilt live)."""
+        import hashlib
+
+        h = hashlib.sha1()
+        root, rig = self.files.root, self.names[0]
+        for p in (root / "fixtures.yaml", *sorted((root / "rigs").glob(f"{rig}.y*ml"))):
+            try:
+                h.update(p.read_bytes())
+            except OSError:
+                pass
+        h.update(rig.encode())
+        return h.hexdigest()
+
+    def switch_rig(self, name: str) -> list[str]:
+        """Run another rig config (e.g. the small rig) without a restart."""
+        self.require_unlocked("switching rig")
+        if not (self.files.root / "rigs" / f"{name}.yaml").exists():
+            raise ValueError(f"no rig {name!r}")
+        with self._lock:
+            old = self.names
+            self.names = (name, old[1], old[2])
+            try:
+                return self._reload()
+            except Exception:
+                self.names = old
+                raise
+
     def _reload(self) -> list[str]:
-        """Pick up edited scenes, palettes, shows, setlists and MIDI map without stopping.
-        Fixture and rig changes need a restart (the patch is live on the rig)."""
+        """Pick up edited show files without stopping. A changed patch or rig (fixtures, addresses,
+        profile, limits, haze...) is rebuilt and swapped in on the next frame; what's playing is
+        built again on it. Output and input settings (DMX interfaces, MIDI ports, OSC) still need
+        a restart."""
         rig, look, midi = self.names
         new = load_show(self.files.root, rig, look, midi)
         notes = []
-        if new.patch.fixtures.keys() != self.files.patch.fixtures.keys() or new.rig.present != self.files.rig.present:
-            notes.append("fixture/rig changes take effect after a restart")
+        sig = self._rig_sig()
+        if sig != getattr(self, "_loaded_sig", None) and hasattr(self, "_loaded_sig"):
+            old_rig = self.files.rig
+            if (new.rig.outputs, new.rig.midi_inputs, new.rig.osc) != (old_rig.outputs, old_rig.midi_inputs, old_rig.osc):
+                notes.append("output, MIDI input and OSC changes take effect after a restart")
+                new.rig.outputs, new.rig.midi_inputs, new.rig.osc = old_rig.outputs, old_rig.midi_inputs, old_rig.osc
+            self.engine.swap_rig(new.rig, new.look)
+            self._loaded_sig = sig
+            self.files = new
+            self.ctl.files = new
+            self.router.map = new.midimap
+            self.ctl.replay()
+            notes.append(f"rig {new.rig.name} updated live")
+            if self.show_problem:
+                notes.append("show files fixed: now running them, not the last good version")
+                self.show_problem = None
+            return notes
+        self._loaded_sig = sig
         live = self.files.rig
         live.layout = new.rig.layout  # the layout is display only: apply now
         for fid, fx in live.patch.fixtures.items():  # groups are labels: apply now too

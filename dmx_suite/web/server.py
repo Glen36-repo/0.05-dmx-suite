@@ -71,6 +71,8 @@ def _f(args: dict, key: str) -> float:
 
 
 def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
+    if cmd == "rig":  # run another rig config, live
+        return {"ok": True, "notes": app.switch_rig(str(a.get("name", "")))}
     e, c = app.engine, app.ctl
     if cmd == "master":
         e.toggle_master() if a.get("on") is None else e.set_master(bool(a["on"]))

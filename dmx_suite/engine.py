@@ -19,7 +19,7 @@ from .faders import Masters
 from .fixtures import DMX_CHANNELS, Kind
 from .haze import Haze, HazeMode
 from .look import Colour, FixtureLook, Look
-from .output import OutputDriver
+from .output import NodeSerialDriver, OutputDriver
 from .output.timer import high_res
 from .rig import Rig
 from .rules import ControlState, Flash, RuleLayer
@@ -75,6 +75,36 @@ class Engine:
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+
+    # ------------------------------------------------------------------ live rig changes (R7)
+
+    def swap_rig(self, rig: Rig, look: Look) -> None:
+        """Run on a changed patch or rig from the next frame: new rule layer (heads keep where they
+        are), static look, haze settings; MASTER, masters and what's playing stay. Anything aimed at
+        a fixture that's gone (flash, find, held position) is dropped."""
+        with self.lock:
+            old = self.rig
+            self.rig = rig
+            held = self.rules.position
+            self.rules = RuleLayer(rig)
+            for fid in self.rules.position:
+                if fid in held and fid in old.present:
+                    self.rules.position[fid] = held[fid]
+            if rig.haze != old.haze:
+                self.haze = Haze(rig.haze, self.clock())
+            if self.source is None:  # the static look is what's playing
+                self.base_look = look
+            self.static_look = look
+            present = set(rig.present)
+            self.flashes = {f: v for f, v in self.flashes.items() if f in present}
+            self.position_override = {f: v for f, v in self.position_override.items() if f in present}
+            if self.find not in present:
+                self.find = None
+            self.frames = {}
+            for d in self.drivers:
+                if isinstance(d, NodeSerialDriver):
+                    d.link.health.expect(rig.nodes)
+        self._wake.set()
 
     # ------------------------------------------------------------------ output
 
