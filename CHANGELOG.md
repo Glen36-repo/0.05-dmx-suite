@@ -2,6 +2,16 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v2, release R4)
+
+### Added
+- Art-Net and sACN outputs, with a universe map; send to network nodes, visualisers or other software alongside USB.
+- OSC input: map TouchOSC or desk faders and buttons in the MIDI map; OSC learn; OSC in the monitor and status bar.
+
+### Changed
+- USB outputs write on their own thread: a slow or unplugged interface can't hold up the show.
+- Show control, node health and the MIDI monitor are safe to use from several places at once (MIDI, OSC, web, Claude).
+
 ## Unreleased (v2, release R3)
 
 ### Added

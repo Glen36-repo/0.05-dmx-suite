@@ -20,7 +20,8 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules. The 
 | `dmx_suite/web/` | Browser UI and local JSON API (standard library, works offline) |
 | `dmx_suite/store.py` | Validated, backed-up edits to the show folder (UI and Claude) |
 | `dmx_suite/claude_tools.py`, `mcp_server.py` | Claude Desktop (MCP) tools |
-| `dmx_suite/output/` | Output drivers: `node_serial`, `enttec_open`, `enttec_pro`, `log`, `null` |
+| `dmx_suite/output/` | Output drivers: `node_serial`, `enttec_open`, `enttec_pro`, `artnet`, `sacn`, `log`, `null` |
+| `dmx_suite/osc.py` | OSC input (UDP listener) |
 | `dmx_suite/midi/` | MIDI map, router, monitor and learn |
 | `dmx_suite/cli.py` | `dmx-suite`: run, simulator, MIDI monitor, show file check |
 | `dmx_suite/node/` | Laptop side: protocol, link, health tracking, simulated node |
@@ -143,7 +144,8 @@ Positions are grid cells from the top left, with the back of the stage at the to
 | Item | Shows |
 | --- | --- |
 | Engine | Actual frame rate (amber under 35 fps) |
-| DMX outputs | Enttec Open DMX / Pro and the 0.05 node: connected, no reply, or not found / unplugged (retrying every 2 s) |
+| DMX outputs | Enttec Open DMX / Pro and the 0.05 node: connected, no reply, or not found / unplugged (retrying every 2 s); Art-Net / sACN: sending, or the network error |
+| OSC | Listening port and messages received (when the rig turns OSC on) |
 | MIDI | Each input in the rig's `midi_inputs`: connected or unplugged |
 | Claude | Connected while Claude Desktop has the 0.05 tools loaded, the last tool it used, read-only during gig lock |
 | Screens | Browsers watching, and how many are phones/tablets |
@@ -175,6 +177,22 @@ With `dmx-suite run` going, Claude's changes go through the engine: gig lock app
 ## Phase 2 hardware (prepared)
 
 **Second universe / receiver per light:** give fixtures `universe: 1` (0-15) in `shows/fixtures.yaml`; the same address can be used on each universe. Every universe is rendered and sent each frame (drum hits too). The node outputs its own universe on its wired DMX and forwards the others over the air; name each AtomS3 receiver and set its universe from the Setup tab (or `dmx-node-test assign`). An Enttec output drives one universe: `{driver: enttec_open, port: COM7, universe: 1}`.
+
+**Outputs:** list one or more in the rig file's `outputs:`; the same show runs on all of them at once.
+
+```yaml
+outputs:
+  - {driver: node_serial, port: COM5}                         # the 0.05 node
+  - {driver: enttec_pro, port: COM7, universe: 0}
+  - {driver: artnet, host: 2.255.255.255}                     # broadcast; universe n -> Art-Net n
+  - {driver: artnet, host: 192.168.1.50, universes: {0: "0:0:1"}}   # net:subnet:universe
+  - {driver: sacn}                                            # multicast; universe n -> sACN n + 1
+  - {driver: sacn, host: 192.168.1.60, universes: {0: 10}, priority: 120}
+```
+
+USB outputs (node, Enttec Pro) write on their own thread, so a slow or unplugged interface never holds up the show or a drum hit.
+
+**OSC in:** add `osc: {port: 9000}` to the rig file (off unless it's there; `allow: [192.168.1.0/24]` limits who may send, default this computer and private networks). OSC addresses go in the MIDI map alongside MIDI, e.g. `- {type: osc, address: /dmx/grand, action: grand_master}`. A float 0-1 drives the grand master, sub-masters and flash level; 0.5 or more (or no argument) presses a button. MIDI learn takes the next MIDI or OSC message, and the monitor shows both.
 
 **SamplePad through the H2MIDI Pro:** add `H2MIDI` to `midi_inputs` in the rig file. A mapping with `port: H2MIDI` only answers that input and wins over a mapping without a port, so pads can reuse the TD-25's ch 10 notes. MIDI learn with `port=this` ties the new mapping to whichever input you hit. Examples are commented at the end of `shows/midi/default.yaml`.
 

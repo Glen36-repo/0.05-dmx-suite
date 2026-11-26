@@ -196,7 +196,7 @@ Optional later: Enttec DMX USB Pro framing on the same port, so QLC+ could also 
 | 0.05 node (USB serial) | Main output | Node handles timing and wireless |
 | Enttec Open DMX USB | Backup / small gigs | PC generates the DMX timing; set the FTDI latency timer to 1 ms; possible flicker if Windows is busy |
 | Enttec DMX USB Pro (and clones) | Spare | Interface handles timing; reliable |
-| Art-Net / sACN | Network nodes, later | Any network DMX node |
+| Art-Net / sACN | Network nodes, visualisers, other software (v2 R4) | Any network DMX node |
 
 ## Programming and editing looks
 
@@ -368,6 +368,10 @@ Decided 26/11/2026 (v2):
 | Spatial mapping (R3) | Positions from the layout grid, each pixel where it's drawn (same cell maths as the UI), scaled so the layer's lights span 0-1 on their longer side (angles stay true), worked out once per scene player; lights missing from the rig drop out |
 | New effects (R3) | rainbow, sparkle, wave, strobe (colour channels), circle, figure8 (head limits still clamp); matrix: linear_wave, radial, gradient, bars, noise |
 | Scene builder (R3) | Scenes page: selectable layout, layer list, forms from the schema, swatches, direction arrow, live preview of unsaved scenes (`/api/preview`, renewed while ticked), `POST /api/validate/scene` marks the failing layer; settings at defaults aren't written |
+| Output threads (R4) | node_serial and enttec_pro write on a sender thread (newest frame per universe; an unwritten one is replaced, never queued; wakes at once for drum hits); port reopen happens there too. The simulated node stays synchronous for exact tests |
+| Art-Net / sACN (R4) | Standard-library UDP, non-blocking. Art-Net: ArtDmx with sequence 1-255, broadcast or unicast, universes map to port-addresses (number or net:subnet:universe), default n -> n. sACN: E1.31, multicast 239.255.x.y or unicast, priority 0-200, CID stable per computer, default n -> n + 1. Only mapped universes are sent |
+| OSC input (R4) | Rig `osc: {port, allow}`, off by default; allow defaults to this computer + private networks. Own parser (no new dependency), bundles unpacked. Mappings `{type: osc, address, action}` in the MIDI map; float 0-1 drives faders, >= 0.5 or no argument = press; learn takes MIDI or OSC. Feedback to controllers: not in v2 |
+| Thread safety (R4) | Locks on ShowController (RLock on every public method), App.reload, HealthTracker (records() copies), MidiMonitor (since() copies). Measured render cost 0.1-0.3 ms a frame on the full rig, so per-frame caching was left out |
 | Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
 | Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
 | MASTER-exempt fixtures | Fixture ids, groups or a kind name (`kick` = every kick-kind fixture, as v1); they ignore MASTER and drum flashes and use the rig's `kick_colour` when the scene leaves them off. Under "generic" nothing is exempt and a kick-kind light is an ordinary light (auto shows use it like a wash) |
