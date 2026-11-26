@@ -46,6 +46,12 @@ Fixture definition:
 7. U'King heads (colour_only) are colour only: no position, sweep or random_move on them.
    Use the `movers` group for movement, `heads` for colour.
 
+STEP SCENE (v3.2, `type: steps`): hand-programmed steps. Scene step_s / step_beats / fade_s defaults,
+  playback loop|once|bounce, advance timer|manual|{input: <named input>}, move dark|lit (default
+  from the profile: 0.05 band dark, generic lit), dark_s. steps: [{name, set: {lights or group:
+  {colour, position, gobo, colour_wheel, strobe, zoom, focus, frost, prism, speed}}, step_s,
+  step_beats, fade_s, move}]. Tracking: a step keeps everything from the step before, so only list
+  what changes. Optional `layers` are effects over the steps. move: lit glides heads (inside limits).
 SCENE (scenes/<name>.yaml): layers applied in order; later layers override earlier ones.
   name: Blue kit
   show_colour: blue            # drum flashes use this

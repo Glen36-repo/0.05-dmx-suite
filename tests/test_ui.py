@@ -690,3 +690,35 @@ def test_store_a_head_point(ui):
     assert pt["description"] == "Lead vocal, centre front" and pt["tags"] == ["band", "safe"] and pt["stage"] == {"y": "front"}
     assert list(pt["heads"]) == ["mh_b"] and abs(pt["heads"]["mh_b"]["pan"] - 0.25) < 0.02
     assert "not set for mh_a" in page.inner_text("[data-point=singer]")
+
+
+# ------------------------------------------------------------------ v3.2
+
+
+def test_build_a_step_scene(ui):
+    page, app, root, _ = ui
+    go(page, "scenes")
+    page.wait_for_selector("#scene-pick option", state="attached")
+    time.sleep(0.3)  # the page sets up a new scene when it opens
+    page.check("#scene-steps")
+    page.wait_for_selector("#steps-editor .steps-list li")
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#steps-editor button:has-text('Set the selected lights')")
+    page.wait_for_selector("#steps-editor .step-sets li")
+    page.click("#steps-editor button:has-text('Add step')")
+    page.wait_for_function("document.querySelectorAll('#steps-editor .steps-list li').length === 2")
+    page.click("#scene-group-tabs [data-group=movers]")
+    page.click("#steps-editor button:has-text('Set the selected lights')")
+    page.select_option("#steps-editor .step-sets li:has(b:text-is('movers')) select >> nth=0", "drum_kit")
+    page.fill("#scene-name", "Intro hits")
+    page.click("#scene-save")
+    page.wait_for_function("document.querySelector('#scene-state').textContent.includes('intro_hits')")
+    data = yaml.safe_load((root / "scenes" / "intro_hits.yaml").read_text(encoding="utf-8"))
+    assert data["type"] == "steps" and len(data["steps"]) == 2
+    assert data["steps"][0]["set"] == {"bars": {"colour": "white"}}
+    assert data["steps"][1]["set"]["movers"] == {"colour": "white", "position": "drum_kit"}
+    page.click("#steps-editor button:has-text('Play from this step')")
+    deadline = time.time() + 3
+    while (app.ctl.now().steps or {}).get("index") != 1 and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.ctl.now().steps["index"] == 1

@@ -55,8 +55,13 @@ ACTIONS: dict[str, set[str]] = {
     "tap_tempo": set(),
     "speed": set(),
     "busk": {"panel", "widget"},  # a busk widget: press / release, or a fader's value
+    # step scenes (v3.2): the one playing
+    "step_next": set(),
+    "step_back": set(),
+    "step_speed": set(),  # fader: 0.25x - 4x
+    "step_fade": set(),  # fader: fades 0x - 2x
 }
-CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed"}  # need a CC or OSC
+CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade"}  # need a CC or OSC
 
 
 @dataclass

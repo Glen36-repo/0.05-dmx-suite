@@ -65,3 +65,40 @@ On the Scenes page, **Copy look** (Ctrl+C) copies the layer you're editing, or, 
 ## Undo
 
 Every saved change can be undone and redone (Ctrl+Z / Ctrl+Y, or the Files page) for as long as the app is open. Older changes are in the backups on the Files page.
+
+## Step scenes
+
+A step scene is made of steps you program by hand, like Daslight: each step is a fixed look, and the scene runs through them with a step time and a fade time.
+
+1. Tick **Step scene** next to the scene's name.
+2. Select lights on the layout and press **Set the selected lights**, then pick their colour (◐ for the colour wheel), head point and gobo. Or press **Capture what they show** to take what the lights are doing now.
+3. **Add step**. A new step keeps everything from the one before (tracking), so you only set what changes.
+4. Each step can have its own **Step time** and **Fade time**; leave them empty to use the scene's (under **Step and fade times, playback**). With beat sync, a step can last a number of **beats** instead.
+5. **▶** previews one step on the rig; **Play from this step** plays the saved scene from there.
+
+**Playback:** loop, once, or bounce (forward then back). **Next step on:** the timer, a pedal or button only (MIDI actions `step_next` / `step_back`), or a named input such as the snare: every hit moves it on.
+
+**Heads move:**
+
+- **dark**: the head goes dark, moves, then fades in at the new spot (the default under the 0.05 band profile). Even on a cut it gets a moment (`dark_s`, 0.3 s) dark to get there.
+- **lit (glide)**: the head glides from the old spot to the new one over the fade time, staying lit (the default under the generic profile). Make the fade as long as the step for a slow, continuous move. Heads with fine channels glide in 16-bit; the head's own speed channel is set to fastest while it glides so its motor doesn't lag. The glide stays inside the head limits.
+
+Set it for the scene, or per step.
+
+**Live:** busk faders or MIDI faders `step_speed` (0.25× to 4×) and `step_fade` (no fades to 2× fades) change the step scene that's playing.
+
+Colours fade; colour wheels and gobos change halfway through a fade; lights the new step doesn't use fade to off. A step scene can also have **effects on top** (e.g. a sparkle over the steps): the normal layers list.
+
+```yaml
+name: Intro hits
+type: steps
+step_s: 2
+fade_s: 0.5
+playback: loop
+steps:
+  - {name: red bars, set: {bars: {colour: red}}}
+  - {name: blue heads, set: {heads: {colour: blue, position: drum_kit}}, fade_s: 0}
+  - {name: heads to crowd, set: {heads: {position: audience_l}}, move: lit, step_s: 4, fade_s: 4}
+  - {name: all white, set: {all: {colour: white}}, step_s: 4, fade_s: 2}
+```
+

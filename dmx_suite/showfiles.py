@@ -97,6 +97,14 @@ def folder_palettes(root: Path, patch: Patch) -> Palettes:
     return pal.with_points(union)
 
 
+def check_step_inputs(scenes: dict, inputs: Inputs) -> None:
+    """Step scenes moved on by a named input: the input must exist (v3.2)."""
+    for k, sc in scenes.items():
+        name = getattr(sc.steps, "advance_input", None) if sc.steps is not None else None
+        if name and name not in inputs:
+            raise ConfigError(f"scenes/{k}.yaml: advance: no input {name!r} in inputs.yaml")
+
+
 def check_map_inputs(mp: MidiMap, inputs: Inputs) -> None:
     """Mappings that name an input: the input must exist, and faders need a CC or OSC input."""
     for m in mp.mappings:
@@ -123,6 +131,7 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
     pal = _load("palettes.yaml", load_palettes, root / "palettes.yaml", patch)
     pal = pal.with_points(r.points, _other_points(root, rig))  # this rig's head points (v3)
     scenes = _load("scenes", load_scenes, root / "scenes", patch, pal)
+    check_step_inputs(scenes, inputs)
     shows = _load("shows", load_shows, root / "shows", pal, scenes)
     setlists = _load("setlists", load_setlists, root / "setlists", shows, scenes)
     for m in mp.mappings:  # show/scene names in the MIDI map must exist
@@ -215,6 +224,11 @@ def check_all(root: str | Path) -> list[str]:
             problems.append(f"panels.yaml: {e}")
             panels = {}
         problems += [f"warning: {w}" for w in sorted(pal.warnings)]
+        if inputs is not None:
+            try:
+                check_step_inputs(scenes, inputs)
+            except ConfigError as e:
+                problems.append(str(e))
         # scenes and looks are shared: each must suit every rig's profile (rule 1)
         for rk, rig in rigs.items():
             problems += [f"rig {rk} (profile {rig.profile.name}): {p}" for p in profile_problems(rig, scenes, looks)]

@@ -41,6 +41,7 @@ class Now:
     song: int | None = None  # 0-based
     song_name: str | None = None
     bpm: float | None = None
+    steps: dict[str, Any] | None = None  # a step scene playing (v3.2): step, of, name, time left, speeds
 
 
 
@@ -72,17 +73,24 @@ class ShowController:
 
     @_locked
     def select_look(self) -> None:
+        from . import steps
+
+        steps.set_active(None)
         self.mode, self.show, self.set_name, self.scene_key, self.player = "look", None, None, None, None
         self.e.set_look(self.files.look)
         self._save()
 
     @_locked
-    def select_scene(self, key: str) -> None:
+    def select_scene(self, key: str, step: int = 0) -> None:
+        from . import steps
+
         if key not in self.files.scenes:
             raise ConfigError(f"no scene {key!r}")
         sc = self.files.scenes[key]
         self.mode, self.scene_key, self.show, self.set_name, self.player = "scene", key, None, None, None
-        self.e.set_source(ScenePlayer(sc, self.e.rig, self.e.clock(), self.tempo.eff), sc, self.e.rig.change_fade_s)
+        player = ScenePlayer(sc, self.e.rig, self.e.clock(), self.tempo.eff, first_step=step)
+        steps.set_active(player.runner)
+        self.e.set_source(player, sc, self.e.rig.change_fade_s)
         self._save()
 
     @_locked
@@ -91,6 +99,9 @@ class ShowController:
             raise ConfigError(f"no show {key!r}")
         show = self.files.shows[key]
         set_name = set_name or show.default_set
+        from . import steps
+
+        steps.set_active(None)  # a step scene in the show takes over when it's drawn
         self.player = ShowPlayer(show, set_name, self.e.rig, self.files.palettes, self.files.scenes, self.tempo, self.e.clock())
         self.mode, self.show, self.set_name, self.scene_key = "show", show, set_name, None
         self.e.set_source(self.player, self.player.scene, self.e.rig.change_fade_s)
@@ -123,6 +134,49 @@ class ShowController:
         with self.e.lock:
             self.player.go(index, self.e.clock())
         self.e.set_source(self.player, self.player.scene)
+
+    # ------------------------------------------------------------------ step scenes (v3.2)
+
+    def step_runner(self) -> Any:
+        from . import steps
+
+        return steps.active()
+
+    def _runner(self) -> Any:
+        r = self.step_runner()
+        if r is None:
+            raise ConfigError("no step scene playing")
+        return r
+
+    def step_scene(self, action: str, value: float | None = None) -> str:
+        """Pedals, buttons and faders for the step scene playing: next, back, go (value = step,
+        0-based), speed (0.25-4) and fade (scale 0-4)."""
+        r = self._runner()
+        with self.e.lock:
+            if action == "next":
+                r.next()
+            elif action == "back":
+                r.back()
+            elif action == "go":
+                r.go(int(value or 0))
+            elif action == "speed":
+                r.set_speed(float(value if value is not None else 1.0))
+            elif action == "fade":
+                r.set_fade_scale(float(value if value is not None else 1.0))
+            else:
+                raise ConfigError("step action: next, back, go, speed or fade")
+        self.e._changed()
+        return f"step {r.index + 1}: {r.s.steps[r.index].name}"
+
+    def step_input(self, input_id: str) -> bool:
+        """A named input was hit: the step scene playing moves on if it waits for that input."""
+        r = self.step_runner()
+        if r is None or r.s.advance != "input" or r.s.advance_input != input_id:
+            return False
+        with self.e.lock:
+            r.next()
+        self.e._changed()
+        return True
 
     # ------------------------------------------------------------------ setlist
 
@@ -190,6 +244,12 @@ class ShowController:
             n.label = f"{self.show.name} / {self.set_name}"
         if self.setlist and self.song is not None:
             n.setlist, n.song, n.song_name = self.setlist.key, self.song, self.setlist.songs[self.song].name
+        r = self.step_runner()
+        if r is not None and self.mode in ("scene", "show"):
+            n.steps = {"index": r.index, "of": len(r.s.steps), "name": r.s.steps[r.index].name,
+                       "names": [st.name for st in r.s.steps], "time_left_s": round(r.time_left(), 2),
+                       "advance": r.s.advance, "input": r.s.advance_input, "playback": r.s.playback,
+                       "speed": r.speed, "fade_scale": r.fade_scale, "finished": r.finished}
         return n
 
     @_locked

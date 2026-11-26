@@ -134,6 +134,10 @@ def test_every_ui_text_key_exists():
     used |= {f"midi.type_{x}" for x in ("note", "program_change", "control_change", "osc")}
     used |= {f"palettes.scheme_{x}" for x in ("analogous", "complementary", "triadic", "split", "mono")}
     used |= {f"wheel.{k}" for k in ("red", "green", "blue", "white", "amber", "uv")}
+    # v3.2
+    used |= {f"steps.playback_{p}" for p in ("loop", "once", "bounce")}
+    used |= {f"steps.channel_{k}" for k in ("zoom", "focus", "frost")}
+    used |= {"steps.move_dark", "steps.move_lit"}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

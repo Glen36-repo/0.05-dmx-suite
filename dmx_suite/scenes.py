@@ -21,12 +21,15 @@ position, gobo, ...) can sit alongside an effect, except a position with a movem
 No layer can set haze (rule 5) or move a colour-only head (rule 7). A layer may set `intensity`
 (0-1) only where the rig's profile doesn't make MASTER own on/off (rule 1, see profile.py).
 Fixtures missing from the active rig are skipped, or moved to the layer's `fallback` group.
+
+`type: steps` makes a step scene (v3.2, steps.py): hand-programmed steps with step and fade times;
+its `layers` (optional) are effects laid over the steps.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -73,16 +76,21 @@ class Scene:
     layers: list[Layer]
     show_colour: Colour = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
     length_s: float | None = None  # one cycle, if set in the file
+    steps: Any = None  # steps.Steps for a step scene (v3.2)
 
     @property
     def uses_intensity(self) -> bool:
-        return any("intensity" in ly.params for ly in self.layers)
+        step_layers = [ly for st in self.steps.steps for ly in st.layers] if self.steps else []
+        return any("intensity" in ly.params for ly in [*self.layers, *step_layers])
 
     @property
     def length(self) -> float | None:
-        """Seconds for one cycle: `length_s`, else the longest effect period (None if nothing moves)."""
+        """Seconds for one cycle: `length_s`, else the longest effect period (None if nothing moves).
+        A step scene: one pass through its steps (None when a pedal or input moves it on)."""
         if self.length_s:
             return self.length_s
+        if self.steps is not None:
+            return self.steps.length
         periods = [p for ly in self.layers if not ly.mute and (p := ly.period())]
         return max(periods) if periods else None
 
@@ -190,14 +198,21 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
 
 
 def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") -> Scene:
+    from .steps import parse_steps
+
     _forbid(data, name)
-    bad = set(data) - {"name", "show_colour", "layers", "length_s"}
-    if bad:
-        raise LookError(f"{name}: unknown keys {sorted(bad)}")
+    kind = data.get("type", "layers")
+    if kind not in ("layers", "steps"):
+        raise LookError(f"{name}: type is layers (the default) or steps")
+    if kind == "layers":
+        bad = set(data) - {"name", "show_colour", "layers", "length_s", "type"}
+        if bad:
+            raise LookError(f"{name}: unknown keys {sorted(bad)}")
     layers = [parse_layer(d or {}, patch, pal, f"{name} layer {i + 1}") for i, d in enumerate(data.get("layers") or [])]
-    if not layers:
+    steps = parse_steps(data, patch, pal, name) if kind == "steps" else None
+    if not layers and steps is None:
         raise LookError(f"{name}: no layers")
-    sc = Scene(data.get("name", name), layers)
+    sc = Scene(data.get("name", name), layers, steps=steps)
     if "show_colour" in data:
         sc.show_colour = pal.colour(data["show_colour"], f"{name} show_colour")
     if "length_s" in data:
@@ -224,7 +239,8 @@ class ScenePlayer:
     """Callable(now) -> Look. Starts its clock when created."""
 
     def __init__(
-        self, scene: Scene, rig: Rig, start: float, timebase: Callable[[float], float] | None = None
+        self, scene: Scene, rig: Rig, start: float, timebase: Callable[[float], float] | None = None,
+        first_step: int = 0, only_step: int | None = None,
     ) -> None:
         self.scene = scene
         self.rig = rig
@@ -239,9 +255,43 @@ class ScenePlayer:
             self._layers.append((ly, fids))
         self._units: dict[tuple[int, bool], list[Unit]] = {}
         self._cells: dict[str, list[tuple[float, float]]] | None = None
+        self.runner: Any = None
+        if scene.steps is not None:
+            from .steps import StepRunner
+
+            tempo = getattr(self.timebase, "__self__", None)  # tempo.eff: the show's TempoClock
+
+            def beat_s() -> float:
+                bpm = getattr(tempo, "bpm", None)
+                return 60.0 / bpm if bpm else BEAT_S
+
+            self.runner = StepRunner(scene.steps, rig, self._step_look, start, beat_s, first_step, only_step)
+
+    def _step_look(self, i: int) -> Look:
+        """Step i with tracking: every step up to it laid in order (each only sets what changes)."""
+        layers = [ly for st in self.scene.steps.steps[: i + 1] for ly in st.layers]
+        sub = ScenePlayer(Scene(self.scene.name, layers, self.scene.show_colour), self.rig, 0.0)
+        return sub(0.0)
 
     def __call__(self, now: float) -> Look:
         t = self.timebase(now) - self.start
+        if self.runner is not None:
+            from .steps import set_active
+
+            set_active(self.runner)
+            base = self.runner(now)
+            look = Look(show_colour=dict(base.show_colour),
+                        fixtures={k: replace(v, colour=dict(v.colour), pixels=[dict(p) for p in v.pixels] if v.pixels else None)
+                                  for k, v in base.fixtures.items()})
+            top_dark: set[str] = set()
+            for i, (layer, fids) in enumerate(self._layers):
+                if fids and not layer.mute:
+                    self._apply(i, layer, fids, t, look, top_dark)
+            for f in top_dark:
+                fl = look.fixtures.get(f)
+                if fl:
+                    fl.colour, fl.pixels = {}, None
+            return look
         look = Look(show_colour=self.scene.show_colour)
         dark: set[str] = set()
         for i, (layer, fids) in enumerate(self._layers):

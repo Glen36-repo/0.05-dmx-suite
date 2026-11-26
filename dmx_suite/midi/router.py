@@ -243,6 +243,25 @@ class MidiRouter:
                 return self.busk(p["panel"], p["widget"], m.pressed, level)
             except Exception as err:  # a bad press must never stop the show
                 return f"busk failed: {err}"
+        if a in ("step_speed", "step_fade"):
+            level = m.level if m.level is not None else m.value / 127
+            value = 4 ** (2 * level - 1) if a == "step_speed" else 2 * level
+            if self.shows is None:
+                return f"{a}: no show control running"
+            try:
+                self.shows.step_scene("speed" if a == "step_speed" else "fade", value)
+            except Exception as err:
+                return f"{a}: {err}"
+            return f"{a} x{value:.2f}"
+        if a in ("step_next", "step_back"):
+            if not m.pressed:
+                return "release"
+            if self.shows is None:
+                return f"{a}: no show control running"
+            try:
+                return self.shows.step_scene("next" if a == "step_next" else "back")
+            except Exception as err:
+                return f"{a} failed: {err}"
         if a == "speed":
             level = m.level if m.level is not None else m.value / 127
             speed = 4 ** (2 * level - 1)  # fader bottom = quarter speed, middle = as set, top = 4x

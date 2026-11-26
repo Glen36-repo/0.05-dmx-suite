@@ -289,3 +289,8 @@ input.wide { min-width: 260px; }
 .button-like { display: inline-flex; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 14px; cursor: pointer; }
 .hidden-file { display: none; }
 .input-name { color: var(--accent); }
+
+/* v3.2 step scenes */
+#steps-editor { margin-bottom: 10px; }
+.step-sets { list-style: none; padding: 0; }
+.step-sets li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }

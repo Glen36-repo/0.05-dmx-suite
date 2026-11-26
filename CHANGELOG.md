@@ -2,6 +2,14 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v3, release V3.2)
+
+### Added
+- Step scenes: steps programmed by hand with a step time and fade time each (or the scene's), tracking (a step only sets what changes), loop / once / bounce, next step on the timer, a pedal or a named input (e.g. every snare hit), beats with beat sync.
+- Heads move dark (the 0.05 band default) or glide lit (the generic default), per scene or step; glides are 16-bit with the head's speed channel at fastest, and stay inside the head limits.
+- Step scene editor in the scene builder: set the selected lights, capture what they show, add/duplicate/reorder steps, preview one step, play from a step; effects on top.
+- Live step speed and fade faders (busk faders and MIDI `step_speed` / `step_fade`), and `step_next` / `step_back` actions.
+
 ## Unreleased (v3, release V3.1)
 
 ### Added

@@ -144,8 +144,8 @@ def _widget(d: Any, patch: Patch, pal: Palettes, scenes: dict[str, Any], shows: 
     elif typ == "fader":
         t = str(d.get("target", ""))
         kinds = {f"sub:{k.value}" for k in Kind}
-        if t not in {"grand", "flash_level", "speed"} | kinds:
-            raise ConfigError(f"{what}: target must be grand, flash_level, speed or sub:<kind>")
+        if t not in {"grand", "flash_level", "speed", "step_speed", "step_fade"} | kinds:
+            raise ConfigError(f"{what}: target must be grand, flash_level, speed, step_speed, step_fade or sub:<kind>")
         w.target = t
     elif typ == "haze":
         if d.get("action") not in HAZE:

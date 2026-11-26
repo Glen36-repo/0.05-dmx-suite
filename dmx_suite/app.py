@@ -46,6 +46,7 @@ class App:
         self.monitor = MidiMonitor()
         self.router = MidiRouter(self.engine, files.midimap, self.monitor, self.ctl, files.inputs)
         self.router.busk = self.busk  # MIDI / OSC action `busk`
+        self.router.input_listeners.append(self._input_hit)  # step scenes waiting on an input (v3.2)
         self.gig_lock = False
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
@@ -420,6 +421,42 @@ class App:
             self.show_problem = None
         return notes
 
+    def capture_step(self, fixtures: list[str]) -> dict[str, Any]:
+        """What the chosen lights show now, as a step's `set` (step scene editor: capture)."""
+        look = self.engine.look
+        try:
+            ids = self.engine.rig.patch.resolve(list(fixtures) or ["all"])
+        except ConfigError as e:
+            raise ValueError(str(e)) from e
+        out: dict[str, Any] = {}
+        for fid in ids:
+            fl = look.fixtures.get(fid)
+            fx = self.engine.rig.patch.fixtures[fid]
+            if fl is None or fx.kind == Kind.HAZE:
+                continue
+            d: dict[str, Any] = {}
+            if fl.pixels:
+                d["pixels"] = [{k: round(v, 4) for k, v in c.items() if v} or "off" for c in fl.pixels]
+            elif fl.colour:
+                d["colour"] = {k: round(v, 4) for k, v in fl.colour.items() if v} or "off"
+            if fl.pan is not None and fl.tilt is not None and not fx.type.colour_only:
+                d["position"] = {"pan": round(fl.pan, 5), "tilt": round(fl.tilt, 5)}
+            for k in ("gobo", "colour_wheel", "strobe", "prism"):
+                v = getattr(fl, k)
+                if v is not None:
+                    d[k] = int(v)
+            for k in ("zoom", "focus", "frost"):
+                v = getattr(fl, k)
+                if v is not None:
+                    d[k] = round(v, 4)
+            if d:
+                out[fid] = d
+        return out
+
+    def _input_hit(self, inp: Any, m: Any, now: float) -> None:
+        if m.pressed:
+            self.ctl.step_input(inp.id)
+
     # ------------------------------------------------------------------ named inputs (v3)
 
     def save_midi_map(self) -> str:
@@ -639,7 +676,7 @@ class App:
 
     # ------------------------------------------------------------------ preview
 
-    def preview_scene(self, scene: str | dict, seconds: float = 10) -> str:
+    def preview_scene(self, scene: str | dict, seconds: float = 10, step: int | None = None) -> str:
         self.require_unlocked("preview")
         if isinstance(scene, str):
             if scene not in self.files.scenes:
@@ -650,7 +687,8 @@ class App:
             sc = parse_scene(scene, self.files.patch, self.files.palettes, scene.get("name", "preview"))
             if sc.uses_intensity and self.engine.rig.profile.master_gate:
                 raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
-        self.engine.preview(ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff), seconds, sc)
+        self.engine.preview(ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff,
+                                        first_step=step or 0, only_step=step), seconds, sc)
         msg = f"previewing {sc.name} for {seconds:.0f} s, then back to {self.ctl.describe()}"
         if self.engine.rig.profile.master_gate and not self.engine.master:
             msg += " (MASTER is off, so the rig stays dark)"
@@ -712,6 +750,12 @@ class App:
                 e.set_flash_level(level)
             elif t == "speed":
                 self.ctl.set_speed(4 ** (2 * level - 1))
+            elif t in ("step_speed", "step_fade"):
+                try:
+                    self.ctl.step_scene("speed" if t == "step_speed" else "fade",
+                                        4 ** (2 * level - 1) if t == "step_speed" else 2 * level)
+                except ConfigError:
+                    return f"{w.label}: no step scene playing"
             elif t.startswith("sub:"):
                 e.set_sub(t[4:], level)
             return f"{w.label} {round(level * 100)}%"
@@ -872,6 +916,7 @@ class App:
             "positions": sorted(f.palettes.positions),
             "fixtures": [{"id": fx.id, "kind": fx.kind.value, "type": fx.type.name, "colour_only": fx.type.colour_only,
                           "emitters": sorted(fx.type.emitters),
+                          "roles": sorted({c.role for c in fx.type.channels}),
                           "moves": fx.type.has("pan") and not fx.type.colour_only, "pixels": fx.type.pixels,
                           "gobo": fx.type.has("gobo"), "wheel": fx.type.has("colour_wheel"),
                           "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range}

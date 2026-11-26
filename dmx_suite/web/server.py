@@ -118,6 +118,11 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
         {"next": c.next_song, "prev": c.prev_song}.get(which, lambda: c.go_song(int(which)))()
     elif cmd == "step":
         c.go_step(int(a["step"]))
+    elif cmd == "steps":  # step scene playing (v3.2): next, back, go, speed, fade
+        v = a.get("value")
+        return {"result": c.step_scene(str(a.get("action", "next")), None if v is None else float(v))}
+    elif cmd == "scene_step":  # play a step scene from one of its steps
+        c.select_scene(a["scene"], int(a.get("step", 0)))
     elif cmd == "speed":
         c.set_speed(float(a["value"]))
     elif cmd == "busk":
@@ -672,7 +677,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 scene = body.get("scene") or body.get("scene_data")
                 if not isinstance(scene, (str, dict)):
                     raise ApiError(400, "preview needs a scene name or scene data")
-                msg = app.preview_scene(scene, float(body.get("seconds", 10)))
+                step = body.get("step")
+                msg = app.preview_scene(scene, float(body.get("seconds", 10)), None if step is None else int(step))
                 return self._json(200, {"ok": True, "message": msg})
             if path == "/api/alerts" and method == "POST":  # banners: dismiss, minimise, snooze, mute, quiet
                 ac, a = app.alert_center, str(body.get("action", ""))
@@ -692,6 +698,11 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
                 return self._json(200, {"ok": True, **app.alerts_view()})
+            if path == "/api/steps/capture" and method == "POST":  # read only: the lights as a step's `set`
+                try:
+                    return self._json(200, {"set": app.capture_step(list(body.get("fixtures") or []))})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/colour/preview" and method == "POST":  # read-only: what each light makes of a colour
                 return self._json(200, app.colour_preview(body.get("colour"), list(body.get("fixtures") or [])))
             if path == "/api/colour/generate" and method == "POST":

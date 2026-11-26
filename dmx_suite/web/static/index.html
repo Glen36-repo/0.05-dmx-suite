@@ -148,6 +148,7 @@
         <button id="scene-dup" data-i18n="scenes.duplicate"></button>
         <button id="scene-del" class="danger-text" data-i18n="scenes.delete"></button>
         <input id="scene-name" maxlength="60" data-i18n-placeholder="scenes.name_placeholder">
+        <label class="check"><input type="checkbox" id="scene-steps"><span data-i18n="steps.toggle"></span></label>
         <button id="scene-save" data-i18n="scenes.save"></button>
         <span class="muted" id="scene-state"></span>
       </div>
@@ -164,7 +165,8 @@
           </div>
         </div>
         <div class="builder-right">
-          <h2 data-i18n="scenes.layers"></h2>
+          <div id="steps-editor" class="hidden"></div>
+          <h2 id="layers-title" data-i18n="scenes.layers"></h2>
           <ol class="layers" id="layers"></ol>
           <div class="row wrap">
             <button id="layer-add" data-i18n="scenes.add_layer"></button>

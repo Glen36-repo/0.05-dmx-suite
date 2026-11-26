@@ -4,6 +4,7 @@
 // The scene is kept as the same data the file holds ({name, layers: [{fixtures, effect, ...}]}),
 // so what's saved is exactly what was previewed. Settings at their default aren't written.
 import { openWheel } from "../colourwheel.js";
+import { isSteps, renderSteps, toggleSteps } from "../stepedit.js";
 import { api, attempt, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
@@ -23,6 +24,7 @@ let saved = "";
 let current = -1; // layer being edited
 let group = "all";
 let previewTimer = null;
+let namedInputs = [];
 
 const dirty = () => JSON.stringify(doc) !== saved;
 const effect = (name) => fx?.effects.find((e) => e.name === name);
@@ -40,6 +42,8 @@ function setDoc(data, k) {
   saved = JSON.stringify(doc);
   current = doc.layers.length ? 0 : -1;
   $("#scene-name").value = doc.name || "";
+  doc.layers ||= [];
+  $("#scene-steps").checked = isSteps(doc);
   $("#scene-length").value = doc.length_s ?? "";
   $("#scene-show-colour").replaceChildren(swatch(doc.show_colour, (c) => { toggleKey(doc, "show_colour", c); changed(); }));
   renderAll();
@@ -294,10 +298,22 @@ function renderForm() {
   else grid.setArrow(null);
 }
 
+function stepCtx() {
+  const fixtures = (target) => expand([target]).map((id) => live.cat.fixtures.find((f) => f.id === id)).filter(Boolean);
+  return {
+    changed, swatch, fx, selectionNames, inputs: namedInputs, key: () => key,
+    moves: (target) => fixtures(target).some((f) => f.moves),
+    hasGobo: (target) => fixtures(target).some((f) => f.gobo),
+    hasRole: (target, role) => fixtures(target).some((f) => (f.roles || []).includes(role)),
+  };
+}
+
 function renderAll(errLayer = null) {
   renderBar();
   renderLayers(errLayer);
   renderForm();
+  renderSteps(doc, stepCtx());
+  $("#layers-title").textContent = t(isSteps(doc) ? "steps.effects_on_top" : "scenes.layers");
 }
 
 // ---------------------------------------------------------------- checking and live preview
@@ -311,7 +327,7 @@ function changed() {
 async function check() {
   const data = { ...doc, name: $("#scene-name").value.trim() || doc.name };
   const errBox = $("#scene-error");
-  if (!data.layers.length) {
+  if (!data.layers.length && !isSteps(data)) {
     errBox.classList.add("hidden");
     return;
   }
@@ -386,6 +402,7 @@ export function init() {
     else if (k === "v") { ev.preventDefault(); paste(); }
   });
   $("#scene-pick").onchange = (e) => open(e.target.value);
+  $("#scene-steps").onchange = (e) => { toggleSteps(doc, e.target.checked); changed(); };
   $("#scene-new").onclick = () => open("");
   $("#scene-save").onclick = save;
   $("#scene-dup").onclick = async () => {
@@ -430,6 +447,7 @@ export function init() {
   });
   onState((s) => grid.update(s.fixtures));
   onShow("scenes", async () => {
+    namedInputs = (await get("/api/inputs")).inputs;
     if (!fx) {
       await loadEffects();
       setDoc({ name: t("scenes.untitled"), layers: [] }, null);
