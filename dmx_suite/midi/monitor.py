@@ -18,6 +18,7 @@ class MonitorEntry:
     number: int
     value: int  # velocity / CC value / 0
     result: str  # what it triggered, or "unmapped"
+    seq: int = 0  # set by the monitor; lets the UI ask for "everything after N"
 
     def format(self) -> str:
         t = time.strftime("%H:%M:%S", time.localtime(self.time)) + f".{int(self.time * 1000) % 1000:03d}"
@@ -30,11 +31,14 @@ class MidiMonitor:
         self.paused = False
         self.listeners: list[Callable[[MonitorEntry], None]] = []
         self._lock = threading.Lock()
+        self.seq = 0
 
     def add(self, e: MonitorEntry) -> None:
         if self.paused:
             return
         with self._lock:
+            self.seq += 1
+            e.seq = self.seq
             self.entries.append(e)
         for fn in self.listeners:
             fn(e)
