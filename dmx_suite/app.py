@@ -24,6 +24,7 @@ from .scenes import ScenePlayer, parse_scene
 from .showctl import ShowController
 from .showfiles import ShowFiles, load_show
 from .store import LockedError, ShowStore
+from .versions import upgrade
 
 log = logging.getLogger(__name__)
 
@@ -201,6 +202,7 @@ class App:
                 raise ValueError(f"no scene {scene!r}")
             sc = self.files.scenes[scene]
         else:
+            scene = upgrade(scene, "scene", "preview")
             sc = parse_scene(scene, self.files.patch, self.files.palettes, scene.get("name", "preview"))
             if sc.uses_intensity and self.engine.rig.profile.master_gate:
                 raise ValueError(f"{sc.name} {INTENSITY_RULE1}")

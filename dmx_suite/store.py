@@ -20,6 +20,7 @@ import yaml
 
 from .fixtures import ConfigError
 from .showfiles import check_all
+from .versions import FORMAT, FormatError, kind_of, needs_upgrade, show_files, stamped, upgrade
 from .yamlio import plain_dump, update_text
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
@@ -68,12 +69,17 @@ class ShowStore:
         return sorted(p.stem for p in (self.root / FOLDERS[kind]).glob("*.yaml"))
 
     def read(self, kind: str, name: str = "") -> dict:
+        """Current-format data, without `version:` (writes add it back)."""
         p = self.path(kind, name)
         if not p.exists():
             if kind == "palettes":
                 return {}
             raise StoreError(f"no {kind} {name!r}")
-        return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        try:
+            data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        except yaml.YAMLError as e:
+            raise StoreError(f"{p.name}: not valid YAML: {e}") from e
+        return upgrade(data, kind_of(p), p.name)
 
     def read_text(self, kind: str, name: str = "") -> str:
         p = self.path(kind, name)
@@ -84,8 +90,32 @@ class ShowStore:
     # ------------------------------------------------------------------ write (validated, backed up)
 
     def text_for(self, path: Path, data: Any) -> str:
-        """What to write so `path` holds `data`, keeping the comments already in the file."""
-        return update_text(path.read_text(encoding="utf-8") if path.exists() else None, data)
+        """What to write so `path` holds `data` (stamped with the current file format), keeping the
+        comments already in the file. Data is taken as the current format (what `read` returns and
+        the UI and Claude write) unless it carries an older `version:`, which is upgraded."""
+        if isinstance(data, dict) and "version" in data:
+            data = upgrade(data, kind_of(path), path.name)
+        return update_text(path.read_text(encoding="utf-8") if path.exists() else None, stamped(data))
+
+    def upgrade(self) -> tuple[str | None, list[str]]:
+        """Write every older-format show file in the current format (start-up). The originals are
+        backed up first and comments are kept. Not validated: an upgrade only changes the format,
+        and a file with other problems is reported by loading/check as usual. Gig lock doesn't
+        apply: it's the app catching up, not an edit. Returns (backup id, files upgraded)."""
+        with self._lock:
+            changes: dict[Path, str | None] = {}
+            for p in show_files(self.root):
+                try:
+                    if needs_upgrade(p):
+                        text = p.read_text(encoding="utf-8")
+                        data = upgrade(yaml.safe_load(text), kind_of(p), p.name)  # no version: = format 1
+                        changes[p] = update_text(text, stamped(data))
+                except (FormatError, ConfigError, OSError, yaml.YAMLError):
+                    continue  # newer format or broken: loading reports it
+            if not changes:
+                return None, []
+            names = [str(p.relative_to(self.root)) for p in changes]
+            return self._commit(changes, f"upgrade to file format {FORMAT}: {', '.join(names)}"), names
 
     def _guard(self) -> None:
         if self._locked():

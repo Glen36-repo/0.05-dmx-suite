@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
 
 from .fixtures import ConfigError, Kind, Patch
+from .versions import read_doc
 from .profile import V1_DEFAULT, Profile, parse_profile, resolve_exempt
 
 STROBE_DEFAULT_HZ = 3.0  # common photosensitive-epilepsy guidance: no more than 3 flashes a second
@@ -200,5 +200,4 @@ def _layout(d: Any, patch: Patch) -> dict[str, Placement]:
 
 
 def load_rig(path: str | Path, patch: Patch) -> Rig:
-    data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    return parse_rig(data, patch)
+    return parse_rig(read_doc(path, "rig"), patch)

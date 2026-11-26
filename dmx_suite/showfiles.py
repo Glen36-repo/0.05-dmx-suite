@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
 
 from .auto import generate
 from .fixtures import ConfigError, Patch, load_patch
@@ -14,6 +13,7 @@ from .midi.map import MidiMap, load_map
 from .palettes import Palettes, load_palettes
 from .rig import STROBE_DEFAULT_HZ, Rig, load_rig
 from .scenes import Scene, load_scenes
+from .versions import read_doc
 from .shows import Setlist, Show, load_setlists, load_shows, parse_setlist, parse_show
 
 
@@ -116,12 +116,12 @@ def check_all(root: str | Path) -> list[str]:
                 problems.append(f"scenes/{p.name}: {e}")
         for p in sorted((root / "shows").glob("*.yaml")):
             try:
-                shows[p.stem] = parse_show(p.stem, yaml.safe_load(p.read_text(encoding="utf-8")) or {}, pal, scenes)
+                shows[p.stem] = parse_show(p.stem, read_doc(p, "show"), pal, scenes)
             except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
                 problems.append(f"shows/{p.name}: {e}")
         for p in sorted((root / "setlists").glob("*.yaml")):
             try:
-                parse_setlist(p.stem, yaml.safe_load(p.read_text(encoding="utf-8")) or {}, shows, scenes)
+                parse_setlist(p.stem, read_doc(p, "setlist"), shows, scenes)
             except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
                 problems.append(f"setlists/{p.name}: {e}")
         # scenes and looks are shared: each must suit every rig's profile (rule 1)
@@ -158,8 +158,6 @@ def check_all(root: str | Path) -> list[str]:
 
 
 def load_scenes_file(path: Path, patch: Patch, pal: Palettes) -> Scene:
-    import yaml
-
     from .scenes import parse_scene
 
-    return parse_scene(yaml.safe_load(path.read_text(encoding="utf-8")) or {}, patch, pal, path.stem)
+    return parse_scene(read_doc(path, "scene"), patch, pal, path.stem)

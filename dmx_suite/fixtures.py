@@ -7,7 +7,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml
 
 DMX_CHANNELS = 512
 MAX_UNIVERSE = 15
@@ -181,7 +180,9 @@ def _type(key: str, d: dict) -> FixtureType:
 
 
 def load_patch(path: str | Path) -> Patch:
-    data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    from .versions import read_doc
+
+    data = read_doc(path, "fixtures")
     return parse_patch(data)
 
 

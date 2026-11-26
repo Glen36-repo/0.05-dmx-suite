@@ -19,6 +19,7 @@ from .fixtures import ConfigError, load_patch
 from .look import INTENSITY_RULE1
 from .palettes import load_palettes
 from .rig import load_rig
+from .versions import upgrade
 from .scenes import EFFECTS, parse_scene
 from .paths import default_shows
 from .store import ShowStore, StoreError
@@ -227,6 +228,7 @@ class DmxTools:
         patch = load_patch(self.shows / "fixtures.yaml")
         pal = load_palettes(self.shows / "palettes.yaml", patch)
         try:
+            data = upgrade(data, "scene", "scene")
             sc = parse_scene(data, patch, pal, data.get("name", "scene"))
             if sc.uses_intensity:  # rule 1: only rigs whose profile doesn't use MASTER on/off
                 gated = [rp.stem for rp in sorted((self.shows / "rigs").glob("*.yaml"))

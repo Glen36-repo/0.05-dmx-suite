@@ -28,12 +28,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-import yaml
 
 from .fixtures import EMITTERS, Patch
 from .look import FORBIDDEN, Colour, FixtureLook, Look, LookError
-from .palettes import Palettes, Position
+from .palettes import Palettes
 from .rig import Rig
+from .versions import read_doc
 
 EFFECTS = {
     "colour_chase": {"colours", "period_s", "spread", "fade"},
@@ -195,7 +195,7 @@ def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") ->
 def load_scenes(folder: str | Path, patch: Patch, pal: Palettes) -> dict[str, Scene]:
     out = {}
     for path in sorted(Path(folder).glob("*.yaml")):
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = read_doc(path, "scene")
         out[path.stem] = parse_scene(data, patch, pal, path.stem)
     return out
 

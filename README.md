@@ -179,6 +179,8 @@ Shows (`shows/shows/*.yaml`) have sets on fixed step timers. A set is either a l
 
 **Strobe limit (safety):** the whole rig can flash at most 3 times a second, whatever causes it (drum hits, flash effects). A flash is the rig's light output jumping by a quarter or more; one that comes too soon is held back until the limit allows it. Chases that move light around the rig aren't flashes and aren't touched. `strobe_limit_hz` in a rig file raises it (up to 25; `dmx-suite check` warns above 3, the common photosensitive-epilepsy guidance). It can't be turned off. Hardware strobe channels on a fixture aren't covered yet: their speed isn't known until fixture definitions get capability ranges (v2 R7).
 
+**File versions:** every show file starts with `version:` (the file format). Files from an older format still load, and `dmx-suite run` (and the desktop app) rewrites them in the current format at start-up, keeping their comments, with the originals in `shows/.backups/`. A file from a newer app is refused with a message saying so, instead of being half-read.
+
 Levels in rig files are 0-100 %. Looks (`shows/looks/`) set colour, pixels, wheel, gobo and position only; a `dimmer` or `haze` key is rejected (hard rules 1 and 5). The static look is the fallback when no scene is playing.
 
 ## Node test script

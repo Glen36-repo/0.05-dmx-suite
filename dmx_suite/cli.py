@@ -293,6 +293,9 @@ class Session:
 
 
 def start_session(args: argparse.Namespace, out=print) -> Session:
+    _, upgraded = ShowStore(args.shows).upgrade()  # older show files -> current format, originals backed up
+    if upgraded:
+        out(f"show files upgraded to the current format (originals in .backups): {', '.join(upgraded)}")
     show = load_show(args.shows, args.rig, args.look, args.midi)
     if args.sim:
         drivers = [LogDriver()] + ([make_driver({"driver": "node_serial", "port": "sim"})] if args.sim_node else [])

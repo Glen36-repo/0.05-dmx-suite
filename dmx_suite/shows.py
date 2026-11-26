@@ -27,9 +27,7 @@ import random
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
-import yaml
 
 from .auto import AutoStyle, generate, parse_style
 from .fixtures import ConfigError
@@ -127,7 +125,9 @@ def parse_setlist(key: str, d: dict, shows: dict[str, Show], scenes: dict[str, S
 
 
 def _load_dir(folder: Path) -> dict[str, dict]:
-    return {p.stem: yaml.safe_load(p.read_text(encoding="utf-8")) or {} for p in sorted(folder.glob("*.yaml"))}
+    from .versions import read_doc
+
+    return {p.stem: read_doc(p) for p in sorted(folder.glob("*.yaml"))}
 
 
 def load_shows(folder: Path, pal: Palettes, scenes: dict[str, Scene]) -> dict[str, Show]:

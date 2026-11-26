@@ -1,4 +1,5 @@
 # Opera: white and incandescent yellow only, slow head scan, minimal.
+version: 2
 name: Opera
 show_colour: warm_white
 layers:

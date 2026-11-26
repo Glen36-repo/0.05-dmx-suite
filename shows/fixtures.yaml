@@ -7,6 +7,7 @@
 #   pt_speed (invert: true = DMX 0 fastest), colour_wheel, gobo, strobe, haze, fixed
 # `default:` is the value when nothing drives the channel (e.g. strobe open, mode channels).
 
+version: 2
 types:
   mhl36:
     name: BeamZ MHL36

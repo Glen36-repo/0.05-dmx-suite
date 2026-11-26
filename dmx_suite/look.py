@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
 
 from .fixtures import EMITTERS, ConfigError, Patch
 
@@ -121,4 +120,6 @@ def parse_look(data: dict, patch: Patch) -> Look:
 
 
 def load_look(path: str | Path, patch: Patch) -> Look:
-    return parse_look(yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}, patch)
+    from .versions import read_doc
+
+    return parse_look(read_doc(path, "look"), patch)

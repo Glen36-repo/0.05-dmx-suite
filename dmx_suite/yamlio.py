@@ -78,11 +78,11 @@ def merge(rt: Any, old: Any, new: Any) -> Any:
         for ok, rk in keys.items():
             if ok not in new:
                 del rt[rk]
-        for k, v in new.items():
+        for i, (k, v) in enumerate(new.items()):
             if k in keys:
                 rt[keys[k]] = merge(rt[keys[k]], old[k], v)
             else:
-                rt[k] = to_rt(v)
+                rt.insert(min(i, len(rt)), k, to_rt(v))  # where it sits in the new data (version: first)
         return rt
     if isinstance(new, list) and isinstance(old, list) and isinstance(rt, CommentedSeq) and len(rt) == len(old):
         n = min(len(new), len(old))

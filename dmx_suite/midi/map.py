@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
 
 from ..fixtures import ConfigError, Kind
 
@@ -160,7 +159,9 @@ def parse_map(data: dict) -> MidiMap:
 
 
 def load_map(path: str | Path) -> MidiMap:
-    return parse_map(yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {})
+    from ..versions import read_doc
+
+    return parse_map(read_doc(path, "midi"))
 
 
 def save_map(midimap: MidiMap, path: str | Path) -> None:

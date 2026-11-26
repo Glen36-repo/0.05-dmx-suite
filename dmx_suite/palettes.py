@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
 
 from .fixtures import ConfigError, Patch
 from .look import Colour, LookError, parse_colour
@@ -126,4 +125,6 @@ def load_palettes(path: str | Path, patch: Patch) -> Palettes:
     path = Path(path)
     if not path.exists():
         return Palettes()
-    return parse_palettes(yaml.safe_load(path.read_text(encoding="utf-8")) or {}, patch)
+    from .versions import read_doc
+
+    return parse_palettes(read_doc(path, "palettes"), patch)
