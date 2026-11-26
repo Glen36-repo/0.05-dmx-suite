@@ -51,6 +51,7 @@ class Rig:
     startup_master: bool = True
     nodes: list[tuple[str, str]] = field(default_factory=list)  # (mac, name)
     outputs: list[dict[str, Any]] = field(default_factory=list)
+    midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
 
     @property
     def fixtures(self):
@@ -131,6 +132,7 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         startup_master=bool((data.get("startup") or {}).get("master", True)),
         nodes=[(n["mac"].upper(), n.get("name", "")) for n in data.get("nodes") or []],
         outputs=list(data.get("outputs") or [{"driver": "null"}]),
+        midi_inputs=[str(x) for x in data.get("midi_inputs") or []],
     )
 
 

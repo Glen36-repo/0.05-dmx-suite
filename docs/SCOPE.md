@@ -294,6 +294,9 @@ Decided 26/11/2026:
 | Edits | Staged and checked against the whole show folder (every rig) before writing; previous file kept in `shows/.backups/<date-time>/`; writing YAML drops comments |
 | Live reload | Scenes, palettes, shows, setlists and MIDI map reload straight away; fixture/rig changes need a restart |
 | Claude without the engine | MCP edits the show files directly with the same checks; live tools report the engine isn't running |
+| Universes | 0-15 per fixture; every universe rendered and sent each frame (and on drum hits) |
+| Port-specific MIDI | Mappings can name an input (`port`, part of the port name); a port-specific mapping wins, so SamplePad and TD-25 can share ch 10 notes |
+| MIDI hot-plug | Wanted ports (rig `midi_inputs`) rescanned every 2 s; reconnect under a new name; status shown as connected/unplugged |
 
 Open:
 
@@ -306,6 +309,8 @@ Open:
 - [ ] Rehearsal: tune auto-show styles (colours, step times, energy) and write the real setlist
 - [ ] Brand assets: replace `dmx_suite/web/static/brand/logo.svg` and `brand.css` (placeholders now); CoreS3 boot logo
 - [ ] Rig layout for the UI preview (currently grouped by fixture kind, not stage position)
+- [ ] Phase 2: node fallback look only covers the node's own universe; receivers on other universes go black 5 s after the laptop stops. Decide whether each universe needs its own fallback
+- [ ] Phase 2: SamplePad note numbers and pad map, H2MIDI Pro port name, guitar board MIDI (generic PC/CC/notes already supported)
 - [ ] 0.05 brand assets: logo files (SVG preferred), colours, font
 - [ ] Unit DMX (U183) wiring: confirm TX/RX pins and whether a direction (DE/RE) pin is needed, before first flash (`firmware/include/config.h`)
 - [ ] Node status: CoreS3 screen (0.05 logo, status) not built yet; identify on the node only logs
