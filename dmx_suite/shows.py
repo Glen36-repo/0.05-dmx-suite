@@ -90,6 +90,7 @@ class Show:
     name: str
     sets: dict[str, ShowSet]
     default_set: str
+    generated: bool = False  # made by the generator / starter (v4)
 
 
 @dataclass
@@ -140,7 +141,7 @@ def parse_show(key: str, d: dict, pal: Palettes, scenes: dict[str, Scene]) -> Sh
     default = d.get("default_set", next(iter(sets)))
     if default not in sets:
         raise ConfigError(f"show {key}: default_set {default!r} isn't a set")
-    return Show(key, d.get("name", key), sets, default)
+    return Show(key, d.get("name", key), sets, default, generated="generated" in d or key == "starter")
 
 
 def _secs(v: object, what: str, lo: float = 0.0) -> float:

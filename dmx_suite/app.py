@@ -1732,6 +1732,8 @@ class App:
                                          for st in ss.steps] for sk, ss in s.sets.items()}}
                       for k, s in f.shows.items()},
             "scenes": {k: s.name for k, s in f.scenes.items()},
+            "generated": sorted([f"show:{k}" for k, s in f.shows.items() if s.generated]
+                                + [f"scene:{k}" for k, s in f.scenes.items() if s.generated]),
             "setlists": {k: {"name": s.name, "songs": [x.name for x in s.songs]} for k, s in f.setlists.items()},
             "positions": sorted(f.palettes.positions),
             "fixtures": [{"id": fx.id, "kind": fx.kind.value, "type": fx.type.name, "colour_only": fx.type.colour_only,

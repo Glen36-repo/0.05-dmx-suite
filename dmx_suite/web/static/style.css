@@ -559,3 +559,12 @@ table.mon-log tr.unmapped td { color: var(--muted); }
 .led.ok { background: var(--ok); } .led.bad { background: var(--bad); } .led.act { background: #fff; box-shadow: 0 0 6px #fff; }
 @media (max-width: 1000px) { .mon-panes { grid-template-columns: minmax(0, 1fr); } #mon-dmx { grid-row: auto; } }
 .tile.link { cursor: pointer; }
+
+/* v4: button panels as aligned grids - equal buttons in rows and columns, long names cut short */
+.btn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--grid-btn-w, 132px), 1fr)); gap: var(--gap); margin: 4px 0; }
+.btn-grid > button { height: var(--grid-btn-h, 36px); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.btn-grid.sets { --grid-btn-w: 96px; }
+.btn-grid > button.dragging { opacity: .4; }
+.btn-grid > button.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+.ride-col, .override-pads { align-items: stretch; }
+.ride-col > button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

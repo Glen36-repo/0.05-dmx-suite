@@ -78,6 +78,7 @@ class Scene:
     show_colour: Colour = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
     length_s: float | None = None  # one cycle, if set in the file
     steps: Any = None  # steps.Steps for a step scene (v3.2)
+    generated: bool = False  # made by the generator / starter (v4: its own section on the Live page)
 
     @property
     def uses_intensity(self) -> bool:
@@ -214,7 +215,7 @@ def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") ->
     steps = parse_steps(data, patch, pal, name) if kind == "steps" else None
     if not layers and steps is None:
         raise LookError(f"{name}: no layers")
-    sc = Scene(data.get("name", name), layers, steps=steps)
+    sc = Scene(data.get("name", name), layers, steps=steps, generated="generated" in data)
     if "show_colour" in data:
         sc.show_colour = pal.colour(data["show_colour"], f"{name} show_colour")
     if "length_s" in data:

@@ -400,3 +400,32 @@ def test_status_tile_opens_monitor(ui):
     page, *_ = ui
     page.click(".tile.link[data-key^='midi:']")
     page.wait_for_selector("#page-monitor.on")
+
+
+# ---------------------------------------------------------------- SHOW grid (item 12)
+
+
+def test_show_and_scene_buttons_are_an_aligned_grid(ui):
+    page, app, root, _ = ui
+    go(page, "live")
+    page.wait_for_selector("#scenes [data-scene]")
+    for grid in ("#shows", "#scenes"):
+        bs = boxes(page, f"{grid} > button")
+        assert len({round(b["w"]) for b in bs}) == 1 and len({round(b["h"]) for b in bs}) == 1  # all the same size
+        lefts = sorted({round(b["x"]) for b in bs})
+        rows = {}
+        for b in bs:
+            rows.setdefault(round(b["y"]), []).append(round(b["x"]))
+        assert all(x in lefts[: len(r)] for r in rows.values() for x in r)  # columns line up row to row
+    assert page.locator("#shows [data-scene]").count() == 0  # shows and scenes apart
+    scenes_before = page.eval_on_selector_all("#scenes > button", "bs => bs.map(b => b.dataset.item)")
+    # a new scene goes at the end; nothing else moves
+    app.store.put("scene", "aaa_new", {"name": "AAA new", "layers": [{"fixtures": ["bars"], "colour": "red"}]})
+    app.reload()
+    page.evaluate("async () => (await import('/static/js/state.js')).refreshCatalogue()")
+    page.wait_for_selector("#scenes [data-scene=aaa_new]")
+    after = page.eval_on_selector_all("#scenes > button", "bs => bs.map(b => b.dataset.item)")
+    assert after[:-1] == scenes_before and after[-1] == "scene:aaa_new"
+    # a long name doesn't widen its button
+    w = page.eval_on_selector("#scenes [data-scene=aaa_new]", "b => b.getBoundingClientRect().width")
+    assert abs(w - boxes(page, "#scenes > button")[0]["w"]) < 1

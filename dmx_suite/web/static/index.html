@@ -59,9 +59,15 @@
     <!-- LIVE -->
     <section id="page-live" class="page on">
       <div class="grid-host live" id="live-grid"></div>
-      <h2 data-i18n="live.show"></h2>
-      <div class="row wrap" id="shows"></div>
-      <div class="row wrap" id="sets"></div>
+      <h2 data-i18n="live.shows"></h2>
+      <div class="btn-grid" id="shows" data-order="shows"></div>
+      <div class="btn-grid sets" id="sets"></div>
+      <h2 data-i18n="live.scenes"></h2>
+      <div class="btn-grid" id="scenes" data-order="scenes"></div>
+      <details class="section" id="generated-section" data-remember="live.generated">
+        <summary data-i18n="live.generated"></summary>
+        <div class="btn-grid" id="generated" data-order="generated"></div>
+      </details>
       <ol class="steps" id="steps"></ol>
       <div class="muted" id="step-info"></div>
       <div class="row wrap">

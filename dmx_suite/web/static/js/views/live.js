@@ -1,6 +1,7 @@
 // Live page: the rig's lights, shows and sets, setlist, masters, haze.
 import { cmd } from "../api.js";
 import { $, $$, el } from "../dom.js";
+import { fillGrid } from "../btngrid.js";
 import { LightGrid } from "../grid.js";
 import { initHazePanel, renderHazePanel } from "../hazepanel.js";
 import { t } from "../i18n.js";
@@ -12,12 +13,15 @@ function buildCatalogue(cat) {
   grid = grid || new LightGrid($("#live-grid"));
   grid.build(cat);
 
-  const shows = $("#shows");
-  shows.replaceChildren(
-    ...Object.entries(cat.shows).map(([k, s]) => el("button", { "data-show": k, onclick: () => cmd("show", { show: k }) }, s.name)),
-    // scenes on their own line under the shows, so the two aren't mixed in one wrapping block
-    ...(Object.keys(cat.scenes).length ? [el("span", { class: "break" }), el("span", { class: "row-label", text: t("live.scenes") })] : []),
-    ...Object.entries(cat.scenes).map(([k, s]) => el("button", { "data-scene": k, onclick: () => cmd("scene", { scene: k }) }, "▸ " + s)));
+  // Shows, Scenes, then starter / generated ones (folded away): aligned grids in a saved order
+  const gen = new Set(cat.generated || []);
+  const showItem = ([k, s]) => ({ id: `show:${k}`, label: s.name, attrs: { "data-show": k }, onclick: () => cmd("show", { show: k }) });
+  const sceneItem = ([k, s]) => ({ id: `scene:${k}`, label: "▸ " + s, attrs: { "data-scene": k }, onclick: () => cmd("scene", { scene: k }) });
+  const shows = Object.entries(cat.shows).map(showItem), scenes = Object.entries(cat.scenes).map(sceneItem);
+  fillGrid($("#shows"), "shows", shows.filter((i) => !gen.has(i.id)));
+  fillGrid($("#scenes"), "scenes", scenes.filter((i) => !gen.has(i.id)));
+  fillGrid($("#generated"), "generated", [...shows, ...scenes].filter((i) => gen.has(i.id)));
+  $("#generated-section").classList.toggle("hidden", !gen.size);
   $("#sets").dataset.sets = "";
   $("#setlist").replaceChildren(...Object.entries(cat.setlists).map(([k, s]) => el("option", { value: k }, s.name)));
 
@@ -50,8 +54,8 @@ function render(s) {
   const cat = live.cat;
   if (!cat) return;
   $("#preview").textContent = s.preview_s != null ? t("live.previewing", { s: Math.ceil(s.preview_s) }) : "";
-  $$("#shows [data-show]").forEach((b) => b.classList.toggle("sel", s.now.show === b.dataset.show));
-  $$("#shows [data-scene]").forEach((b) => b.classList.toggle("sel", s.now.mode === "scene" && s.now.scene === b.dataset.scene));
+  $$("#page-live [data-show]").forEach((b) => b.classList.toggle("sel", s.now.show === b.dataset.show));
+  $$("#page-live [data-scene]").forEach((b) => b.classList.toggle("sel", s.now.mode === "scene" && s.now.scene === b.dataset.scene));
   const sets = $("#sets");
   const show = s.now.show && cat.shows[s.now.show];
   const want = show ? show.sets.join("|") : "";
