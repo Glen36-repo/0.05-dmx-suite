@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+    paths:
+      - "installer/**"
+      - "dmx_suite/paths.py"
+      - "dmx_suite/claude_setup.py"
+      - ".github/workflows/windows-installer.yml"
 
 jobs:
   build:
