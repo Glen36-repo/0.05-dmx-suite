@@ -11,7 +11,7 @@ import math
 import random
 from typing import Any
 
-from ..look import Colour, LookError
+from ..look import Colour
 from .base import SPREAD_PARAMS, Effect, Param, ParseCtx, Run, Unit, mix, scale, seed, wave
 
 # ---------------------------------------------------------------------- Move FX
@@ -52,11 +52,14 @@ class Move(Effect):
         tags = [x.strip() for x in str(p.get("tags") or "").split(",") if x.strip()]
         p["_points"] = {}
         if p["pattern"] in ("point", "random_points", "crossfire"):
-            names = _tagged(ctx, tags)
-            pts = {n: ctx.pal.positions_for(n, ctx.targets, ctx.what) for n in names}
-            p["_points"] = {n: v for n, v in pts.items() if v}
+            for names in (_tagged(ctx, tags), _tagged(ctx, [])):  # by tag; else any point (a rig not tagged yet)
+                pts = {n: ctx.pal.positions_for(n, ctx.targets, ctx.what) for n in names}
+                p["_points"] = {n: v for n, v in pts.items() if v}
+                if p["_points"]:
+                    break
             if p["pattern"] in ("point", "random_points") and not p["_points"]:
-                raise LookError(f"{ctx.what}: no head points{' tagged ' + ', '.join(tags) if tags else ''} for these heads")
+                # no head points on this rig yet: the heads stay where they are (store points on the Heads page)
+                ctx.pal.warnings.add(f"{ctx.what}: no head points for these heads yet; they stay where they are")
 
     def _centre(self, p: dict[str, Any], fid: str) -> tuple[float, float]:
         c = p.get("centre")

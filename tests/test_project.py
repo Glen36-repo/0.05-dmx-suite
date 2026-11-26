@@ -143,6 +143,7 @@ def test_every_ui_text_key_exists():
     used |= {f"ride.class_{c}" for c in ("head", "wash", "pixel", "strobe", "effect")}
     used |= {f"ride.fader_{k}" for k in ("speed", "fade", "fan", "size", "shift")}
     used |= {f"ride.priority_{k}" for k in ("blackout", "drum_flash", "flash_busk", "hold", "autopilot", "show")}
+    used |= {"review.banned_toast", "review.rated"}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

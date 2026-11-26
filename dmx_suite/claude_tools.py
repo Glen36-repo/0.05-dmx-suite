@@ -85,6 +85,13 @@ HEAD POINTS (v3, per rig file `positions:`): named aim points, e.g. drum_kit, au
   description, tags (band, audience, safe, floor, ceiling...), a rough stage place {x, y, z} and
   per-head pan/tilt 0-1. Scenes name them (`position: drum_kit`, sweep from/to). list_points shows
   them with descriptions: use them to work out where to aim. A head a point doesn't cover stays put.
+PRESETS AND GENERATOR (v3.5): presets.yaml {presets: {id: {name, tags, pick: {move, colour, drum,
+  palette, ride}}}} (starter presets built in). Show step {preset: id, hold_s}; setlist song
+  {name, preset: id} or {name, presets: [ids], mood} (the autopilot plays only those for that song).
+  generate kind scenes {mood, style rock|ballad|acoustic|opera|dance, palette, count, prefix, seed},
+  show {name, plan: [{section, mood, length}], style, palette, hold_s}, setlist {setlist, style}:
+  writes plain scenes/shows with a `generated:` note (seed etc.); same seed = same files. Then refine
+  them like any scene. ratings.yaml holds look ratings from the review page (liked looks favoured).
 AUTOPILOT (v3.4): changes looks on a timer per mood (rig `autopilot:` moods {low, mid, high} seconds,
   variation, no_repeat, fade per mood, energy {window_s, full_rate}, fill {window_s, hits, crash_s},
   gap_s and count_in for between songs, talking / walk_on / walk_off looks, palettes). Energy comes
@@ -304,6 +311,25 @@ class DmxTools:
         cur = self.local.read("rig", rig)
         cur["autopilot"] = {**(cur.get("autopilot") or {}), **data}
         return self._write("PUT", f"/api/store/rig/{rig}", {"data": cur}, lambda: self.local.put("rig", rig, cur))
+
+    def generate(self, kind: str, settings_yaml: str) -> str:
+        b = {**_yaml(settings_yaml or "{}", "generator settings"), "kind": kind}
+        r = self._live("POST", "/api/generate", b)
+        return _dump({k: r[k] for k in ("seed", "scenes", "shows", "backup")})
+
+    def list_presets(self) -> str:
+        return _dump(self._live("GET", "/api/presets"))
+
+    def save_preset(self, name: str, yaml_text: str) -> str:
+        d = _yaml(yaml_text, "preset")
+        body = {"action": "put", "id": name, "name": d.get("name"), "tags": d.get("tags"), "pick": d.get("pick", d)}
+        return self._write("POST", "/api/store/preset", body, lambda: self._save_preset_offline(name, body))
+
+    def _save_preset_offline(self, name: str, body: dict) -> str:
+        data = self.local.read("presets")
+        data.setdefault("presets", {})[name] = {k: v for k, v in (("name", body["name"] or name), ("tags", body["tags"] or []),
+                                                                  ("pick", body["pick"]))}
+        return self.local.put("presets", "", data)
 
     def get_alerts(self) -> str:
         return _dump(self._live("GET", "/api/alerts"))

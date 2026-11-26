@@ -28,6 +28,8 @@ Planned 26/11/2026. One branch per release, each stacked on the last, simulator-
 | V3.4 Autopilot | `v3.4-autopilot` | 4, 6, 11, 12, 13 | Autopilot (energy from input roles, moods, timed changes, fills); Ride page; between songs; control priority; decision log |
 | V3.5 Generator | `v3.5-generator` | 5, 7, 8, 14 | Presets; scene and show generator (capture, lock and re-roll, per song); look review page and ratings; Claude MCP tools |
 
+Status 26/11/2026: V3.1-V3.5 built on their branches, simulator-only, with tests (1,100+ passing, incl. browser tests). Not yet tried on the real rig (v2 R9 rehearsal still open).
+
 Sections 1 (classification) and 6 (Ride page) weren't in the original split: 1 goes with the FX banks that need it, 6 with the autopilot.
 
 v2 items still open that touch v3 (R9, need the real rig): fixture addresses, palette positions and the MH-A tilt limit, the drum pad map. They affect the 0.05 defaults (device profile, points, autopilot tuning), not the build.

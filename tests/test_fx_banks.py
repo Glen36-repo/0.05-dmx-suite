@@ -357,8 +357,8 @@ def test_points_by_tag_and_dark_moves():
     assert (lk.fixtures["mh_a"].pan, lk.fixtures["mh_b"].pan) == (0.4, 0.6)
     looks = move_looks("random_points", [i * 0.25 for i in range(40)], tags="safe,audience", period_s=2, dark_move_s=0.5)
     assert {lk.fixtures["mh_a"].pan for lk in looks} <= {0.4, 0.2}
-    with pytest.raises(Exception, match="no head points"):
-        move_looks("point", [0.0], tags="ceiling")
+    lk = move_looks("point", [0.0], tags="ceiling")[0]  # no point tagged ceiling: any point
+    assert lk.fixtures["mh_a"].pan in (0.4, 0.2)
 
 
 # ------------------------------------------------------------------ Flash FX

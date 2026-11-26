@@ -26,7 +26,7 @@ FORMAT = 5
 
 # show folder layout: single files, then one folder per kind
 FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes", "panels.yaml": "panels", "inputs.yaml": "inputs",
-         "quality.yaml": "quality"}
+         "quality.yaml": "quality", "presets.yaml": "presets", "ratings.yaml": "ratings"}
 FOLDERS = {"rigs": "rig", "looks": "look", "scenes": "scene", "shows": "show", "setlists": "setlist", "midi": "midi",
            "devices": "device"}
 

@@ -51,6 +51,30 @@ autopilot:
 
 Every decision (time, energy, mood, look, why) is saved per gig in `logs/decisions-YYYY-MM-DD.jsonl` in app data; Claude reads it with `autopilot_status`.
 
+## Presets
+
+A preset is a saved look (FX + palette + ride settings). On the Ride page, **Save as preset** keeps the look that's playing; the preset buttons play one. Six starter presets come with the app and work on any rig.
+
+- in a show, a step can be a preset: `{preset: verse_blues, hold_s: 30}`
+- in a setlist, a song can be a preset (`{name: Intro, preset: calm_warm}`), or the autopilot playing only some presets: `{name: Encore, presets: [band_groove, fire_wave], mood: high}` ("only these looks for this song")
+- MIDI action `preset` (preset: verse_blues) plays one from a pedal
+
+**Re-roll, keeping:** tick what you like about the look (move, colour, drum, palette, ride controls) and press **Re-roll** for a new look that keeps them. **More like this** offers four variations of the look (same FX, other palettes and settings). **Save this look as a scene** writes what's playing as a normal scene to edit in the scene builder.
+
+## The Review page
+
+At rehearsal, go through the looks the rig can do (filter by mood, moves or colours, palette): **👍**, **👎**, or **Ban**. Liked looks come up more, disliked less, and banned looks are never used again by the autopilot or the generator. **Auto-advance** steps through on its own every few seconds. On the Ride page, tap a line under "Why did it do that?" to open that look here. Ratings are kept in `ratings.yaml`.
+
+## The generator
+
+Below the review list, the generator makes normal, editable scenes and shows from the same FX banks, for the rig you're on:
+
+- **Generate scenes:** a mood, a style (rock, ballad, acoustic, opera, dance), a palette and how many
+- **Generate a show:** verse (low) / chorus (high) / bridge (mid) steps with fades, a scene per section
+- **Starter show per song:** for each song in a setlist, from its `mood` and `bpm` (8 bars a section)
+
+Every generated scene passes the same checks and rules as one you'd make by hand, and carries a `generated:` note with the seed and settings. The same seed always gives the same files; Claude can generate too ("make me five moody blue scenes for the slow songs") and then refine them.
+
 ## How the lights are sorted
 
 Every light is put in a class by what it can do:

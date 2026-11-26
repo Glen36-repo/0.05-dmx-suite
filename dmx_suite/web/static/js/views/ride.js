@@ -6,7 +6,8 @@ import { api, attempt, cmd, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
 import { t } from "../i18n.js";
-import { onShow } from "../nav.js";
+import { go, onShow } from "../nav.js";
+import { review } from "./review.js";
 import { live, onCatalogue, onState } from "../state.js";
 
 let fx = null; // /api/fx
@@ -52,6 +53,14 @@ async function load() {
   fx = await get("/api/fx");
   render();
   loadWhy();
+  loadPresets();
+}
+
+async function loadPresets() {
+  const pres = await get("/api/presets");
+  $("#ride-presets").replaceChildren(...Object.entries(pres).map(([k, p]) => el("button", {
+    class: "ride-pal", "data-preset": k, title: p.tags.join(", "),
+    onclick: () => act("preset", { preset: k }) }, p.name)));
 }
 
 function render() {
@@ -113,7 +122,8 @@ async function saveClass(fid, value) {
 
 async function loadWhy() {
   const r = await get("/api/autopilot?n=12");
-  $("#ride-why").replaceChildren(...r.log.slice().reverse().map((d) => el("li", {},
+  $("#ride-why").replaceChildren(...r.log.slice().reverse().map((d) => el("li", {
+    title: t("ride.why_open"), onclick: () => { review.jump = d.look; go("review"); } },
     el("span", { class: "muted", text: new Date(d.time * 1000).toLocaleTimeString("en-AU", { hour12: false }) }),
     el("b", { text: [d.look.move, d.look.colour, d.look.drum].filter(Boolean).join(" + ") + " · " + d.look.palette }),
     el("span", { text: t("ride.why_line", { why: d.why, mood: t("ride.mood_" + d.mood), energy: Math.round(d.energy * 100) }) }))));
@@ -152,6 +162,24 @@ export function init() {
   $("#ride-walk-on").onclick = () => act("walk_on");
   $("#ride-walk-off").onclick = () => act("walk_off");
   $("#ride-lock").onclick = () => act("palette_lock");
+  $("#ride-save-preset").onclick = async () => {
+    const id = (prompt(t("ride.preset_name")) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!id) return;
+    if (await attempt(() => api("POST", "/api/store/preset", { id }), t("ride.preset_saved", { id }))) loadPresets();
+  };
+  $("#ride-capture").onclick = async () => {
+    const id = (prompt(t("ride.capture_name")) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    if (id) await attempt(() => api("POST", "/api/capture", { key: id }), t("ride.captured", { id }));
+  };
+  $("#ride-reroll").onclick = () => {
+    const locks = [...document.querySelectorAll("[data-lock]")].filter((c) => c.checked).map((c) => c.dataset.lock);
+    attempt(() => api("POST", "/api/ride/reroll", { locks }));
+  };
+  $("#ride-more").onclick = async () => {
+    const r = await attempt(() => api("POST", "/api/ride/more", { n: 4 }));
+    if (r) $("#ride-variations").replaceChildren(...r.picks.map((p, i) => el("button", {
+      onclick: () => attempt(() => api("POST", "/api/ride", { pick: p })) }, t("ride.variation", { n: i + 1, palette: p.palette }))));
+  };
   document.querySelectorAll("#ride-moods [data-mood]").forEach((b) => (b.onclick = () => act("mood", { mood: b.dataset.mood })));
   $("#ride-learn").onclick = () => {
     learning = !learning;

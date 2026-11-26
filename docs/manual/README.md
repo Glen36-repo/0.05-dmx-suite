@@ -13,5 +13,5 @@ Pages are filled in as each release lands (v2, then v3). Where a page says "comi
 7. [MIDI and OSC](midi-osc.md): named inputs and devices, mapping pedals, drums and controllers
 8. [Moving heads and head points](heads.md): aiming heads, named points per rig
 9. [Colours and palettes](palettes.md): the colour wheel, named colours, palettes
-10. [Auto show](auto-show.md): the Ride page, the autopilot, between songs, FX banks, Flash FX, quality rules
+10. [Auto show](auto-show.md): the Ride page, the autopilot, presets, the Review page and generator, FX banks, Flash FX, quality rules
 11. [Safety and troubleshooting](troubleshooting.md): the safety rules, alerts, when something goes wrong

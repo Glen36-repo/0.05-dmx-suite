@@ -12,6 +12,7 @@ from .look import INTENSITY_RULE1, Look, load_look
 from .midi.map import MidiMap, load_map, validate, where_of
 from .midi.named import Inputs, load_inputs
 from .palettes import Palettes, load_palettes
+from .presets import load_presets, load_ratings, preset_scenes
 from .rig import Rig, load_rig
 from .scenes import Scene, load_scenes
 from .shows import Setlist, Show, load_setlists, load_shows, parse_setlist, parse_show
@@ -45,6 +46,8 @@ class ShowFiles:
     setlists: dict[str, Setlist]
     panels: dict[str, Panel] = field(default_factory=dict)  # busking (panels.yaml, optional)
     inputs: Inputs = field(default_factory=Inputs)  # named MIDI/OSC inputs (inputs.yaml, v3)
+    presets: dict = field(default_factory=dict)  # presets.yaml + starters (v3.5)
+    ratings: dict = field(default_factory=dict)  # ratings.yaml: look key -> 1 / -1 / -2 (v3.5)
 
 
 def _pick(folder: Path, name: str) -> Path:
@@ -132,6 +135,8 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
     pal = pal.with_points(r.points, _other_points(root, rig))  # this rig's head points (v3)
     scenes = _load("scenes", load_scenes, root / "scenes", patch, pal)
     check_step_inputs(scenes, inputs)
+    presets = _load("presets.yaml", load_presets, root, set(pal.sets))
+    scenes.update(_load("presets.yaml", preset_scenes, presets, r, pal, patch))  # "preset:<id>" (v3.5)
     shows = _load("shows", load_shows, root / "shows", pal, scenes)
     setlists = _load("setlists", load_setlists, root / "setlists", shows, scenes)
     for m in mp.mappings:  # show/scene names in the MIDI map must exist
@@ -145,7 +150,10 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
     for m in mp.mappings:  # busk mappings must name a real widget
         if m.action == "busk":
             _busk_target(m.params, panels)
-    return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists, panels, inputs)
+    sf = ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists, panels, inputs)
+    sf.presets = presets
+    sf.ratings = _load("ratings.yaml", load_ratings, root)
+    return sf
 
 
 def load_panels(path: Path, patch: Patch, pal: Palettes, scenes: dict, shows: dict) -> dict[str, Panel]:
@@ -214,6 +222,17 @@ def check_all(root: str | Path) -> list[str]:
                 scenes[p.stem] = load_scenes_file(p, patch, pal)
             except FILE_ERRORS as e:
                 problems.append(f"scenes/{p.name}: {e}")
+        try:
+            presets = load_presets(root, set(pal.sets))
+            for rig in rigs.values():  # every preset must compose on every rig
+                made = preset_scenes(presets, rig, pal, patch)
+                scenes.update(made)
+        except FILE_ERRORS as e:
+            problems.append(f"presets.yaml: {e}")
+        try:
+            load_ratings(root)
+        except FILE_ERRORS as e:
+            problems.append(f"ratings.yaml: {e}")
         for p in sorted((root / "shows").glob("*.yaml")):
             try:
                 shows[p.stem] = parse_show(p.stem, read_doc(p, "show"), pal, scenes)

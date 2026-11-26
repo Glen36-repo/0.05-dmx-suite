@@ -108,6 +108,27 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.save_autopilot_settings(rig, yaml_text)
 
     @tool
+    def generate(kind: str, settings_yaml: str = "{}") -> str:
+        """Generate editable scenes or shows for the running rig from the FX banks. kind: scenes
+        ('{mood: low, style: ballad, palette: cool, count: 5, prefix: slow_blues}'), show
+        ('{name: Opener, plan: [{section: verse, mood: low, length: 2}, {section: chorus, mood: high, length: 2}]}')
+        or setlist ('{setlist: example, style: rock}': a starter show per song from its mood and bpm).
+        Same seed gives the same files. Not during gig lock."""
+        return t.generate(kind, settings_yaml)
+
+    @tool
+    def list_presets() -> str:
+        """Presets (saved auto-show looks): id, name, tags, pick; starters are built in."""
+        return t.list_presets()
+
+    @tool
+    def save_preset(name: str, yaml_text: str) -> str:
+        """Save a preset: '{name: Verse blues, tags: [low], pick: {move: swim, colour: colour_fade, palette: cool,
+        ride: {speed: 0.8}}}'. Use presets in show steps ({preset: id}) and setlist songs ({preset: id} or
+        {presets: [ids], mood: high} to have the autopilot play only those for the song)."""
+        return t.save_preset(name, yaml_text)
+
+    @tool
     def get_alerts() -> str:
         """Alerts: what's offline or failing now and recently (time, device, message, state: active,
         dismissed, muted, snoozed, cleared), and which devices are muted for this rig. Read only."""

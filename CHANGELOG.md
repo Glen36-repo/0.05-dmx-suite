@@ -2,6 +2,15 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v3, release V3.5)
+
+### Added
+- Presets: save a Ride look, play it from the Ride page or a pedal, use it as a show step or setlist cue, or limit the autopilot to some presets for a song; six starter presets.
+- Look review page: every look the rig can do, filtered by mood, bank or palette; thumbs up / down or ban; auto-advance; open a look from the decision log. The autopilot and generator favour liked looks and never use banned ones.
+- Generator: scenes from a mood, style and palette; a show from a mood plan; a starter show for every song in a setlist (from its mood and BPM); plain YAML with a `generated:` note; same seed, same files.
+- Lock and re-roll, "more like this", and save the current look as a scene, on the Ride page.
+- Claude: generate scenes and shows, list and save presets.
+
 ## Unreleased (v3, release V3.4)
 
 ### Added

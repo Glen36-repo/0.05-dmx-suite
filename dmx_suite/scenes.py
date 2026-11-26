@@ -207,7 +207,7 @@ def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") ->
     if kind not in ("layers", "steps"):
         raise LookError(f"{name}: type is layers (the default) or steps")
     if kind == "layers":
-        bad = set(data) - {"name", "show_colour", "layers", "length_s", "type"}
+        bad = set(data) - {"name", "show_colour", "layers", "length_s", "type", "generated"}
         if bad:
             raise LookError(f"{name}: unknown keys {sorted(bad)}")
     layers = [parse_layer(d or {}, patch, pal, f"{name} layer {i + 1}") for i, d in enumerate(data.get("layers") or [])]

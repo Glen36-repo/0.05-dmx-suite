@@ -68,6 +68,7 @@ class App:
         self.router.ride = self.ride_action
         self.ctl.on_manual = self._manual_pick
         self.ctl.on_setlist = self._setlist_walk
+        self.ctl.on_song_auto = self._song_auto
         self.gig_lock = False
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
@@ -551,10 +552,190 @@ class App:
             self.autopilot.walk(which, self.engine.clock())
 
     def look_ratings(self) -> dict[str, int]:
-        return getattr(self, "_ratings", {})
+        return dict(getattr(self.files, "ratings", {}) or {})
 
     def preset_picks(self) -> dict[str, Any]:
-        return getattr(self, "_presets", {})
+        return {k: v["pick"] for k, v in (getattr(self.files, "presets", {}) or {}).items()}
+
+    def _song_auto(self, presets: list[str] | None, mood: str | None) -> None:
+        """A setlist song run by the autopilot on some presets only (None: back to any look)."""
+        ap, now = self.autopilot, self.engine.clock()
+        ap.limit_to(presets)
+        if presets is None:
+            return
+        if mood:
+            ap.st.mood, ap.st.mood_manual = mood, True
+        if ap.st.on:
+            ap.change(now, "preset")
+        else:
+            ap.set_on(True, now)
+
+    # ------------------------------------------------------------------ presets, ratings, generator (v3.5)
+
+    def generator(self, seed: str | None = None) -> Any:
+        from .classify import auto_rig
+        from .generator import Context, Generator
+
+        ctx = Context(auto_rig(self.engine.rig), self.files.palettes.sets, self.quality(), self.look_ratings())
+        return Generator(ctx, seed if seed is not None else time.strftime("%Y%m%d%H%M%S"))
+
+    def play_preset(self, key: str) -> dict[str, Any]:
+        pre = (self.files.presets or {}).get(key)
+        if pre is None:
+            raise ValueError(f"no preset {key!r}")
+        return self.ride_play(pre["pick"])
+
+    def save_preset(self, key: str, name: str | None = None, tags: list[str] | None = None,
+                    pick: dict[str, Any] | None = None) -> str:
+        """Save a look as a preset (the Ride page's current look when no pick is given)."""
+        from .presets import ID
+
+        if not ID.match(key):
+            raise ValueError("preset names use lower case letters, digits, _ or -")
+        data = self.store.read("presets")
+        presets = data.setdefault("presets", {}) or {}
+        data["presets"] = presets
+        presets[key] = {"name": name or key.replace("_", " ").capitalize(), "tags": list(tags or []),
+                        "pick": pick if pick is not None else self._clean_pick(self.ride_pick.to_dict())}
+        bid = self.store.put("presets", "", data, f"preset {key}")
+        self.reload()
+        return bid
+
+    def delete_preset(self, key: str) -> str:
+        from .presets import STARTERS
+
+        data = self.store.read("presets")
+        if key not in (data.get("presets") or {}):
+            raise ValueError(f"{key} is a starter preset" if key in STARTERS else f"no preset {key!r}")
+        used = [u for u in self.store._files_using(lambda d: _uses_preset(d, key))]
+        if used:
+            raise ValueError(f"preset {key} is still used: {', '.join(used)}")
+        del data["presets"][key]
+        bid = self.store.put("presets", "", data, f"delete preset {key}")
+        self.reload()
+        return bid
+
+    @staticmethod
+    def _clean_pick(d: dict[str, Any]) -> dict[str, Any]:
+        out = {k: v for k, v in d.items() if v not in (None, {}, "")}
+        defaults = {"speed": 1.0, "fade": 0.5, "fan": 0.5, "size": 0.5, "shift": 0.0}
+        out["ride"] = {k: v for k, v in d.get("ride", {}).items() if defaults.get(k) != v}
+        if not out["ride"]:
+            out.pop("ride")
+        return out
+
+    def rate_look(self, pick: dict[str, Any] | str, value: int) -> str:
+        """Thumbs up (1), down (-1), ban (-2) or clear (0) a look (look review page)."""
+        from .presets import look_key
+
+        if value not in (1, -1, -2, 0):
+            raise ValueError("rating is 1 (liked), -1 (disliked), -2 (banned) or 0 (clear)")
+        key = pick if isinstance(pick, str) else look_key(pick)
+        data = self.store.read("ratings")
+        looks = data.setdefault("looks", {}) or {}
+        data["looks"] = looks
+        if value == 0:
+            looks.pop(key, None)
+        else:
+            looks[key] = value
+        bid = self.store.put("ratings", "", data, f"rate {key}: {value}")
+        self.reload()
+        return bid
+
+    def review_looks(self, mood: str | None = None, bank: str | None = None, palette: str | None = None,
+                     offset: int = 0, limit: int = 40) -> dict[str, Any]:
+        """Every look the rig can do (or a filtered subset), in a fixed order, with its rating."""
+        from .classify import auto_rig
+        from .fxbanks import available
+
+        ar = auto_rig(self.engine.rig)
+        moves: list[str | None] = [None, *[i.id for i in available(ar, "move", mood)]]
+        colours = [i.id for i in available(ar, "colour", mood)]
+        pals = [palette] if palette else list(self.files.palettes.sets)
+        if bank == "move":
+            colours = ["static"]
+        elif bank == "colour":
+            moves = [None]
+        looks = [{"move": m, "colour": c, "palette": p} for p in pals for c in colours for m in moves]
+        ratings = self.look_ratings()
+        from .presets import look_key
+
+        rows = [{**lk, "key": look_key(lk), "rating": ratings.get(look_key(lk), 0)} for lk in looks]
+        return {"total": len(rows), "offset": offset, "looks": rows[offset:offset + limit]}
+
+    def capture_look(self, key: str, name: str | None = None) -> str:
+        """"Save this look": what's showing now as a scene (a Ride / autopilot look as its layers,
+        anything else as a still of every light), ready to edit in the scene builder."""
+        from .store import NAME
+
+        if not NAME.match(key):
+            raise ValueError("scene names use lower case letters, digits, _ or -")
+        if self.ctl.mode == "ride":
+            pick = self.autopilot.st.pick if self.autopilot.st.on and self.autopilot.st.pick else self.ride_pick
+            gen = self.generator("capture")
+            data = gen.scene(pick, name or key.replace("_", " ").capitalize(), self.autopilot.st.mood, None)
+            data["generated"]["seed"] = "capture"
+        else:
+            still = self.capture_step(["all"])
+            data = {"name": name or key.replace("_", " ").capitalize(),
+                    "layers": ([{"fixtures": [fid], **attrs} for fid, attrs in still.items()]
+                               or [{"fixtures": ["all"], "colour": "off"}]),
+                    "generated": {"seed": "capture", "from": self.ctl.describe()}}
+        bid = self.store.put("scene", key, data, f"capture look as scene {key}")
+        self.reload()
+        return bid
+
+    def generate(self, kind: str, b: dict[str, Any]) -> dict[str, Any]:
+        """Write generated scenes / a show / starter shows for a setlist (validated, backed up)."""
+        from .generator import PLAN_DEFAULT, slug, song_plan
+        from .versions import stamped
+
+        gen = self.generator(str(b.get("seed") or "") or None)
+        changes: dict[Any, str | None] = {}
+        made: dict[str, list[str]] = {"scenes": [], "shows": []}
+
+        def add(kind_: str, k: str, data: dict[str, Any]) -> None:
+            p = self.store.path(kind_, k)
+            if p.exists() and not b.get("overwrite"):
+                raise ValueError(f"{p.relative_to(self.files.root).as_posix()} already exists (generate again with overwrite)")
+            changes[p] = self.store.text_for(p, stamped(data))
+            made["scenes" if kind_ == "scene" else "shows"].append(k)
+
+        if kind == "scenes":
+            for k, data in gen.scenes(str(b.get("mood", "mid")), b.get("style"), b.get("palette"), int(b.get("count", 4)),
+                                      str(b.get("prefix") or f"gen_{gen.seed}")).items():
+                add("scene", k, data)
+        elif kind == "show":
+            plan = [(str(x["section"]), str(x["mood"]), int(x.get("length", 1))) for x in b.get("plan") or []] or PLAN_DEFAULT
+            show, scenes = gen.show(str(b.get("name") or "Generated show"), plan, b.get("style"), b.get("palette"),
+                                    float(b.get("hold_s", 30)))
+            for k, data in scenes.items():
+                add("scene", k, data)
+            add("show", slug(str(b.get("name") or "generated_show")), show)
+        elif kind == "setlist":
+            key = str(b.get("setlist") or "")
+            if key not in self.files.setlists:
+                raise ValueError(f"no setlist {key!r}")
+            for song in self.files.setlists[key].songs:
+                plan, hold = song_plan(song.mood, song.bpm)
+                show, scenes = gen.show(song.name, plan, b.get("style"), b.get("palette"), hold)
+                for k, data in scenes.items():
+                    add("scene", k, data)
+                add("show", slug(song.name, "song"), show)
+        else:
+            raise ValueError("generate scenes, show or setlist")
+        bid = self.store.apply(changes, f"generate {kind}: {', '.join(made['shows'] or made['scenes'])}")
+        self.reload()
+        return {"ok": True, "backup": bid, "seed": gen.seed, **made}
+
+    def reroll(self, locks: list[str], mood: str | None = None, seed: str | None = None) -> dict[str, Any]:
+        """Lock and re-roll on the Ride page: keep the locked parts of the current look, new rest."""
+        gen = self.generator(seed)
+        p = gen.reroll(self.ride_pick, tuple(locks), mood or self.autopilot.st.mood)
+        return self.ride_play(p.to_dict())
+
+    def more_like_this(self, n: int = 4, seed: str | None = None) -> list[dict[str, Any]]:
+        return [p.to_dict() for p in self.generator(seed).more_like(self.ride_pick, n)]
 
     def priority(self) -> dict[str, Any]:
         """Live control priority, highest first, and which level is in charge now."""
@@ -596,6 +777,9 @@ class App:
         if action in ("walk_on", "walk_off"):
             ap.walk(action, now)
             return action.replace("_", "-")
+        if action == "preset":
+            self.play_preset(str(p.get("preset")))
+            return f"preset {p.get('preset')}"
         pick = self.ride_pick
         if action == "ride_fx":
             bank, item = p.get("bank"), p.get("item")
@@ -1148,6 +1332,16 @@ class App:
                                                          "target": w.target, "action": w.action} for w in p.widgets]}
                        for k, p in f.panels.items()},
         }
+
+
+def _uses_preset(data: Any, key: str) -> int:
+    """How many times show-file data names preset `key` (show steps, setlist songs)."""
+    if isinstance(data, dict):
+        n = 1 if data.get("preset") == key or (isinstance(data.get("presets"), list) and key in data["presets"]) else 0
+        return n + sum(_uses_preset(v, key) for v in data.values())
+    if isinstance(data, list):
+        return sum(_uses_preset(x, key) for x in data)
+    return 0
 
 
 def _ago(seconds: float) -> str:

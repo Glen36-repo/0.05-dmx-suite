@@ -78,11 +78,12 @@ ACTIONS: dict[str, set[str]] = {
     "ride_fan": set(),
     "ride_size": set(),
     "ride_shift": set(),
+    "preset": {"preset"},  # v3.5: play a preset
 }
 CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade",
               "ride_speed", "ride_fade", "ride_fan", "ride_size", "ride_shift"}  # need a CC or OSC
 RIDE_ACTIONS = {"autopilot", "hold", "look_next", "look_prev", "mood", "walk_on", "walk_off", "ride_fx", "ride_palette",
-                "palette_lock", "ride_speed", "ride_fade", "ride_fan", "ride_size", "ride_shift"}
+                "palette_lock", "ride_speed", "ride_fade", "ride_fan", "ride_size", "ride_shift", "preset"}
 
 
 @dataclass
@@ -176,6 +177,8 @@ def validate(m: Mapping, input_type: str | None = None) -> None:
         raise ConfigError(f"{where}: autopilot state is on, off or toggle")
     if m.action == "ride_fx" and (m.params.get("bank") not in ("move", "colour", "drum") or not m.params.get("item")):
         raise ConfigError(f"{where}: ride_fx needs bank (move, colour, drum) and item")
+    if m.action == "preset" and not m.params.get("preset"):
+        raise ConfigError(f"{where}: preset needs preset (a preset's name)")
     if m.action == "ride_palette" and not m.params.get("palette"):
         raise ConfigError(f"{where}: ride_palette needs palette")
     if m.action == "busk" and (not m.params.get("panel") or not m.params.get("widget")):

@@ -110,7 +110,7 @@ class Steps:
 def parse_steps(data: dict[str, Any], patch: Any, pal: Any, name: str) -> Steps:
     from .scenes import parse_layer
 
-    bad = set(data) - SCENE_KEYS - {"name", "show_colour", "layers", "length_s"}
+    bad = set(data) - SCENE_KEYS - {"name", "show_colour", "layers", "length_s", "generated"}
     if bad:
         raise LookError(f"{name}: unknown keys {sorted(bad)}")
     raw_steps = data.get("steps")

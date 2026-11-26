@@ -103,8 +103,8 @@ class ShowStore:
             return self.root / "panels.yaml"
         if kind == "inputs":
             return self.root / "inputs.yaml"
-        if kind == "quality":
-            return self.root / "quality.yaml"
+        if kind in ("quality", "presets", "ratings"):
+            return self.root / f"{kind}.yaml"
         if kind not in FOLDERS:
             raise StoreError(f"unknown kind {kind!r}")
         self._check_name(name)
@@ -121,7 +121,7 @@ class ShowStore:
         """Current-format data, without `version:` (writes add it back)."""
         p = self.path(kind, name)
         if not p.exists():
-            if kind in ("palettes", "panels", "inputs", "quality"):
+            if kind in ("palettes", "panels", "inputs", "quality", "presets", "ratings"):
                 return {}
             raise StoreError(f"no {kind} {name!r}")
         try:

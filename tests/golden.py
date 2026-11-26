@@ -60,6 +60,8 @@ def capture(rig_transform=None, root: Path = SHOWS) -> dict[str, str]:
 
         run("look", lambda now: (lambda _n: sf.look))
         for key, sc in sorted(sf.scenes.items()):
+            if key.startswith("preset:"):  # v3.5 presets: not part of the v1 frames
+                continue
             run(f"scene:{key}", lambda now, sc=sc: ScenePlayer(sc, rig, now))
         for key, show in sorted(sf.shows.items()):
             for set_name in sorted(show.sets):

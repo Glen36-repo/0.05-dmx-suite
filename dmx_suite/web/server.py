@@ -47,7 +47,7 @@ DEFAULT_PORT = 8505
 # what Claude's token may change (everything else is the people at the laptop's call)
 MAX_UPLOAD = 20 * 1024 * 1024
 CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/claude/haze", "/api/nodes/assign", "/api/validate/scene",
-                 "/api/undo/claude", "/api/ride/check")
+                 "/api/undo/claude", "/api/ride/check", "/api/generate")
 SESSION_COOKIE = "dmx_session"
 
 
@@ -379,6 +379,12 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.alerts_view())
             if path == "/api/fx":  # FX banks for this rig (v3.3)
                 return self._json(200, app.fx_catalogue())
+            if path == "/api/presets":  # presets (v3.5): starters + the show's own
+                return self._json(200, {k: {"name": v["name"], "tags": v["tags"], "pick": v["pick"], "builtin": v["builtin"]}
+                                        for k, v in (app.files.presets or {}).items()})
+            if path == "/api/review":  # look review: every look the rig can do, with ratings
+                return self._json(200, app.review_looks(q.get("mood") or None, q.get("bank") or None, q.get("palette") or None,
+                                                        int(q.get("offset", 0)), int(q.get("limit", 40))))
             if path == "/api/autopilot":  # status and the decision log (v3.4)
                 n = int(q.get("n", 50))
                 return self._json(200, {"status": app.autopilot.status(app.engine.clock()), "log": app.autopilot.log_since(n),
@@ -718,6 +724,26 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     return self._json(200, {"ok": True, "result": result})
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
+            if path == "/api/generate" and method == "POST":  # generator (v3.5): writes through the store
+                try:
+                    return self._json(200, app.generate(str(body.get("kind", "scenes")), body))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if method == "POST" and path in ("/api/capture", "/api/ride/reroll", "/api/ride/more", "/api/rate",
+                                             "/api/preset/play"):
+                try:
+                    if path == "/api/capture":
+                        return self._json(200, {"ok": True, "backup": app.capture_look(str(body["key"]), body.get("name"))})
+                    if path == "/api/ride/reroll":
+                        return self._json(200, app.reroll(list(body.get("locks") or []), body.get("mood"), body.get("seed")))
+                    if path == "/api/ride/more":
+                        return self._json(200, {"picks": app.more_like_this(int(body.get("n", 4)), body.get("seed"))})
+                    if path == "/api/rate":
+                        return self._json(200, {"ok": True, "backup": app.rate_look(body.get("key") or body.get("pick") or {},
+                                                                                   int(body.get("value", 0)))})
+                    return self._json(200, app.play_preset(str(body["preset"])))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/ride/learn" and method == "POST":  # MIDI learn a Ride control, saved when learned
                 return self._json(200, {"ok": True, "message": app.learn_and_save(str(body["action"]), body.get("params") or {})})
             if path == "/api/flashfx" and method == "POST":
@@ -856,6 +882,14 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     bid = s.delete_point(rig, str(b["name"]))
                 else:
                     raise ApiError(400, "point action: put, store, rename or delete")
+            elif parts == ["preset"] and method == "POST":  # presets (v3.5)
+                try:
+                    if b.get("action", "put") == "delete":
+                        bid = app.delete_preset(str(b["id"]))
+                    else:
+                        bid = app.save_preset(str(b["id"]), b.get("name"), b.get("tags"), b.get("pick"))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             elif parts == ["auto"] and method == "POST":  # classification overrides for the running rig (v3.3)
                 rig_name = str(b.get("rig") or app.names[0])
                 data = s.read("rig", rig_name)

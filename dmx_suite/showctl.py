@@ -71,6 +71,7 @@ class ShowController:
         # v3.4: the band picked something by hand (the autopilot steps aside); setlist start / end (walk looks)
         self.on_manual: Callable[[], None] | None = None
         self.on_setlist: Callable[[str], None] | None = None
+        self.on_song_auto: Callable[[list[str] | None, str | None], None] | None = None  # v3.5: songs run by presets
 
     # ------------------------------------------------------------------ selection
 
@@ -220,6 +221,13 @@ class ShowController:
         s = self.setlist.songs[index]
         if s.master is not None:
             self.e.set_master(s.master)
+        if s.presets is not None:  # the autopilot plays only these presets for this song
+            if self.on_song_auto:
+                self.on_song_auto(s.presets, s.mood)
+            self._save()
+            return
+        if self.on_song_auto:
+            self.on_song_auto(None, None)
         if s.show:
             self.select_show(s.show, s.set)
         else:

@@ -785,3 +785,45 @@ def test_ride_learn_maps_a_pad(ui):
     while "look_next" not in (root / "midi" / "default.yaml").read_text(encoding="utf-8") and time.time() < deadline:
         time.sleep(0.05)
     assert app.router.map.get_input("ride").action == "look_next"
+
+
+# ------------------------------------------------------------------ v3.5
+
+
+def test_review_rate_and_generate(ui):
+    page, app, root, _ = ui
+    go(page, "review")
+    page.wait_for_selector("#rv-list li")
+    page.click("#rv-list li >> nth=2 >> button")
+    page.click("#rv-ban")
+    deadline = time.time() + 3
+    while not (root / "ratings.yaml").exists() and time.time() < deadline:
+        time.sleep(0.05)
+    data = yaml.safe_load((root / "ratings.yaml").read_text(encoding="utf-8"))
+    assert list(data["looks"].values()) == [-2]
+    page.fill("#gen-count", "3")
+    page.fill("#gen-prefix", "ui_gen")
+    page.fill("#gen-seed", "ui")
+    page.click("#gen-scenes")
+    page.wait_for_function("document.querySelector('#gen-out').textContent.includes('ui_gen_3')")
+    assert (root / "scenes" / "ui_gen_1.yaml").exists()
+
+
+def test_ride_presets_and_reroll(ui):
+    page, app, root, _ = ui
+    go(page, "ride")
+    page.wait_for_selector("#ride-presets [data-preset=fire_wave]")
+    page.click("#ride-presets [data-preset=fire_wave]")
+    deadline = time.time() + 3
+    while app.ride_pick.colour != "wave" and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.ride_pick.palette == "fire"
+    page.check("[data-lock=colour]")
+    page.click("#ride-reroll")
+    deadline = time.time() + 3
+    while app.ride_pick.key() == "figure8|wave|-|fire" and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.ride_pick.colour == "wave" and app.ride_pick.key() != "figure8|wave|-|fire"
+    page.once("dialog", lambda d: d.accept("my_look"))
+    page.click("#ride-save-preset")
+    page.wait_for_selector("#ride-presets [data-preset=my_look]")
