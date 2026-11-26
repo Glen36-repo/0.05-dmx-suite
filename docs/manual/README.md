@@ -5,7 +5,7 @@ Live lighting for Windows: build scenes and shows, run them from MIDI or OSC, an
 Pages are filled in as each v2 release lands. Where a page says "coming", the feature isn't built yet.
 
 1. [Getting started](getting-started.md): install, first run, the simulator
-2. [Fixtures and rigs](fixtures.md): adding lights, addresses, rig files, rule profiles
+2. [Fixtures and rigs](fixtures.md): the setup wizard, adding lights, fixture types, rig settings, rule profiles
 3. [Light layout and groups](layout.md): arranging the lights on screen, making groups
 4. [Scenes](scenes.md): colours, effects, positions, layers
 5. [Shows and setlists](shows.md): steps, repeats, fades, auto shows, setlists

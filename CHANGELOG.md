@@ -2,6 +2,19 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v2, release R7)
+
+### Added
+- Fixtures page: patch (add lights, auto-patch, overlaps marked, find, remove from every rig), fixture types (channel table, colour mixing, wheel and gobo slots, test each channel) and rig settings (profile, masters, lights in the rig, head limits, haze, tempo, outputs, inputs).
+- Setup wizard on first run: DMX interface (spots the 0.05 node and Enttec interfaces), lights, rule profile, starter show, PIN.
+- Starter shows made for any rig.
+- Colour mixing for RGBW, RGBA, white-only, dimmer-only and colour-wheel lights; named colour wheel and gobo slots; zoom, focus, frost and prism; 16-bit dimmer, zoom and focus; inverted pan, tilt, zoom, focus and frost; a light can follow another sub-master than its kind's.
+- Open Fixture Library: wheel slots, pixel bars and 16-bit channels on import; export a fixture type (`export-ofl`, Fixtures page).
+
+### Changed
+- Fixture and rig changes, and switching rigs, apply live without a restart (except outputs, MIDI inputs and OSC).
+- Show file format 4: existing fixture types get `colour_mix: off`, so shows look exactly the same.
+
 ## Unreleased (v2, release R6)
 
 ### Added

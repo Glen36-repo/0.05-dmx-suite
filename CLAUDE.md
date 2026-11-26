@@ -34,7 +34,7 @@ Numbers are kept from v1 so tests and docs still match. From v2 R1, every rule i
 
 **Fixture definition:**
 
-7. Colour-only heads and speed-channel direction are set per fixture type (0.05: U'King heads are colour only; MHL36 pan/tilt speed channel 0 = fastest).
+7. Colour-only heads and speed-channel direction are set per fixture type (0.05: U'King heads are colour only; MHL36 pan/tilt speed channel 0 = fastest). From v2 R7 the type also sets colour mixing (`colour_mix`; the 0.05 types are `off`), wheel/gobo slot names and inverted channels.
 
 ## Conventions
 - Australian English in UI text and docs. Metric. Dates DD/MM/YYYY.

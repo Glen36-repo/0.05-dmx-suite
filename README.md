@@ -102,10 +102,14 @@ dmx-suite run --setlist example
 
 Live runs save what's playing to the app's own data folder (`%LOCALAPPDATA%\0.05 DMX Suite`, not the show folder, so it doesn't sync through OneDrive; logs go there too); if the laptop restarts mid-gig, `dmx-suite run` carries on with the same show/set or setlist song and MASTER state (state older than 12 hours is ignored; `--fresh` ignores it).
 
-Import a fixture type from an [Open Fixture Library](https://open-fixture-library.org) file (prints YAML to paste into `shows/fixtures.yaml`; check it against the manual):
+Import a fixture type from an [Open Fixture Library](https://open-fixture-library.org) file (prints YAML to paste into `shows/fixtures.yaml`; check it against the manual; the Fixtures page does the same on screen), or export one to share:
 
 ```bash
 dmx-suite import-ofl fixture.json --mode 11-channel --key mhl36
+```
+
+```bash
+dmx-suite export-ofl mhl36 -o mhl36.json
 ```
 
 Shows (console): `show band high`, `set low`, `next` (next step), `now`, `setlist example`, `song next`, `tap`, `tempo 128` / `tempo off`.
@@ -122,6 +126,7 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 - **Layout:** arrange the lights and make groups (below).
 - **Scenes:** build scenes on screen (below).
 - **Shows:** build shows from scenes and edit setlists (below).
+- **Fixtures:** the patch, fixture types and rig settings (below).
 - **Busk:** your own panels of buttons and faders to play over the running show (below).
 - **Heads:** drag on a pad to hold a head at a spot (head limits still apply); save held positions as a palette position.
 - **MIDI:** live monitor (what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
@@ -156,6 +161,15 @@ Positions are grid cells from the top left, with the back of the stage at the to
 A red banner and a beep appear when an output, MIDI interface or node drops out. USB DMX interfaces and the node reconnect by themselves when plugged back in. Node changes are logged to `logs/health-<date>.jsonl`.
 
 **Gig lock** (top right): Claude can still read everything, but can't change files, preview or change haze, and the MIDI map can't be saved. The band's live controls keep working.
+
+**Setup wizard:** opens on a laptop that hasn't been through it (and from the Setup page): DMX interface (spots a 0.05 node, Enttec Pro or Open DMX cable by its USB ID; or Art-Net, sACN, simulator), lights by type and count (auto-patched), rule profile, a starter show for your rig (warm, blue, rainbow, chase, wave, sparkle, circles for moving heads; calm and lively sets), and a PIN. Every step can be skipped.
+
+**Fixtures page:**
+- **Patch:** type, universe, address, groups and sub-master of every light; add lights, auto-patch, overlaps marked, find a light, remove one from the patch and every rig.
+- **Fixture types:** channel table (role, default, pixel, invert), colour mixing, wheel and gobo slots, test every channel on a patched light, import from or export to the Open Fixture Library.
+- **Rig settings:** profile, masters, fades, lights in the rig, head limits, haze, tempo, outputs, inputs. Saves apply live, except outputs, MIDI inputs and OSC; **Run this rig** switches rigs without stopping.
+
+**Fixture types** (R7): `colour_mix: auto` mixes each colour for the light: white (and amber) out of RGB, white-only and dimmer-only lights at the colour's brightness, colour-wheel lights on the nearest named slot. Types from before R7 are `colour_mix: off` (colours as written, so shows look the same). `wheel: {red: {value: 20, colour: "#ff0000"}}` and `gobos: {dots: 30}` name slots for scenes. Roles also include zoom, focus, frost and prism; a `<role>_fine` channel makes dimmer, pan, tilt, zoom or focus 16-bit; `invert: true` on pan, tilt, zoom, focus, frost or pt_speed; `sub: wash` makes a light follow another sub-master than its kind's.
 
 **Access (PIN and phones, Setup page):** the app only answers this computer until **phone/LAN access** is turned on, which needs a PIN first. The Setup page then shows the address and a QR code; a phone on the same Wi-Fi opens it and signs in with the PIN. A phone stays signed in until it's unused for the set number of hours (12 by default), the PIN changes, or LAN access goes off; five wrong PINs make it wait 30 s. Tick **Ask for the PIN on this computer too** to lock the laptop's own screen as well. Access settings can only be changed on the laptop, and the PIN is kept only as a salted hash in app data. `--lan` turns phone access on at start-up (once a PIN is set).
 
