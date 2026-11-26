@@ -27,7 +27,7 @@ from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
 from .output import LogDriver, NodeSerialDriver, make_driver
 from .ofl import import_ofl
-from .paths import default_shows, log_dir, move_old_state, prepare
+from .paths import data_dir, default_shows, log_dir, move_old_state, prepare
 from .setup import format_report, patch_report
 from .app import App
 from .showctl import ShowController
@@ -296,7 +296,20 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     _, upgraded = ShowStore(args.shows).upgrade()  # older show files -> current format, originals backed up
     if upgraded:
         out(f"show files upgraded to the current format (originals in .backups): {', '.join(upgraded)}")
-    show = load_show(args.shows, args.rig, args.look, args.midi)
+    problem = None
+    try:
+        show = load_show(args.shows, args.rig, args.look, args.midi)
+    except ConfigError as e:  # a broken show file must not leave the rig dark: run the last good version
+        fb = ShowStore(args.shows).last_good(lambda root: load_show(root, args.rig, args.look, args.midi),
+                                            data_dir() / "last-good")
+        if fb is None:
+            raise
+        show, bid = fb
+        show.root = args.shows  # edits, restore and reload still go to the real folder
+        problem = {"problem": str(e), "backup": bid}
+        out(f"SHOW FILE PROBLEM: {e}")
+        out(f"running the last good version (from before backup {bid}); fix it (dmx-suite check) or restore it, "
+            "and the show reloads")
     if args.sim:
         drivers = [LogDriver()] + ([make_driver({"driver": "node_serial", "port": "sim"})] if args.sim_node else [])
     else:
@@ -306,6 +319,7 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
             d.link.health.expect(show.rig.nodes)
     state_path = None if args.sim else move_old_state(args.shows)  # app data, not the (OneDrive) show folder
     app = App(show, drivers, state_path, log_dir=log_dir(), rig=args.rig, look=args.look, midi=args.midi)
+    app.show_problem = problem
     ctl, router = app.ctl, app.router
     resumed = False if args.fresh else ctl.restore()  # laptop restarted mid-gig: carry on
     if resumed:

@@ -17,6 +17,20 @@ from .versions import read_doc
 from .shows import Setlist, Show, load_setlists, load_shows, parse_setlist, parse_show
 
 
+# what a broken show file can raise while loading; all reported as show file problems
+FILE_ERRORS = (ConfigError, OSError, KeyError, TypeError, ValueError, AttributeError, IndexError)
+
+
+def _load(where: str, fn, *args):
+    """Run a loader; anything a malformed file causes comes out as a ConfigError naming the file."""
+    try:
+        return fn(*args)
+    except ConfigError:
+        raise
+    except FILE_ERRORS as e:
+        raise ConfigError(f"{where}: {type(e).__name__}: {e}") from e
+
+
 @dataclass
 class ShowFiles:
     root: Path
@@ -51,18 +65,18 @@ def profile_problems(rig: Rig, scenes: dict[str, Scene], looks: dict[str, Look])
 
 def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: str = "default") -> ShowFiles:
     root = Path(root)
-    patch = load_patch(root / "fixtures.yaml")
-    r = load_rig(_pick(root / "rigs", rig), patch)
-    lk = load_look(_pick(root / "looks", look), patch)
+    patch = _load("fixtures.yaml", load_patch, root / "fixtures.yaml")
+    r = _load(f"rigs/{rig}.yaml", load_rig, _pick(root / "rigs", rig), patch)
+    lk = _load(f"looks/{look}.yaml", load_look, _pick(root / "looks", look), patch)
     mp_path = _pick(root / "midi", midi)
-    mp = load_map(mp_path)
+    mp = _load(f"midi/{midi}.yaml", load_map, mp_path)
     for m in mp.mappings:  # flash targets must exist in the patch
         if m.action == "flash":
             patch.resolve(m.params["fixtures"])
-    pal = load_palettes(root / "palettes.yaml", patch)
-    scenes = load_scenes(root / "scenes", patch, pal)
-    shows = load_shows(root / "shows", pal, scenes)
-    setlists = load_setlists(root / "setlists", shows, scenes)
+    pal = _load("palettes.yaml", load_palettes, root / "palettes.yaml", patch)
+    scenes = _load("scenes", load_scenes, root / "scenes", patch, pal)
+    shows = _load("shows", load_shows, root / "shows", pal, scenes)
+    setlists = _load("setlists", load_setlists, root / "setlists", shows, scenes)
     for m in mp.mappings:  # show/scene names in the MIDI map must exist
         for key, table in (("show", shows), ("scene", scenes)):
             if key in m.params and m.params[key] not in table:
@@ -79,7 +93,7 @@ def check_all(root: str | Path) -> list[str]:
     problems: list[str] = []
     try:
         patch = load_patch(root / "fixtures.yaml")
-    except (ConfigError, OSError) as e:
+    except FILE_ERRORS as e:
         return [f"fixtures.yaml: {e}"]
     unverified = [t.name for t in patch.types.values() if not t.verified]
     if unverified:
@@ -89,7 +103,7 @@ def check_all(root: str | Path) -> list[str]:
     for p in sorted((root / "rigs").glob("*.yaml")):
         try:
             rigs[p.stem] = load_rig(p, patch)
-        except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+        except FILE_ERRORS as e:
             problems.append(f"rigs/{p.name}: {e}")
             continue
         hz = rigs[p.stem].strobe_limit_hz
@@ -99,11 +113,11 @@ def check_all(root: str | Path) -> list[str]:
     for p in sorted((root / "looks").glob("*.yaml")):
         try:
             looks[p.stem] = load_look(p, patch)
-        except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+        except FILE_ERRORS as e:
             problems.append(f"looks/{p.name}: {e}")
     try:
         pal = load_palettes(root / "palettes.yaml", patch)
-    except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+    except FILE_ERRORS as e:
         problems.append(f"palettes.yaml: {e}")
         pal = None
     scenes: dict = {}
@@ -112,17 +126,17 @@ def check_all(root: str | Path) -> list[str]:
         for p in sorted((root / "scenes").glob("*.yaml")):
             try:
                 scenes[p.stem] = load_scenes_file(p, patch, pal)
-            except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+            except FILE_ERRORS as e:
                 problems.append(f"scenes/{p.name}: {e}")
         for p in sorted((root / "shows").glob("*.yaml")):
             try:
                 shows[p.stem] = parse_show(p.stem, read_doc(p, "show"), pal, scenes)
-            except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+            except FILE_ERRORS as e:
                 problems.append(f"shows/{p.name}: {e}")
         for p in sorted((root / "setlists").glob("*.yaml")):
             try:
                 parse_setlist(p.stem, read_doc(p, "setlist"), shows, scenes)
-            except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+            except FILE_ERRORS as e:
                 problems.append(f"setlists/{p.name}: {e}")
         # scenes and looks are shared: each must suit every rig's profile (rule 1)
         for rk, rig in rigs.items():
@@ -136,7 +150,7 @@ def check_all(root: str | Path) -> list[str]:
                     try:
                         for step in range(20):
                             generate(st.auto, rig, pal, step, "check")
-                    except (ConfigError, KeyError, ValueError) as e:
+                    except FILE_ERRORS as e:
                         problems.append(f"shows/{sk}.yaml set {st.name} on rig {rk}: {e}")
     for p in sorted((root / "midi").glob("*.yaml")):
         try:
@@ -152,7 +166,7 @@ def check_all(root: str | Path) -> list[str]:
                 for key, table in (("show", shows), ("scene", scenes)):
                     if key in m.params and m.params[key] not in table:
                         raise ConfigError(f"{m.type} ch{m.channel} #{m.number}: unknown {key} {m.params[key]!r}")
-        except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+        except FILE_ERRORS as e:
             problems.append(f"midi/{p.name}: {e}")
     return problems
 

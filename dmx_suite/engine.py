@@ -1,8 +1,14 @@
-"""Show engine: owns control state, runs the 40 Hz output loop, sends immediately on drum hits."""
+"""Show engine: owns control state, runs the 40 Hz output loop, sends immediately on drum hits.
+
+The show must go on: an error while rendering (a bad value in a show file, a bug in an effect)
+never stops output. The engine logs it, drops to the static look, and if even that can't render
+keeps sending the last good frame. `fault` says what happened for the status bar.
+"""
 
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from typing import Callable
@@ -12,6 +18,7 @@ from .fixtures import DMX_CHANNELS, Kind
 from .haze import Haze, HazeMode
 from .look import Colour, FixtureLook, Look
 from .output import OutputDriver
+from .output.timer import high_res
 from .rig import Rig
 from .rules import ControlState, Flash, RuleLayer
 from .scenes import Scene, ScenePlayer
@@ -28,7 +35,7 @@ class Engine:
         rig: Rig,
         drivers: list[OutputDriver],
         look: Look | None = None,
-        clock: Callable[[], float] = time.monotonic,
+        clock: Callable[[], float] = time.perf_counter,  # high resolution on Windows too
     ) -> None:
         self.rig = rig
         self.drivers = drivers
@@ -38,6 +45,7 @@ class Engine:
         self.master = rig.startup_master  # safe default on (re)start
         self.blackout = False
         self.look = look or Look()  # static look (or last look a scene produced)
+        self.static_look = self.look  # what the engine falls back to after a fault
         self.source: Callable[[float], Look] | None = None  # scene player
         self.scene: Scene | None = None
         # setup/test page: find one fixture, raw channel tester
@@ -54,6 +62,10 @@ class Engine:
         self.frames: dict[int, bytearray] = {}
         self.frames_sent = 0
         self.driver_errors = 0
+        self.fault: str | None = None  # last render error, for the status bar
+        self.fault_at: float | None = None
+        self.faults = 0
+        self._logged: dict[str, float] = {}  # message -> when last logged (rate limit)
         self.on_frame: list[Callable[[dict[int, bytearray]], None]] = []
         self._last_tick = now
         self._wake = threading.Event()
@@ -79,31 +91,70 @@ class Engine:
             if self.position_override:
                 self.look = self._with_positions(self.look)
             if self.find is not None:
-                self.frames = self._render_find(now)
+                frames = self._render_find(now)
             else:
-                self.frames = self.rules.render(self.look, self._state(now), self.masters)
+                frames = self.rules.render(self.look, self._state(now), self.masters)
             for (uni, ch), val in self.channel_test.items():
-                if uni in self.frames:
-                    self.frames[uni][ch - 1] = val
-            for drv in self.drivers:
-                for uni, frame in self.frames.items():
-                    try:
-                        drv.send(uni, bytes(frame))
-                    except Exception:
-                        self.driver_errors += 1
-                        log.exception("output driver %s failed", drv.name)
-            self.frames_sent += 1
-            for fn in self.on_frame:
-                fn(self.frames)
-            return self.frames
+                if uni in frames:
+                    frames[uni][ch - 1] = val
+            self.frames = frames  # only a frame that rendered completely replaces the last good one
+            self._send(frames)
+            return frames
+
+    def _send(self, frames: dict[int, bytearray]) -> None:
+        for drv in self.drivers:
+            for uni, frame in frames.items():
+                try:
+                    drv.send(uni, bytes(frame))
+                except Exception:
+                    self.driver_errors += 1
+                    self._log_once(f"output driver {drv.name} failed", exc=True)
+        self.frames_sent += 1
+        for fn in self.on_frame:
+            try:
+                fn(frames)
+            except Exception:
+                self._log_once(f"frame listener {getattr(fn, '__name__', fn)} failed", exc=True)
+
+    def _log_once(self, msg: str, exc: bool = False, every_s: float = 60.0) -> None:
+        """Log a repeating problem once a minute, not 40 times a second."""
+        now = self.clock()
+        if now - self._logged.get(msg, -math.inf) >= every_s:
+            self._logged[msg] = now
+            (log.exception if exc else log.error)(msg)
+
+    def _safe_output(self) -> None:
+        """Render and send, and never let an error stop the show."""
+        try:
+            self.output()
+        except Exception as e:  # noqa: BLE001 - anything at all: the lights must keep going
+            self._fault(e)
+
+    def _fault(self, e: Exception) -> None:
+        with self.lock:
+            self.faults += 1
+            self.fault = f"{type(e).__name__}: {e}"
+            self.fault_at = self.clock()
+            self._log_once(f"render failed, back to the static look: {self.fault}", exc=True)
+            # drop whatever was playing and fall back to the static look
+            self._preview = None
+            self.source, self.scene = None, None
+            self.look = self.static_look
+            try:
+                self.output()
+            except Exception as e2:  # noqa: BLE001
+                self.fault = f"{type(e2).__name__}: {e2} (holding the last good frame)"
+                self._log_once(f"static look failed too, holding the last good frame: {e2}", exc=True)
+                if self.frames:
+                    self._send(self.frames)
 
     def tick(self) -> None:
-        """One loop step: advance fades, then render and send."""
+        """One loop step: advance fades, then render and send. Never raises (see _fault)."""
         with self.lock:
             now = self.clock()
             self.masters.tick(max(0.0, now - self._last_tick))
             self._last_tick = now
-            self.output()
+            self._safe_output()
 
     def flash_deadline(self) -> float:
         """When the earliest running flash ends (inf if none), so the loop can cut it exactly."""
@@ -116,18 +167,33 @@ class Engine:
         if self._thread:
             return
         self._stop.clear()
+        self._end_timer = high_res()  # 1 ms timer on Windows while running
         self._thread = threading.Thread(target=self._run, name="engine", daemon=True)
         self._thread.start()
+
+    def loop_step(self, next_tick: float) -> tuple[float, float]:
+        """One pass of the loop: tick if a frame is due (the 40 Hz grid) or a flash has just ended.
+        Returns (next grid time, how long to wait). Early wakes (control changes, fader moves)
+        never move the grid, so a burst of changes can't push frames into the future."""
+        now = self.clock()
+        due = now >= next_tick
+        if due or self.flash_deadline() <= now:
+            self.tick()
+        if due:
+            period = 1 / FRAME_HZ
+            next_tick += period * (math.floor((now - next_tick) / period) + 1)  # next grid point after now
+        return next_tick, max(0.0, min(next_tick, self.flash_deadline()) - self.clock())
 
     def _run(self) -> None:
         next_tick = self.clock()
         while not self._stop.is_set():
-            self._wake.clear()  # before tick, so a control change during it isn't missed
-            self.tick()
-            now = self.clock()
-            next_tick = max(next_tick + 1 / FRAME_HZ, now)
-            deadline = min(next_tick, self.flash_deadline())
-            self._wake.wait(max(0.0, deadline - now))
+            self._wake.clear()  # before looking, so a change made meanwhile wakes the wait at once
+            try:
+                next_tick, wait = self.loop_step(next_tick)
+            except Exception as e:  # noqa: BLE001 - tick never raises; this is the last line of defence
+                self._fault(e)
+                next_tick, wait = self.clock() + 1 / FRAME_HZ, 1 / FRAME_HZ
+            self._wake.wait(wait)
 
     def stop(self) -> None:
         self._stop.set()
@@ -135,12 +201,15 @@ class Engine:
         if self._thread:
             self._thread.join(timeout=1)
             self._thread = None
+        getattr(self, "_end_timer", lambda: None)()
+        self._end_timer = lambda: None
         for d in self.drivers:
             d.close()
 
     def _changed(self) -> None:
-        """Control change: send now rather than on the next tick."""
-        self.output()
+        """Control change: send now rather than on the next tick. The loop only re-plans its wait
+        (a new flash end), it doesn't render the same frame again."""
+        self._safe_output()
         self._wake.set()
 
     # ------------------------------------------------------------------ controls

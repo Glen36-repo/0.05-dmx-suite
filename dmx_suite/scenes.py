@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-from .fixtures import EMITTERS, Patch
+from .fixtures import EMITTERS, ConfigError, Patch
 from .look import FORBIDDEN, Colour, FixtureLook, Look, LookError
 from .palettes import Palettes
 from .rig import Rig
@@ -195,8 +195,12 @@ def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") ->
 def load_scenes(folder: str | Path, patch: Patch, pal: Palettes) -> dict[str, Scene]:
     out = {}
     for path in sorted(Path(folder).glob("*.yaml")):
-        data = read_doc(path, "scene")
-        out[path.stem] = parse_scene(data, patch, pal, path.stem)
+        try:
+            out[path.stem] = parse_scene(read_doc(path, "scene"), patch, pal, path.stem)
+        except ConfigError:
+            raise
+        except (KeyError, TypeError, ValueError, AttributeError, IndexError) as e:
+            raise LookError(f"scenes/{path.name}: {type(e).__name__}: {e}") from e
     return out
 
 

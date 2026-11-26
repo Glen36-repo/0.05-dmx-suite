@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-from .fixtures import ConfigError, Kind, Patch
+from .fixtures import EMITTERS, ConfigError, Kind, Patch
 from .versions import read_doc
 from .profile import V1_DEFAULT, Profile, parse_profile, resolve_exempt
 
@@ -85,14 +85,30 @@ class Rig:
         return self.head_limits.get(fid, HeadLimit())
 
 
+def _secs(v: Any, what: str, lo: float = 0.0) -> float:
+    """Seconds, at least `lo` (haze timers, fade time)."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError) as e:
+        raise ConfigError(f"{what} must be a number of seconds, not {v!r}") from e
+    if isinstance(v, bool) or f < lo or f != f or f == float("inf"):
+        raise ConfigError(f"{what} must be {lo:g} s or more")
+    return f
+
+
 def _pct(v: Any, what: str) -> float:
-    f = float(v)
+    try:
+        f = float(v)
+    except (TypeError, ValueError) as e:
+        raise ConfigError(f"{what} must be a number 0-100 %, not {v!r}") from e
     if not 0 <= f <= 100:
         raise ConfigError(f"{what} must be 0-100 %")
     return f / 100
 
 
 def _range(v: Any, what: str) -> tuple[float, float]:
+    if not isinstance(v, (list, tuple)) or len(v) != 2:
+        raise ConfigError(f"{what} must be [min, max] in %")
     lo, hi = (_pct(x, what) for x in v)
     if lo > hi:
         raise ConfigError(f"{what}: min above max")
@@ -113,11 +129,15 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
     for fid, lim in (data.get("head_limits") or {}).items():
         if fid not in patch.fixtures:
             raise ConfigError(f"head_limits: unknown fixture {fid!r}")
+        if not isinstance(lim, dict):
+            raise ConfigError(f"head_limits {fid}: needs pan: [min, max] and/or tilt: [min, max] in %")
         limits[fid] = HeadLimit(
             _range(lim.get("pan", [0, 100]), f"{fid} pan"),
             _range(lim.get("tilt", [0, 100]), f"{fid} tilt"),
         )
     h = data.get("haze") or {}
+    if not isinstance(h, dict):
+        raise ConfigError("haze: needs settings like level: 60")
     mode = h.get("default_mode", "off")
     if mode is False:  # YAML reads a bare `off` as false
         mode = "off"
@@ -126,19 +146,22 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         default_mode=mode,
         level=_pct(h.get("level", 60), "haze level"),
         boost_level=_pct(h.get("boost_level", 100), "haze boost_level"),
-        pulse_on_s=float(h.get("pulse_on_s", 5)),
-        pulse_every_s=float(h.get("pulse_every_s", 120)),
-        boost_s=float(h.get("boost_s", 0)),
-        max_on_s=float(h.get("max_on_s", 60)),
-        rest_s=float(h.get("rest_s", 30)),
-        boost_cooldown_s=float(h.get("boost_cooldown_s", 20)),
-        auto_off_s=float(h.get("auto_off_min", 0)) * 60,
+        pulse_on_s=_secs(h.get("pulse_on_s", 5), "haze pulse_on_s", 0.1),
+        pulse_every_s=_secs(h.get("pulse_every_s", 120), "haze pulse_every_s", 0.2),
+        boost_s=_secs(h.get("boost_s", 0), "haze boost_s"),
+        max_on_s=_secs(h.get("max_on_s", 60), "haze max_on_s", 1),
+        rest_s=_secs(h.get("rest_s", 30), "haze rest_s"),
+        boost_cooldown_s=_secs(h.get("boost_cooldown_s", 20), "haze boost_cooldown_s"),
+        auto_off_s=_secs(h.get("auto_off_min", 0), "haze auto_off_min") * 60,
     )
     if haze.default_mode not in ("off", "manual", "pulse"):
         raise ConfigError("haze default_mode must be off, manual or pulse")
     if haze.pulse_on_s >= haze.pulse_every_s:
         raise ConfigError("haze pulse_on_s must be shorter than pulse_every_s")
-    kick = {k: _pct(v, f"kick colour {k}") for k, v in (data.get("kick_colour") or {"red": 100, "green": 100, "blue": 100}).items()}
+    kick_data = data.get("kick_colour") or {"red": 100, "green": 100, "blue": 100}
+    if not isinstance(kick_data, dict) or set(kick_data) - set(EMITTERS):
+        raise ConfigError(f"kick_colour: emitter levels in %, from {', '.join(EMITTERS)}")
+    kick = {k: _pct(v, f"kick colour {k}") for k, v in kick_data.items()}
     return Rig(
         name=name,
         patch=patch,
@@ -146,7 +169,7 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         grand_master=_pct(data.get("grand_master", 100), "grand_master"),
         sub_masters=subs,
         flash_level=_pct(data.get("flash_level", 100), "flash_level"),
-        fade_s=float(data.get("fade_s", 0.3)),
+        fade_s=_secs(data.get("fade_s", 0.3), "fade_s"),
         head_limits=limits,
         haze=haze,
         kick_colour=kick,

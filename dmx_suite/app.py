@@ -42,6 +42,7 @@ class App:
         self.store = ShowStore(files.root, lambda: self.gig_lock)
         self.log_dir = log_dir
         self.alerts: list[dict[str, Any]] = []  # node dropped / weak, newest last
+        self.show_problem: dict[str, str] | None = None  # running the last good show files (cli start-up)
         self.midi_inputs: Any = None  # MidiInputs when running live
         self.clients: dict[str, dict[str, Any]] = {}  # e.g. "claude": {first, last, calls, last_call}
         self.screens: dict[int, dict[str, Any]] = {}  # open browser streams: id -> {ip, local, since}
@@ -135,8 +136,18 @@ class App:
         out: list[dict[str, Any]] = []
         fps = self.engine_fps()
         running = self.engine._thread is not None
-        out.append({"kind": "engine", "name": "Engine", "state": ("ok" if fps >= 35 else "warn") if running else "warn",
-                    "detail": f"{fps:.0f} fps" if running else "not running"})
+        e = self.engine
+        recent_fault = e.fault is not None and e.fault_at is not None and e.clock() - e.fault_at < 300
+        if recent_fault:
+            out.append({"kind": "engine", "name": "Engine", "state": "bad",
+                        "detail": f"fault {_ago(e.clock() - e.fault_at)} ago, back to the static look: {e.fault}"})
+        else:
+            out.append({"kind": "engine", "name": "Engine", "state": ("ok" if fps >= 35 else "warn") if running else "warn",
+                        "detail": f"{fps:.0f} fps" if running else "not running"})
+        if self.show_problem:
+            out.append({"kind": "files", "name": "Show files", "state": "bad",
+                        "detail": f"running the last good version (backup {self.show_problem['backup']}): "
+                                  f"{self.show_problem['problem']}"})
         for d in self.engine.drivers:
             out.append(d.state())
         if self.midi_inputs is not None:
@@ -179,6 +190,9 @@ class App:
         self.files = new
         self.ctl.files = new
         self.router.map = new.midimap
+        if self.show_problem:
+            notes.append("show files fixed: now running them, not the last good version")
+            self.show_problem = None
         return notes
 
     def save_layout(self, stage: dict[str, Any] | None, layout: dict[str, Any]) -> str:
@@ -260,6 +274,8 @@ class App:
             "time": time.time(),
             "master": e.master,
             "profile": e.rig.profile.summary(),
+            "fault": {"message": e.fault, "count": e.faults} if e.fault else None,
+            "show_problem": self.show_problem,
             "strobe_limit": {"hz": e.rig.strobe_limit_hz, "held": e.rules.held},
             "blackout": e.blackout,
             "gig_lock": self.gig_lock,

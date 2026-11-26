@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -230,6 +230,28 @@ class ShowStore:
         return self.apply({p: self.text_for(p, data)}, f"put fixture {entry['id']}")
 
     # ------------------------------------------------------------------ backups
+
+    def last_good(self, load: Callable[[Path], Any], scratch: Path) -> tuple[Any, str] | None:
+        """When the show folder won't load: the newest earlier version of it that does.
+
+        Works on a copy in `scratch` (the show folder is never touched): backups are laid over the
+        copy newest first, each putting back the files as they were before that change, until
+        `load(copy)` succeeds. Returns (whatever load returned, backup id) or None."""
+        backups = sorted((p for p in (self.root / BACKUPS).glob("*") if p.is_dir()), reverse=True)
+        if not backups:
+            return None
+        shutil.rmtree(scratch, ignore_errors=True)
+        shutil.copytree(self.root, scratch, ignore=shutil.ignore_patterns(BACKUPS, ".state.json", ".giglock"))
+        for b in backups:
+            for f in b.rglob("*.yaml"):
+                dest = scratch / f.relative_to(b)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dest)
+            try:
+                return load(scratch), b.name
+            except ConfigError:
+                continue
+        return None
 
     def backups(self, limit: int = 50) -> list[dict[str, Any]]:
         bdir = self.root / BACKUPS
