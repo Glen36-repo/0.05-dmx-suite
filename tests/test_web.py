@@ -133,7 +133,10 @@ def test_midi_learn_and_monitor_over_api(running):
     status, rows = call(url + "/api/midi?since=0")
     assert rows[-1]["result"].startswith("learned")
     assert app.router.map.get("note", 10, 70).action == "flash"
-    assert call(url + "/api/midi/save", "POST", {})[1]["ok"]
+    res = call(url + "/api/midi/save", "POST", {})[1]
+    assert res["ok"] and res["backup"]  # through the store: validated and backed up
+    saved = app.files.midimap_path.read_text(encoding="utf-8")
+    assert "number: 70" in saved and "# TD-25" in saved  # new mapping written, comments kept
 
 
 def test_events_stream(running):

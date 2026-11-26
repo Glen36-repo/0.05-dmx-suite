@@ -82,6 +82,12 @@ class Clock:
         self.t += s
 
 
+@pytest.fixture(autouse=True)
+def _app_data(monkeypatch, tmp_path):
+    """Resume state and logs go to a scratch app-data folder, never the real one."""
+    monkeypatch.setenv("DMX_SUITE_DATA", str(tmp_path / "appdata"))
+
+
 @pytest.fixture
 def patch():
     return parse_patch(PATCH)

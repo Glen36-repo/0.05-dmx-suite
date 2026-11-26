@@ -23,15 +23,15 @@ from pathlib import Path
 from .engine import Engine
 from .fixtures import EMITTERS, ConfigError, Kind
 from .midi.inputs import FakeMidiIn, MidiInputs, port_names
-from .midi.map import save_map
 from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
 from .output import LogDriver, NodeSerialDriver, make_driver
 from .ofl import import_ofl
-from .paths import default_shows, prepare
+from .paths import default_shows, log_dir, move_old_state, prepare
 from .setup import format_report, patch_report
 from .app import App
 from .showctl import ShowController
+from .store import ShowStore
 from .showfiles import ShowFiles, check_all, load_show
 
 
@@ -111,7 +111,7 @@ setup / test:
 
 
 def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path, show: ShowFiles | None = None,
-            ctl: ShowController | None = None) -> None:
+            ctl: ShowController | None = None, store: ShowStore | None = None) -> None:
     print(rig_view(engine))
     if ctl:
         print(ctl.describe())
@@ -253,8 +253,9 @@ def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path
                 for m in router.map.mappings:
                     print(f"  {m.type:15} ch{m.channel:<2} #{m.number:<3} -> {m.describe()}")
             elif cmd == "save":
-                save_map(router.map, map_path)
-                print(f"saved {map_path}")
+                st = store or ShowStore(map_path.parent.parent)  # validated, backed up, comments kept
+                bid = st.put("midi", map_path.stem, router.map.to_dict(), f"save MIDI map {map_path.stem}")
+                print(f"saved {map_path} (previous copy in backup {bid})")
             elif cmd == "status":
                 for d in engine.drivers:
                     print(" ", d.status())
@@ -300,8 +301,8 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     for d in drivers:  # rig config lists the nodes expected, so a missing one shows at setup
         if isinstance(d, NodeSerialDriver):
             d.link.health.expect(show.rig.nodes)
-    state_path = None if args.sim else args.shows / ".state.json"
-    app = App(show, drivers, state_path, log_dir=args.shows.parent / "logs", rig=args.rig, look=args.look, midi=args.midi)
+    state_path = None if args.sim else move_old_state(args.shows)  # app data, not the (OneDrive) show folder
+    app = App(show, drivers, state_path, log_dir=log_dir(), rig=args.rig, look=args.look, midi=args.midi)
     ctl, router = app.ctl, app.router
     resumed = False if args.fresh else ctl.restore()  # laptop restarted mid-gig: carry on
     if resumed:
@@ -337,7 +338,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     session = start_session(args)
     try:
         if not args.headless and (args.sim or sys.stdin.isatty()):
-            console(session.engine, session.router, session.fake, session.show.midimap_path, session.show, session.app.ctl)
+            console(session.engine, session.router, session.fake, session.show.midimap_path, session.show, session.app.ctl,
+                    session.app.store)
         else:
             while True:
                 time.sleep(1)

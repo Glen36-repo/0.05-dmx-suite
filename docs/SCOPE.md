@@ -311,7 +311,7 @@ Decided 26/11/2026:
 | Set steps | Fixed timers (`step_s`); tap tempo changes effect speed only, never step length |
 | Tap tempo | Effects are timed at 120 BPM reference; a tapped tempo (pedal or a mapped drum note) scales effect time and lines up on the tap |
 | Set pedal outside a show | LOW / MID / HIGH goes to the current show if it has that set, otherwise the first show that does |
-| Resume after restart | Live runs save show/set/setlist song/MASTER to `shows/.state.json` on every change; restored on start if under 12 hours old |
+| Resume after restart | Live runs save show/set/setlist song/MASTER on every change to app data (`%LOCALAPPDATA%\0.05 DMX Suite\state`, one file per show folder; v1's `shows/.state.json` is moved there once); restored on start if under 12 hours old |
 | Missing fixtures in shows | Auto shows only use fixtures in the rig; hand-written scene layers can name a `fallback` group |
 | Kick light in auto shows | White most steps, the show colour about 30 % of steps |
 | Browser UI | Standard-library web server + server-sent events; no build step, no internet needed |
@@ -348,6 +348,7 @@ Decided 26/11/2026 (v2):
 | v2 features | Spatial effects, effect spread, busking page, beat sync, undo/redo + copy/paste, OSC input added to v2 (26/11/2026), alongside fades, Art-Net/sACN and the fixture editor |
 | Access | PIN or password on the UI and API; localhost only until LAN/phone access is turned on |
 | Set steps (v2) | Fixed timers stay the default; a step can instead follow the tempo (`hold_beats` / `hold_bars`) |
+| Show file saves (v2) | ruamel.yaml round trip: only changed data is rewritten, comments kept, unchanged lines keep their spacing; result must read back (PyYAML) as exactly the saved data, else written plainly. MIDI map saves go through the store (validated, backed up). Restore only takes `.yaml` files. Logs and resume state live in app data, not the OneDrive show folder |
 | Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
 | Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
 | Strobe limit: what counts | A flash is a rise of a quarter (or more) of the rig's light output from the darkest point since the last flash, measured on the final frame, so drum hits, flash effects and busking are all covered; a flash too soon is held (lights that got brighter keep last frame's light) rather than dropped; chases that move light without a rig-wide jump pass untouched. `strobe_limit_hz` 0.5-25, can't be turned off. Fixture hardware strobe channels aren't rate-checked until capability ranges arrive (R7) |

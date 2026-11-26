@@ -1,9 +1,9 @@
 """Show folder store: every edit from the browser UI or Claude (MCP) goes through here.
 
 A change is staged in a scratch copy of the show folder and the whole folder is validated
-(`check_all`: hard rules, references, auto shows on every rig). Only if that passes is the file
+(`check_all`: rules, references, auto shows on every rig). Only if that passes is the file
 written, after the previous version is copied to `.backups/<date-time>/` so any change can be undone.
-Writing YAML drops comments; the backup keeps the original.
+Saves keep the file's comments and layout (yamlio.update_text): only what changed is rewritten.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import yaml
 
 from .fixtures import ConfigError
 from .showfiles import check_all
+from .yamlio import plain_dump, update_text
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 FOLDERS = {"scene": "scenes", "show": "shows", "setlist": "setlists", "rig": "rigs", "look": "looks", "midi": "midi"}
@@ -34,8 +35,7 @@ class LockedError(StoreError):
     pass
 
 
-def _dump(data: Any) -> str:
-    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True, default_flow_style=None, width=110)
+_dump = plain_dump  # new files
 
 
 class ShowStore:
@@ -82,6 +82,10 @@ class ShowStore:
         return p.read_text(encoding="utf-8")
 
     # ------------------------------------------------------------------ write (validated, backed up)
+
+    def text_for(self, path: Path, data: Any) -> str:
+        """What to write so `path` holds `data`, keeping the comments already in the file."""
+        return update_text(path.read_text(encoding="utf-8") if path.exists() else None, data)
 
     def _guard(self) -> None:
         if self._locked():
@@ -143,7 +147,7 @@ class ShowStore:
         if not isinstance(data, dict):
             raise StoreError(f"{kind} must be a mapping")
         p = self.path(kind, name)
-        return self.apply({p: _dump(data)}, note or f"put {kind} {name}")
+        return self.apply({p: self.text_for(p, data)}, note or f"put {kind} {name}")
 
     def delete(self, kind: str, name: str) -> str:
         p = self.path(kind, name)
@@ -177,17 +181,23 @@ class ShowStore:
             del data[section][name]
         else:
             data[section][name] = value
-        return self.apply({self.path(kind, ""): _dump(data)}, f"{'delete' if value is None else 'put'} {kind} {section}.{name}")
+        p = self.path(kind, "")
+        return self.apply({p: self.text_for(p, data)}, f"{'delete' if value is None else 'put'} {kind} {section}.{name}")
 
     def put_fixture(self, entry: dict) -> str:
         """Add or replace one patched fixture (by id) in fixtures.yaml."""
         if not isinstance(entry, dict) or "id" not in entry:
             raise StoreError("fixture needs an id")
         data = self.read("fixtures")
-        fx = [f for f in data.get("fixtures") or [] if f.get("id") != entry["id"]]
-        fx.append(entry)
+        fx = list(data.get("fixtures") or [])
+        at = next((i for i, f in enumerate(fx) if f.get("id") == entry["id"]), None)
+        if at is None:
+            fx.append(entry)
+        else:
+            fx[at] = entry  # replace in place: the patch keeps its order (and the file its layout)
         data["fixtures"] = fx
-        return self.apply({self.path("fixtures", ""): _dump(data)}, f"put fixture {entry['id']}")
+        p = self.path("fixtures", "")
+        return self.apply({p: self.text_for(p, data)}, f"put fixture {entry['id']}")
 
     # ------------------------------------------------------------------ backups
 
@@ -204,6 +214,8 @@ class ShowStore:
         """Put one file back as it was before that change (validated like any write)."""
         if "/" in backup_id or ".." in backup_id:
             raise StoreError("bad backup id")
+        if not file.endswith(".yaml"):
+            raise StoreError("only show files (.yaml) can be restored")
         src = (self.root / BACKUPS / backup_id / file).resolve()
         if not src.is_relative_to((self.root / BACKUPS / backup_id).resolve()) or not src.exists():
             raise StoreError(f"no {file} in backup {backup_id}")

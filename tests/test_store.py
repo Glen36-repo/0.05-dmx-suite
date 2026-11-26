@@ -5,6 +5,7 @@ import pytest
 import yaml
 
 from dmx_suite.store import LockedError, ShowStore, StoreError
+from dmx_suite.yamlio import keep_layout, update_text
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"
 
@@ -104,3 +105,87 @@ def test_yaml_text_accepted(store):
     store.put("scene", "teal", "name: Teal\nlayers:\n  - {fixtures: [bars], colour: blue}\n")
     with pytest.raises(StoreError, match="YAML"):
         store.put("scene", "teal", "layers: [unclosed")
+
+
+# ------------------------------------------------------------------ comments and layout survive saves (v2 R1)
+
+
+
+def test_every_shipped_file_round_trips_unchanged():
+    for p in sorted(SHOWS.rglob("*.yaml")):
+        text = p.read_text(encoding="utf-8")
+        assert update_text(text, yaml.safe_load(text)) == text, p
+
+
+def test_edit_keeps_comments_and_alignment():
+    text = (SHOWS / "fixtures.yaml").read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    data["fixtures"][2]["address"] = 28
+    out = update_text(text, data)
+    changed = [ln for ln in out.splitlines() if ln not in text.splitlines()]
+    assert changed == ["  - {id: bar_1, type: lcb803, address: 28, groups: [bars]}"]
+    assert "  - {id: bar_2,    type: lcb803,      address: 51,  groups: [bars]}" in out  # spacing kept
+    assert [ln for ln in text.splitlines() if ln.lstrip().startswith("#")] == \
+        [ln for ln in out.splitlines() if ln.lstrip().startswith("#")]
+    assert yaml.safe_load(out) == data
+
+
+@pytest.mark.parametrize("value", ["off", "on", "yes", "no", "true", "1", "", "~", "12:30"])
+def test_new_strings_read_back_as_strings(value):
+    text = "# keep me\nname: x\n"
+    out = update_text(text, {"name": value})
+    assert yaml.safe_load(out) == {"name": value}
+    assert out.startswith("# keep me")
+
+
+def test_yaml_1_1_values_unchanged_stay_as_written():
+    text = "haze:\n  default_mode: off   # off / manual / pulse\nlevel: 50\n"
+    data = yaml.safe_load(text)  # default_mode reads as False
+    data["level"] = 60
+    out = update_text(text, data)
+    assert "default_mode: off   # off / manual / pulse" in out and "level: 60" in out
+
+
+def test_lists_grow_and_shrink():
+    text = "layers:\n  - {fixtures: [bars], colour: blue}  # first\n  - {fixtures: [washes], colour: red}\n"
+    data = yaml.safe_load(text)
+    out = update_text(text, {"layers": data["layers"] + [{"fixtures": ["heads"], "colour": "white"}]})
+    assert "# first" in out and yaml.safe_load(out)["layers"][2] == {"fixtures": ["heads"], "colour": "white"}
+    out = update_text(text, {"layers": data["layers"][:1]})
+    assert yaml.safe_load(out) == {"layers": data["layers"][:1]}
+
+
+def test_unreadable_old_text_falls_back_to_plain():
+    out = update_text("a: [unclosed\n", {"a": 1})
+    assert yaml.safe_load(out) == {"a": 1}
+
+
+def test_keep_layout_never_moves_indentation():
+    old = "a:\n  b:   1\n"
+    new = "a:\nb: 1\n"
+    assert keep_layout(old, new) == new  # same content at another depth is not the same line
+
+
+def test_store_put_keeps_rig_comments(store):
+    root = store.root
+    text = (root / "rigs" / "full.yaml").read_text(encoding="utf-8")
+    data = store.read("rig", "full")
+    data["grand_master"] = 80
+    store.put("rig", "full", data)
+    out = (root / "rigs" / "full.yaml").read_text(encoding="utf-8")
+    assert [ln for ln in text.splitlines() if "#" in ln] == [ln for ln in out.splitlines() if "#" in ln]
+    assert "grand_master: 80" in out
+
+
+def test_put_fixture_replaces_in_place(store):
+    before = [f["id"] for f in store.read("fixtures")["fixtures"]]
+    entry = next(f for f in store.read("fixtures")["fixtures"] if f["id"] == before[0])
+    store.put_fixture({**entry, "address": entry["address"]})
+    assert [f["id"] for f in store.read("fixtures")["fixtures"]] == before
+
+
+def test_restore_only_takes_show_files(store):
+    store.put("rig", "full", {**store.read("rig", "full"), "grand_master": 70})
+    bid = store.backups()[0]["id"]
+    with pytest.raises(StoreError, match="only show files"):
+        store.restore(bid, "NOTE.txt")

@@ -99,7 +99,7 @@ dmx-suite run --sim --show band --set mid
 dmx-suite run --setlist example
 ```
 
-Live runs save what's playing to `shows/.state.json`; if the laptop restarts mid-gig, `dmx-suite run` carries on with the same show/set or setlist song and MASTER state (state older than 12 hours is ignored; `--fresh` ignores it).
+Live runs save what's playing to the app's own data folder (`%LOCALAPPDATA%\0.05 DMX Suite`, not the show folder, so it doesn't sync through OneDrive; logs go there too); if the laptop restarts mid-gig, `dmx-suite run` carries on with the same show/set or setlist song and MASTER state (state older than 12 hours is ignored; `--fresh` ignores it).
 
 Import a fixture type from an [Open Fixture Library](https://open-fixture-library.org) file (prints YAML to paste into `shows/fixtures.yaml`; check it against the manual):
 

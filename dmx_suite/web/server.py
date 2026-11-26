@@ -23,7 +23,6 @@ from urllib.parse import parse_qs, urlparse
 
 from ..app import App
 from ..fixtures import ConfigError
-from ..midi.map import save_map
 from ..setup import patch_report
 from ..store import LockedError, StoreError
 
@@ -375,8 +374,9 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 r.map.remove((b["type"], int(b["channel"]), int(b["number"]), b.get("port") or ""))
             elif action == "save":
                 app.require_unlocked("saving the MIDI map")
-                save_map(r.map, app.files.midimap_path)
-                return {"ok": True, "saved": str(app.files.midimap_path.name)}
+                path = app.files.midimap_path  # validated and backed up like every other edit
+                bid = app.store.put("midi", path.stem, r.map.to_dict(), f"save MIDI map {path.stem}")
+                return {"ok": True, "saved": str(path.name), "backup": bid}
             else:
                 raise ApiError(404, "unknown MIDI action")
             return {"ok": True}

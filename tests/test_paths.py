@@ -82,3 +82,35 @@ def test_source_checkout_never_creates_flag_folder(monkeypatch, tmp_path):
     monkeypatch.delattr(sys, "frozen", raising=False)
     resolve_shows(build_parser().parse_args(["--shows", str(tmp_path / "nope"), "check"]))
     assert not (tmp_path / "nope").exists()
+
+
+# ------------------------------------------------------------------ app data (v2 R1): state and logs out of OneDrive
+
+
+def test_state_and_logs_live_in_app_data(monkeypatch, tmp_path):
+    monkeypatch.setenv(paths.DATA_ENV_VAR, str(tmp_path / "data"))
+    shows = tmp_path / "OneDrive" / "Music" / "shows"
+    assert paths.state_file(shows).is_relative_to(tmp_path / "data" / "state")
+    assert paths.log_dir() == tmp_path / "data" / "logs"
+    assert not paths.state_file(shows).is_relative_to(shows)
+    assert paths.state_file(shows) != paths.state_file(tmp_path / "other" / "shows")  # one per folder
+
+
+def test_app_data_defaults(monkeypatch, tmp_path):
+    monkeypatch.delenv(paths.DATA_ENV_VAR, raising=False)
+    monkeypatch.setattr(paths.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    assert paths.data_dir() == tmp_path / "Local" / "0.05 DMX Suite"
+
+
+def test_v1_state_moved_once(monkeypatch, tmp_path):
+    monkeypatch.setenv(paths.DATA_ENV_VAR, str(tmp_path / "data"))
+    shows = tmp_path / "shows"
+    shows.mkdir()
+    (shows / ".state.json").write_text('{"show": "band"}', encoding="utf-8")
+    new = paths.move_old_state(shows)
+    assert new.read_text(encoding="utf-8") == '{"show": "band"}'
+    assert not (shows / ".state.json").exists()
+    (shows / ".state.json").write_text("{}", encoding="utf-8")  # an old copy never overwrites newer state
+    paths.move_old_state(shows)
+    assert new.read_text(encoding="utf-8") == '{"show": "band"}'

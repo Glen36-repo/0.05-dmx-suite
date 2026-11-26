@@ -187,7 +187,9 @@ def run_desktop(args: argparse.Namespace) -> int:
     from .cli import start_session
 
     if getattr(sys, "frozen", False) or sys.stdout is None:
-        log_to_file(args.shows.parent / "logs")
+        from .paths import log_dir
+
+        log_to_file(log_dir())
     try:
         import webview
     except ImportError:

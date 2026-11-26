@@ -7,7 +7,7 @@ name = "dmx-suite"
 version = "0.1.0"
 description = "0.05 DMX Suite: live lighting for the band 0.05"
 requires-python = ">=3.12"
-dependencies = ["pyserial>=3.5", "mido>=1.3", "PyYAML>=6"]
+dependencies = ["pyserial>=3.5", "mido>=1.3", "PyYAML>=6", "ruamel.yaml>=0.18,<0.19"]
 
 [project.optional-dependencies]
 # real MIDI ports (gig laptop); prebuilt wheels on Windows, needs ALSA/JACK headers on Linux

@@ -164,4 +164,9 @@ def load_map(path: str | Path) -> MidiMap:
 
 
 def save_map(midimap: MidiMap, path: str | Path) -> None:
-    Path(path).write_text(yaml.safe_dump(midimap.to_dict(), sort_keys=False, allow_unicode=True), encoding="utf-8")
+    """Plain write, keeping the file's comments. The app saves through ShowStore instead
+    (validated and backed up); this is for tools and tests."""
+    from ..yamlio import update_text
+
+    p = Path(path)
+    p.write_text(update_text(p.read_text(encoding="utf-8") if p.exists() else None, midimap.to_dict()), encoding="utf-8")
