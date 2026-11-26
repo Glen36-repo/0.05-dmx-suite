@@ -18,6 +18,10 @@ class OutputDriver:
     def status(self) -> dict[str, Any]:
         return {"driver": self.name}
 
+    def state(self) -> dict[str, Any]:
+        """For the status bar: state is ok / warn / bad / sim, detail is a few words."""
+        return {"kind": "output", "name": self.name, "state": "ok", "detail": ""}
+
 
 class NullDriver(OutputDriver):
     name = "null"
@@ -30,6 +34,9 @@ class NullDriver(OutputDriver):
 
     def status(self) -> dict[str, Any]:
         return {"driver": self.name, "frames": self.frames}
+
+    def state(self) -> dict[str, Any]:
+        return {"kind": "output", "name": "No output", "state": "sim", "detail": "frames go nowhere"}
 
 
 class LogDriver(OutputDriver):
@@ -53,3 +60,6 @@ class LogDriver(OutputDriver):
 
     def status(self) -> dict[str, Any]:
         return {"driver": self.name, "frames": self.frames}
+
+    def state(self) -> dict[str, Any]:
+        return {"kind": "output", "name": "Simulator", "state": "sim", "detail": "no DMX hardware"}
