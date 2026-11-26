@@ -9,11 +9,13 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules.
 | Path | What |
 | --- | --- |
 | `docs/PROTOCOL.md` | USB serial and ESP-NOW protocol (node link) |
-| `shows/` | Show files: `fixtures.yaml`, `palettes.yaml`, `scenes/`, `rigs/`, `looks/`, `midi/` |
+| `shows/` | Show files: `fixtures.yaml`, `palettes.yaml`, `scenes/`, `shows/`, `setlists/`, `rigs/`, `looks/`, `midi/` |
 | `dmx_suite/engine.py` | Show engine: 40 Hz loop, MASTER, blackout, drum flash, masters, haze |
 | `dmx_suite/rules.py` | Rule layer: enforces the hard rules just before output |
 | `dmx_suite/scenes.py` | Scenes: layered colour, effects (chases, flash, sweep, random move) and positions |
 | `dmx_suite/ofl.py` | Fixture import from Open Fixture Library files |
+| `dmx_suite/auto.py` | Auto-show generator (LOW / MID / HIGH, opera, acoustic styles) |
+| `dmx_suite/shows.py`, `showctl.py` | Shows, setlists, tap tempo, resume after restart |
 | `dmx_suite/output/` | Output drivers: `node_serial`, `enttec_open`, `enttec_pro`, `log`, `null` |
 | `dmx_suite/midi/` | MIDI map, router, monitor and learn |
 | `dmx_suite/cli.py` | `dmx-suite`: run, simulator, MIDI monitor, show file check |
@@ -66,17 +68,25 @@ dmx-suite check
 dmx-suite addresses
 ```
 
-Start straight into a scene:
+Start straight into a show, set or setlist:
 
 ```bash
-dmx-suite run --sim --scene blue_chase
+dmx-suite run --sim --show band --set mid
 ```
+
+```bash
+dmx-suite run --setlist example
+```
+
+Live runs save what's playing to `shows/.state.json`; if the laptop restarts mid-gig, `dmx-suite run` carries on with the same show/set or setlist song and MASTER state (state older than 12 hours is ignored; `--fresh` ignores it).
 
 Import a fixture type from an [Open Fixture Library](https://open-fixture-library.org) file (prints YAML to paste into `shows/fixtures.yaml`; check it against the manual):
 
 ```bash
 dmx-suite import-ofl fixture.json --mode 11-channel --key mhl36
 ```
+
+Shows (console): `show band high`, `set low`, `next` (next step), `now`, `setlist example`, `song next`, `tap`, `tempo 128` / `tempo off`.
 
 Setup and test (console): `find mh_a` lights one fixture, `chan 30 255` drives a raw channel, `setup off` clears both, `addresses` shows the patch, `nodes` shows node health. Scenes: `scenes`, `scene opera`, `look`.
 
@@ -87,6 +97,8 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers and drum pad map (`shows/midi/default.yaml`), and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.
 
 Scenes (`shows/scenes/*.yaml`) are layers applied in order to fixtures or groups: static colour/position/gobo, or an effect (`colour_chase`, `pixel_chase`, `flash`, `sweep`, `random_move`). Colours, positions and gobos come from `shows/palettes.yaml`. Like looks, scenes can't set dimmers or haze or move the U'King heads. See the top of `dmx_suite/scenes.py` for every option.
+
+Shows (`shows/shows/*.yaml`) have sets on fixed step timers. A set is either a list of scenes (in order, or random without repeats) or an `auto` style that generates a fresh scene every step from the palette colours, energy (low/mid/high), head colour mix (matching/white/contrast), patterns (all, heads only, bars only, static on the kit) and movement (random/sweep/static), using only the fixtures in the active rig. `band` has LOW / MID / HIGH (60 / 40 / 20 s) plus a `cues` set; `opera` and `acoustic` are single-set shows. Setlists (`shows/setlists/`) list songs, each with a show/set or a scene, optionally forcing MASTER. A scene layer can name a `fallback` group to use when its fixtures aren't in the rig.
 
 Levels in rig files are 0-100 %. Looks (`shows/looks/`) set colour, pixels, wheel, gobo and position only; a `dimmer` or `haze` key is rejected (hard rules 1 and 5). The static look is the fallback when no scene is playing.
 

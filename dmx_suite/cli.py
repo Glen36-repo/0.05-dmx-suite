@@ -26,6 +26,7 @@ from .midi.router import MidiRouter
 from .output import LogDriver, NodeSerialDriver, make_driver
 from .ofl import import_ofl
 from .setup import format_report, patch_report
+from .showctl import ShowController
 from .showfiles import ShowFiles, check_all, load_show
 
 DEFAULT_SHOWS = Path(__file__).resolve().parents[1] / "shows"
@@ -90,6 +91,10 @@ HELP = """commands:
   gm PCT | sub KIND PCT       grand master / sub-master (head bar wash kick)
   haze off|manual|pulse|boost|release
   scene NAME | scenes | look  play a scene / list scenes / back to the static look
+  show NAME [SET] | shows     play a show (e.g. show band high)   set low|mid|high
+  next                        next step now       now   what's playing
+  setlist NAME | song next|prev|N | setlists      setlist mode
+  tap | tempo BPM|off         tap tempo (effects follow it; step timers stay fixed)
   rig                         show the rig          monitor [N]   last N MIDI lines
 setup / test:
   find FIXTURE | find off     light one fixture (ignores MASTER)
@@ -101,8 +106,11 @@ setup / test:
   status                      outputs + counters    quit"""
 
 
-def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path, show: ShowFiles | None = None) -> None:
+def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path, show: ShowFiles | None = None,
+            ctl: ShowController | None = None) -> None:
     print(rig_view(engine))
+    if ctl:
+        print(ctl.describe())
     print("\ntype 'help' for commands")
     while True:
         try:
@@ -123,6 +131,8 @@ def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path
                 {"on": lambda: engine.set_master(True), "off": lambda: engine.set_master(False)}.get(
                     rest[0] if rest else "toggle", engine.toggle_master
                 )()
+                if ctl:
+                    ctl.save()
                 print(rig_view(engine))
             elif cmd == "blackout":
                 {"on": lambda: engine.set_blackout(True), "off": lambda: engine.set_blackout(False)}.get(
@@ -165,16 +175,44 @@ def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path
                 for k, sc in (show.scenes if show else {}).items():
                     mark = "*" if engine.scene is sc else " "
                     print(f" {mark} {k:16} {sc.name}  ({len(sc.layers)} layers)")
-            elif cmd == "scene":
-                if not show or rest[0] not in show.scenes:
-                    print(f"no scene {rest[0]!r}; scenes: {', '.join(show.scenes) if show else ''}")
-                else:
-                    engine.set_scene(show.scenes[rest[0]])
-                    print(rig_view(engine))
-            elif cmd == "look":
-                if show:
-                    engine.set_look(show.look)
+            elif cmd == "scene" and ctl:
+                ctl.select_scene(rest[0])
                 print(rig_view(engine))
+            elif cmd == "look" and ctl:
+                ctl.select_look()
+                print(rig_view(engine))
+            elif cmd == "shows" and show:
+                for k, sh in show.shows.items():
+                    print(f"  {k:12} {sh.name}  sets: {', '.join(sh.sets)}  (default {sh.default_set})")
+            elif cmd == "show" and ctl:
+                ctl.select_show(rest[0], rest[1] if len(rest) > 1 else None)
+                print(ctl.describe())
+            elif cmd == "set" and ctl:
+                ctl.select_set(rest[0])
+                print(ctl.describe())
+            elif cmd == "next" and ctl:
+                ctl.next_step()
+                print(ctl.describe())
+            elif cmd == "now" and ctl:
+                print(ctl.describe())
+            elif cmd == "setlists" and show:
+                for k, sl in show.setlists.items():
+                    print(f"  {k:12} {sl.name} ({len(sl.songs)} songs)")
+            elif cmd == "setlist" and ctl and show:
+                ctl.load_setlist(rest[0])
+                for i, sg in enumerate(show.setlists[rest[0]].songs):
+                    print(f"  {'>' if i == ctl.song else ' '} {i + 1:2}. {sg.name}")
+                print(ctl.describe())
+            elif cmd == "song" and ctl:
+                arg = rest[0] if rest else "next"
+                {"next": ctl.next_song, "prev": ctl.prev_song}.get(arg, lambda: ctl.go_song(int(arg) - 1))()
+                print(ctl.describe())
+            elif cmd == "tap" and ctl:
+                bpm = ctl.tap()
+                print(f"{bpm:.0f} BPM" if bpm else "tap again")
+            elif cmd == "tempo" and ctl:
+                ctl.set_tempo(None if rest[0] == "off" else float(rest[0]))
+                print(ctl.describe())
             elif cmd == "find":
                 engine.find_fixture(None if rest[0] == "off" else rest[0])
                 print(rig_view(engine))
@@ -236,11 +274,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         if isinstance(d, NodeSerialDriver):
             d.link.health.expect(show.rig.nodes)
     engine = Engine(show.rig, drivers, show.look)
-    if args.scene:
-        if args.scene not in show.scenes:
-            raise ConfigError(f"no scene {args.scene!r}; have: {', '.join(show.scenes)}")
-        engine.set_scene(show.scenes[args.scene])
-    router = MidiRouter(engine, show.midimap, MidiMonitor())
+    ctl = ShowController(engine, show, None if args.sim else args.shows / ".state.json")
+    resumed = False if args.fresh else ctl.restore()  # laptop restarted mid-gig: carry on
+    if resumed:
+        print("resumed:", ctl.describe())
+    elif args.setlist:
+        ctl.load_setlist(args.setlist)
+    elif args.show:
+        ctl.select_show(args.show, args.set)
+    elif args.scene:
+        ctl.select_scene(args.scene)
+    router = MidiRouter(engine, show.midimap, MidiMonitor(), ctl)
     fake = FakeMidiIn(router.handle_mido)
     real = None
     if not args.sim:
@@ -249,7 +293,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     engine.start()
     try:
         if args.sim or sys.stdin.isatty():
-            console(engine, router, fake, show.midimap_path, show)
+            console(engine, router, fake, show.midimap_path, show, ctl)
         else:
             while True:
                 time.sleep(1)
@@ -321,6 +365,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sim", action="store_true", help="simulator: fake MIDI, log output, no hardware")
     p.add_argument("--sim-node", action="store_true", help="with --sim, also drive the simulated node")
     p.add_argument("--scene", help="scene to start with (default: the static look)")
+    p.add_argument("--show", help="show to start with, e.g. band")
+    p.add_argument("--set", help="set within the show, e.g. mid")
+    p.add_argument("--setlist", help="start a setlist at song 1")
+    p.add_argument("--fresh", action="store_true", help="don't resume what was playing before a restart")
 
     sub.add_parser("midi-ports", help="list MIDI inputs")
     p = sub.add_parser("midi-monitor", help="live MIDI list with what each message triggers")

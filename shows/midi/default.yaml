@@ -20,3 +20,14 @@ mappings:
   - {type: note, channel: 10, number: 45, action: flash, fixtures: [bar_3, bar_4], length_ms: 150, colour: show}
   - {type: note, channel: 10, number: 49, action: flash, fixtures: [all], length_ms: 250, colour: white}
   - {type: note, channel: 10, number: 51, action: flash, fixtures: [washes], length_ms: 200, colour: show}
+
+  # Shows and setlist (FCB1010, ch 1). PLACEHOLDER program numbers.
+  - {type: program_change, channel: 1, number: 1, action: select_set, set: low}
+  - {type: program_change, channel: 1, number: 2, action: select_set, set: mid}
+  - {type: program_change, channel: 1, number: 3, action: select_set, set: high}
+  - {type: program_change, channel: 1, number: 4, action: select_show, show: opera}
+  - {type: program_change, channel: 1, number: 8, action: select_show, show: acoustic}
+  - {type: program_change, channel: 1, number: 10, action: next_song}
+  - {type: program_change, channel: 1, number: 11, action: prev_song}
+  - {type: program_change, channel: 1, number: 12, action: next_step}
+  - {type: program_change, channel: 1, number: 13, action: tap_tempo}

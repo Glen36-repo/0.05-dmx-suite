@@ -36,10 +36,14 @@ ACTIONS: dict[str, set[str]] = {
     "haze_manual": set(),
     "haze_pulse": set(),
     "haze_boost": set(),
-    # phase 4 (auto shows / setlist): accepted in the map now, not acted on yet
-    "select_show": {"show"},
+    # shows and setlists
+    "select_show": {"show", "set"},
     "select_set": {"set"},
+    "select_scene": {"scene"},
+    "next_step": set(),
     "next_song": set(),
+    "prev_song": set(),
+    "tap_tempo": set(),
 }
 CONTINUOUS = {"grand_master", "sub_master", "flash_level"}  # need a CC
 
@@ -83,6 +87,9 @@ def validate(m: Mapping) -> None:
         c = m.params.get("colour", "show")
         if c not in ("show", "white"):
             raise ConfigError(f"{where}: flash colour must be show or white")
+    for action, key in (("select_show", "show"), ("select_set", "set"), ("select_scene", "scene")):
+        if m.action == action and not m.params.get(key):
+            raise ConfigError(f"{where}: {action} needs {key}")
     if m.action == "sub_master":
         try:
             Kind(m.params.get("kind"))

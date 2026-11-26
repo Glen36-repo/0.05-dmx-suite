@@ -5,12 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
+from .auto import generate
 from .fixtures import ConfigError, Patch, load_patch
 from .look import Look, load_look
 from .midi.map import MidiMap, load_map
 from .palettes import Palettes, load_palettes
 from .rig import Rig, load_rig
 from .scenes import Scene, load_scenes
+from .shows import Setlist, Show, load_setlists, load_shows, parse_setlist, parse_show
 
 
 @dataclass
@@ -23,6 +27,8 @@ class ShowFiles:
     midimap_path: Path
     palettes: Palettes
     scenes: dict[str, Scene]
+    shows: dict[str, Show]
+    setlists: dict[str, Setlist]
 
 
 def _pick(folder: Path, name: str) -> Path:
@@ -45,7 +51,13 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
             patch.resolve(m.params["fixtures"])
     pal = load_palettes(root / "palettes.yaml", patch)
     scenes = load_scenes(root / "scenes", patch, pal)
-    return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes)
+    shows = load_shows(root / "shows", pal, scenes)
+    setlists = load_setlists(root / "setlists", shows, scenes)
+    for m in mp.mappings:  # show/scene names in the MIDI map must exist
+        for key, table in (("show", shows), ("scene", scenes)):
+            if key in m.params and m.params[key] not in table:
+                raise ConfigError(f"MIDI map {m.type} ch{m.channel} #{m.number}: unknown {key} {m.params[key]!r}")
+    return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists)
 
 
 def check_all(root: str | Path) -> list[str]:
@@ -71,11 +83,38 @@ def check_all(root: str | Path) -> list[str]:
         problems.append(f"palettes.yaml: {e}")
         pal = None
     if pal is not None:
+        scenes = {}
         for p in sorted((root / "scenes").glob("*.yaml")):
             try:
-                load_scenes_file(p, patch, pal)
+                scenes[p.stem] = load_scenes_file(p, patch, pal)
             except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
                 problems.append(f"scenes/{p.name}: {e}")
+        shows = {}
+        for p in sorted((root / "shows").glob("*.yaml")):
+            try:
+                shows[p.stem] = parse_show(p.stem, yaml.safe_load(p.read_text(encoding="utf-8")) or {}, pal, scenes)
+            except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+                problems.append(f"shows/{p.name}: {e}")
+        for p in sorted((root / "setlists").glob("*.yaml")):
+            try:
+                parse_setlist(p.stem, yaml.safe_load(p.read_text(encoding="utf-8")) or {}, shows, scenes)
+            except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+                problems.append(f"setlists/{p.name}: {e}")
+        # every auto set must produce valid scenes on every rig
+        for sk, show in shows.items():
+            for rp in sorted((root / "rigs").glob("*.yaml")):
+                try:
+                    rig = load_rig(rp, patch)
+                except (ConfigError, OSError, KeyError, TypeError, ValueError):
+                    continue
+                for st in show.sets.values():
+                    if st.auto is None:
+                        continue
+                    try:
+                        for step in range(20):
+                            generate(st.auto, rig, pal, step, "check")
+                    except (ConfigError, KeyError, ValueError) as e:
+                        problems.append(f"shows/{sk}.yaml set {st.name} on rig {rp.stem}: {e}")
     for p in sorted((root / "midi").glob("*.yaml")):
         try:
             mp = load_map(p)
