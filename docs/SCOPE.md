@@ -272,6 +272,10 @@ Decided 26/11/2026:
 | Haze max on-time | Hitting `max_on_s` forces haze off for `rest_s`, then the mode resumes |
 | MIDI on Linux | `python-rtmidi` is an optional `hw` extra; the simulator works without it |
 | Effect timing | Every effect is time-based (`period_s` per cycle, `spread` 0-1 across the group), independent of frame rate |
+| Installing on the laptop | Windows installer (PyInstaller app + Inno Setup), no Python needed; built by GitHub Actions or `installer/build.ps1` |
+| Desktop program | `0.05 DMX Suite.exe` opens the UI in its own window (pywebview on Windows' WebView2, standard on Windows 11), with a tray icon; closing hides to the tray, Quit is in the tray menu. Same screens as the browser UI so phone access stays. Console `dmx-suite.exe` kept for Claude Desktop (MCP) and fault-finding |
+| Installed show folder | Picked in the installer, default `OneDrive\Music\0.05 DMX Suite\shows`; saved as `DMX_SUITE_SHOWS`; starter shows only if the folder is new; never touched by upgrade/uninstall |
+| Claude Desktop hookup | Installer option (on by default) runs `dmx-suite claude-setup`, which updates every Claude Desktop config found (standard and Store installs) |
 | Moving U'Kings in scenes | A movement layer that includes a colour-only head is rejected at load, not silently skipped |
 | Heads move dark | `random_move` has `dark_move_s`: the head is blacked (via colour) for that long after each new position |
 | Find fixture | Lights the one fixture full white, ignoring MASTER, grand master and the kick light; head limits still apply |

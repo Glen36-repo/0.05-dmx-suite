@@ -1,0 +1,69 @@
+"""Where the show folder lives.
+
+From a source checkout the show folder is the repo's `shows/`. The installed Windows app is read-only
+under Program Files, so its show folder is the one picked in the installer (default
+`OneDrive/Music/0.05 DMX Suite/shows`, saved as the DMX_SUITE_SHOWS user environment variable), or
+`Documents/0.05 DMX Suite/shows` if none was set. A missing folder is created from the bundled starter
+shows on first run; an existing one is never overwritten, so upgrades keep the band's edits.
+
+Order: `--shows` on the command line, then the DMX_SUITE_SHOWS environment variable, then the default.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+from pathlib import Path
+
+APP_DIR_NAME = "0.05 DMX Suite"
+ENV_VAR = "DMX_SUITE_SHOWS"
+
+
+def frozen() -> bool:
+    """True when running from the packaged app (PyInstaller)."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def bundled_shows() -> Path:
+    """Starter shows shipped with the app (or the repo's shows/ from source)."""
+    if frozen():
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "shows"
+    return Path(__file__).resolve().parents[1] / "shows"
+
+
+def documents_dir() -> Path:
+    """The user's Documents folder (falls back to the home folder)."""
+    home = Path(os.environ.get("USERPROFILE") or Path.home())
+    docs = home / "Documents"
+    return docs if docs.is_dir() else home
+
+
+def user_shows() -> Path:
+    return documents_dir() / APP_DIR_NAME / "shows"
+
+
+def seed_shows(target: Path, source: Path | None = None) -> bool:
+    """Copy the starter shows into `target` if it doesn't exist yet. Returns True if copied."""
+    if target.exists():
+        return False
+    src = source or bundled_shows()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, target, ignore=shutil.ignore_patterns(".backups", ".state.json", ".giglock"))
+    return True
+
+
+def prepare(shows: Path) -> Path:
+    """Installed app: fill a new show folder with the starter shows. From source: leave it."""
+    if frozen():
+        seed_shows(shows)
+    return shows
+
+
+def default_shows() -> Path:
+    """Show folder to use when --shows isn't given."""
+    env = os.environ.get(ENV_VAR)
+    if env:
+        return prepare(Path(env))
+    # installed app without a folder picked in the installer: Documents
+    return prepare(user_shows()) if frozen() else bundled_shows()

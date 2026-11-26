@@ -16,6 +16,7 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules.
 | `dmx_suite/ofl.py` | Fixture import from Open Fixture Library files |
 | `dmx_suite/auto.py` | Auto-show generator (LOW / MID / HIGH, opera, acoustic styles) |
 | `dmx_suite/shows.py`, `showctl.py` | Shows, setlists, tap tempo, resume after restart |
+| `dmx_suite/desktop.py` | Desktop app: UI window (pywebview / WebView2) and tray icon |
 | `dmx_suite/web/` | Browser UI and local JSON API (standard library, works offline) |
 | `dmx_suite/store.py` | Validated, backed-up edits to the show folder (UI and Claude) |
 | `dmx_suite/claude_tools.py`, `mcp_server.py` | Claude Desktop (MCP) tools |
@@ -25,15 +26,32 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules.
 | `dmx_suite/node/` | Laptop side: protocol, link, health tracking, simulated node |
 | `dmx_suite/tools/node_test.py` | Node test script (`dmx-node-test`) |
 | `firmware/` | PlatformIO: `node` (CoreS3 SE) and `receiver` (AtomS3 Lite) |
+| `installer/` | Windows installer: PyInstaller spec, Inno Setup script, `build.ps1` |
 | `tests/` | pytest, including a byte-for-byte check of the firmware protocol code |
 
-## Setup (laptop)
+## Install (gig laptop)
+
+Run `0.05-DMX-Suite-Setup-<version>.exe`. No Python needed. It asks:
+
+- **Show files folder:** default `OneDrive\Music\0.05 DMX Suite\shows` (Documents if there's no OneDrive). An existing folder is used as is; a new one gets the starter shows. Upgrades and uninstall never touch it
+- **Add the 0.05 tools to Claude Desktop** (on by default): restart Claude Desktop afterwards
+- **Desktop shortcut** (on) and **start live at login** (off)
+
+**0.05 DMX Suite** opens as a desktop program in its own window (the same screens as the browser UI, so phones on the network still work). Closing the window hides it to the tray icon and the lights keep running; the tray menu has Open, Blackout and Quit. Opening it again while it's running brings the window back on the running engine. Show file problems at start-up are shown in the window; everything else is logged to `logs\desktop.log` next to the show folder.
+
+Start menu: **0.05 DMX Suite**, **0.05 DMX Suite (simulator)**, show files folder, and under Tools: MIDI monitor, check show files, simulator console. The chosen folder is saved as the `DMX_SUITE_SHOWS` user environment variable, so `dmx-suite.exe` from a command prompt uses it too.
+
+**Building the installer:** run the *Windows installer* workflow on GitHub (Actions tab → Run workflow, or push a `v*` tag) and download it from the run's artifacts. Or on a Windows PC with Python 3.12+ and Inno Setup 6: `powershell -ExecutionPolicy Bypass -File installer\build.ps1` → `dist\`. The build runs the tests and a check of the packaged app first. Bump `version` in `pyproject.toml` for each release.
+
+## Setup (from source)
 
 On the gig laptop (real MIDI ports, Claude Desktop tools):
 
 ```bash
-pip install -e .[hw,claude,dev]
+pip install -e .[hw,claude,desktop,dev]
 ```
+
+Desktop app window from source: `dmx-suite app` (add `--sim` for the simulator).
 
 For development without MIDI hardware:
 
@@ -126,7 +144,7 @@ A red banner and a beep appear when an output, MIDI interface or node drops out.
 
 ## Claude Desktop
 
-Lets Claude read and build scenes, shows, setlists and palettes in plain words, check them against the hard rules, preview them on the rig and read node health. Add this to Claude Desktop's `claude_desktop_config.json` (use the full path to `dmx-suite.exe` inside your virtual environment's `Scripts` folder):
+Lets Claude read and build scenes, shows, setlists and palettes in plain words, check them against the hard rules, preview them on the rig and read node health. The installer sets this up. From source, run `dmx-suite claude-setup` (adds it to every Claude Desktop config found, keeping a `.bak`), or add this to `claude_desktop_config.json` by hand (full path to `dmx-suite.exe` inside your virtual environment's `Scripts` folder):
 
 ```json
 {
