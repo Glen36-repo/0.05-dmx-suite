@@ -213,3 +213,12 @@ a.button, label.button { display: inline-flex; align-items: center; padding: 6px
 input.wide { flex: 1; min-width: 260px; }
 .chip.warn { border-color: var(--warn); color: var(--warn); }
 body.restarting main { opacity: 0.4; pointer-events: none; }
+
+/* ---------------------------------------------------------------- polish (R6) */
+.sw.dark { border-color: var(--muted); }
+.offline-box { display: none; position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 50;
+  background: var(--panel); border: 2px solid var(--bad); border-radius: 14px; padding: 18px 22px; max-width: min(420px, calc(100vw - 32px));
+  box-shadow: 0 10px 40px rgb(0 0 0 / .5); text-align: center; flex-direction: column; gap: 6px; }
+body.offline .offline-box { display: flex; }
+.toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+@media (max-width: 720px) { main { padding-bottom: calc(90px + env(safe-area-inset-bottom)); } }

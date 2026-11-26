@@ -31,6 +31,7 @@ async function loadMap() {
     return el("tr", {}, el("td", { text: input }), el("td", { text: ch ?? "" }), el("td", { text: number ?? "" }),
       el("td", { text: `${action} ${extra}` }),
       el("td", {}, el("button", { onclick: async () => {
+        if (!confirm(t("midi.confirm_remove"))) return;
         if (await attempt(() => api("POST", "/api/midi/remove", { type, channel: ch, number, port, address }))) loadMap();
       } }, t("midi.remove"))));
   }));

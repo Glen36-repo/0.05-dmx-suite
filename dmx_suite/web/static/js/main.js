@@ -23,7 +23,16 @@ document.addEventListener("click", (ev) => {
   cmd(b.dataset.cmd, args);
 });
 
+// keep the screen awake while the app is showing (lost when hidden: asked for again on return)
+async function wakeLock() {
+  try {
+    if (document.visibilityState === "visible" && navigator.wakeLock) await navigator.wakeLock.request("screen");
+  } catch {} // not allowed (e.g. battery saver): carry on
+}
+document.addEventListener("visibilitychange", wakeLock);
+
 (async () => {
+  wakeLock();
   await load("en");
   apply();
   for (const view of [top, liveView, layout, scenes, shows, busk, heads, midi, setup, files]) view.init();

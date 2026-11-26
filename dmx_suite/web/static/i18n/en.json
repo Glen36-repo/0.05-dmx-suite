@@ -419,5 +419,9 @@
  "project.restarting": "Opening the show file…",
  "project.overwrite": "{name} already exists. Replace it?",
  "project.saved": "Saved as {name}",
- "project.saved_folder": "Saved as {name}; open it to keep working in that file"
+ "project.saved_folder": "Saved as {name}; open it to keep working in that file",
+ "status.lost_title": "Lost the connection to the lighting laptop",
+ "status.lost_help": "The lights keep running. Reconnecting by itself…",
+ "scenes.off": "off",
+ "midi.confirm_remove": "Remove this mapping? (Save the MIDI map to keep the change.)"
 }

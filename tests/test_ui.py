@@ -459,3 +459,33 @@ def test_show_file_section_upload_and_download(ui, tmp_path):
     page.set_input_files("#project-upload", str(f))
     page.wait_for_selector("body.restarting")
     assert restarts and restarts[0].name == "Phone.dms"
+
+
+def test_lost_connection_overlay(ui):
+    page, *_ = ui
+    assert not page.is_visible("#offline")
+    page.evaluate("document.body.classList.add('offline')")  # what the page does when the stream drops
+    assert page.is_visible("#offline") and "Lost the connection" in page.inner_text("#offline")
+
+
+def test_fader_follows_the_state_after_a_finger_slides_off(ui):
+    page, app, _, _ = ui
+    f = page.locator("#faders input[data-key=grand]")
+    box = f.bounding_box()
+    page.mouse.move(box["x"] + 5, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + 200)  # off the fader
+    page.mouse.up()
+    page.locator("#now").click()  # focus elsewhere
+    app.engine.set_grand(0.3)
+    page.wait_for_function("document.querySelector('#faders input[data-key=grand]').value === '30'")
+
+
+def test_layer_picks_its_group_tab(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.select_option("#scene-pick", "blue_chase")
+    page.wait_for_function("document.querySelectorAll('#layers li').length === 5")
+    page.click("#layers li >> nth=0 >> button.name")
+    page.wait_for_selector("#scene-group-tabs [data-group=bars].on")
+    assert page.locator("#scene-swatches, .swatches").first.locator(".sw[title=off]").count() <= 1

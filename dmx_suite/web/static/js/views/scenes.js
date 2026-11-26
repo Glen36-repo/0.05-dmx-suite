@@ -109,6 +109,9 @@ function pick(i) {
   current = i;
   const ly = doc.layers[i];
   grid.select(expand(ly.fixtures || []));
+  const f = ly.fixtures || [];
+  group = f.length === 1 && (f[0] === "all" || live.cat.groups[f[0]]) ? f[0] : null; // its group's tab, if it is one
+  buildTabs(live.cat);
   renderAll();
 }
 
@@ -152,14 +155,16 @@ function toggleKey(obj, k, v, dflt) {
   else obj[k] = v;
 }
 
+const dark = (hex) => /^#[0-9a-f]{6}$/i.test(hex) && parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16) < 60;
+
 function swatch(value, onPick, allowNone = true) {
   const box = el("div", { class: "swatches" });
   const draw = () => {
     box.replaceChildren(
       ...(allowNone ? [el("button", { class: "sw none" + (!value ? " sel" : ""), title: t("scenes.none"), onclick: () => { value = undefined; onPick(value); draw(); } }, "∅")] : []),
-      el("button", { class: "sw" + (value === "off" ? " sel" : ""), title: "off", style: "background:#000", onclick: () => { value = "off"; onPick(value); draw(); } }, ""),
-      ...Object.entries(fx.colours).map(([n, hex]) => el("button", {
-        class: "sw" + (value === n ? " sel" : ""), title: n, style: `background:${hex}`, onclick: () => { value = n; onPick(value); draw(); },
+      el("button", { class: "sw dark" + (value === "off" ? " sel" : ""), title: t("scenes.off"), style: "background:#000", onclick: () => { value = "off"; onPick(value); draw(); } }, ""),
+      ...Object.entries(fx.colours).filter(([n]) => n !== "off").map(([n, hex]) => el("button", {
+        class: "sw" + (value === n ? " sel" : "") + (dark(hex) ? " dark" : ""), title: n, style: `background:${hex}`, onclick: () => { value = n; onPick(value); draw(); },
       })),
       el("input", { type: "color", title: t("scenes.custom_colour"), value: typeof value === "string" && value.startsWith("#") ? value : "#ffffff",
                     oninput: (e) => { value = e.target.value; onPick(value); } }));
@@ -329,7 +334,7 @@ function updateSelection() {
 
 function buildTabs(cat) {
   const names = ["all", ...Object.keys(cat.groups).sort()];
-  if (!names.includes(group)) group = "all";
+  if (group !== null && !names.includes(group)) group = "all";
   $("#scene-group-tabs").replaceChildren(...names.map((g) => el("button", {
     role: "tab", class: g === group ? "on" : "", "aria-selected": g === group, "data-group": g,
     onclick: () => { group = g; buildTabs(live.cat); grid.select(g === "all" ? Object.keys(grid.layout) : cat.groups[g] || []); },

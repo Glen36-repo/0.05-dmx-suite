@@ -30,8 +30,11 @@ function buildCatalogue(cat) {
       if (now - last > 40) { last = now; send(inp.value / 100); } // at most 25 a second
     });
     inp.addEventListener("change", () => send(inp.value / 100)); // and always the final value
-    inp.addEventListener("pointerdown", () => (inp.dataset.busy = "1"));
-    inp.addEventListener("pointerup", () => delete inp.dataset.busy);
+    inp.addEventListener("pointerdown", (e) => {
+      inp.dataset.busy = "1";
+      inp.setPointerCapture?.(e.pointerId); // the release comes here even if the finger slides off
+    });
+    for (const ev of ["pointerup", "pointercancel", "lostpointercapture", "blur"]) inp.addEventListener(ev, () => delete inp.dataset.busy);
     faders.append(el("div", { class: "fader" }, el("label", {}, el("span", { text: label }), out), inp));
   };
   fader(t("live.grand"), "grand", (v) => cmd("grand", { level: v }));
