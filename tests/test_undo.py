@@ -43,14 +43,14 @@ def test_undo_and_redo_a_new_file(root):
 def test_undo_gives_back_the_exact_file_with_comments(root):
     s = ShowStore(root)
     p = root / "palettes.yaml"
-    original = p.read_text()
-    assert "#" in original  # the shipped file has comments
+    original = p.read_bytes()  # exactly, line endings too (CRLF in a Windows checkout)
+    assert b"#" in original  # the shipped file has comments
     s.put_entry("palettes", "colours", "undo_pink", [1, 0.4, 0.7])
     s.put_entry("palettes", "colours", "undo_teal", [0, 0.8, 0.8])
     assert "undo_teal" in p.read_text()
     s.undo()
     s.undo()
-    assert p.read_bytes() == original.encode()
+    assert p.read_bytes() == original
 
 
 def test_a_new_change_clears_redo(root):
