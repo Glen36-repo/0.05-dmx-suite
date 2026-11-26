@@ -19,7 +19,7 @@ from typing import Any
 
 import yaml
 
-from .fixtures import ConfigError
+from .fixtures import ConfigError, Kind
 from .showfiles import check_all
 from .versions import FORMAT, FormatError, kind_of, needs_upgrade, show_files, stamped, upgrade
 from .yamlio import plain_dump, update_text
@@ -229,6 +229,100 @@ class ShowStore:
         data["fixtures"] = fx
         p = self.path("fixtures", "")
         return self.apply({p: self.text_for(p, data)}, f"put fixture {entry['id']}")
+
+    # ------------------------------------------------------------------ groups
+
+    def edit_group(self, action: str, name: str, fixtures: list[str] | None = None, new_name: str | None = None) -> str:
+        """Groups live on the fixture entries in fixtures.yaml (`groups: [...]`).
+
+        set:    the group is exactly `fixtures` (made if new; empty list = delete)
+        rename: to `new_name`, and every scene, look, rig and MIDI map that names it follows
+        delete: refused (by validation) while anything still uses it
+        """
+        if action not in ("set", "rename", "delete"):
+            raise StoreError("group action must be set, rename or delete")
+        data = self.read("fixtures")
+        entries = data.get("fixtures") or []
+        ids = {e.get("id") for e in entries}
+        have = {g for e in entries for g in e.get("groups") or []}
+        self._check_group_name(name, ids)
+        if action != "set" and name not in have:
+            raise StoreError(f"no group {name!r}")
+        changes: dict[Path, str | None] = {}
+        if action == "set":
+            want = set(fixtures or [])
+            unknown = want - ids
+            if unknown:
+                raise StoreError(f"unknown fixtures {sorted(unknown)}")
+            for e in entries:
+                gs = [g for g in e.get("groups") or [] if g != name]
+                if e["id"] in want:
+                    gs.append(name)
+                self._set_groups(e, gs)
+            note = f"group {name}: {', '.join(sorted(want)) or 'deleted'}"
+        elif action == "delete":
+            for e in entries:
+                self._set_groups(e, [g for g in e.get("groups") or [] if g != name])
+            note = f"delete group {name}"
+        else:
+            if not new_name:
+                raise StoreError("rename needs new_name")
+            self._check_group_name(new_name, ids)
+            if new_name in have:
+                raise StoreError(f"there's already a group {new_name!r}")
+            for e in entries:
+                self._set_groups(e, [new_name if g == name else g for g in e.get("groups") or []])
+            changes.update(self._rename_refs(name, new_name))
+            note = f"rename group {name} -> {new_name}"
+        p = self.path("fixtures", "")
+        changes[p] = self.text_for(p, data)
+        return self.apply(changes, note)
+
+    @staticmethod
+    def _set_groups(entry: dict[str, Any], groups: list[str]) -> None:
+        if groups:
+            entry["groups"] = groups
+        else:
+            entry.pop("groups", None)
+
+    def _check_group_name(self, name: str, ids: set[str]) -> None:
+        self._check_name(name)
+        if name == "all" or name in ids or name in {k.value for k in Kind}:
+            raise StoreError(f"{name!r} can't be a group name: it's a fixture, a fixture kind or 'all'")
+
+    def _rename_refs(self, old: str, new: str) -> dict[Path, str | None]:
+        """Files whose fixture lists name group `old`, rewritten to name `new`."""
+
+        def swap(names: Any) -> Any:
+            if isinstance(names, list):
+                return [new if n == old else n for n in names]
+            return new if names == old else names
+
+        out: dict[Path, str | None] = {}
+        for kind, folder in FOLDERS.items():
+            for p in sorted((self.root / folder).glob("*.yaml")):
+                data = self.read(kind, p.stem)
+                before = repr(data)
+                if kind == "scene":
+                    for ly in data.get("layers") or []:
+                        for k in ("fixtures", "fallback"):
+                            if isinstance(ly, dict) and k in ly:
+                                ly[k] = swap(ly[k])
+                elif kind == "rig":
+                    if "fixtures" in data:
+                        data["fixtures"] = swap(data["fixtures"])
+                    prof = data.get("profile")
+                    if isinstance(prof, dict) and "master_exempt" in prof:
+                        prof["master_exempt"] = swap(prof["master_exempt"])
+                elif kind == "look" and isinstance(data.get("fixtures"), dict):
+                    data["fixtures"] = {(new if k == old else k): v for k, v in data["fixtures"].items()}
+                elif kind == "midi":
+                    for m in data.get("mappings") or []:
+                        if isinstance(m, dict) and "fixtures" in m:
+                            m["fixtures"] = swap(m["fixtures"])
+                if repr(data) != before:
+                    out[p] = self.text_for(p, data)
+        return out
 
     # ------------------------------------------------------------------ backups
 

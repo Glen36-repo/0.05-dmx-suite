@@ -409,6 +409,8 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 bid = s.restore(b["backup"], b["file"])
             elif parts == ["fixture"] and method == "POST":
                 bid = s.put_fixture(b["entry"])
+            elif parts == ["group"] and method == "POST":
+                bid = s.edit_group(str(b.get("action", "")), str(b.get("name", "")), b.get("fixtures"), b.get("new_name"))
             elif len(parts) == 3 and parts[0] in ("palettes", "fixtures") and method in ("PUT", "DELETE"):
                 bid = s.put_entry(parts[0], parts[1], parts[2], None if method == "DELETE" else b.get("value"))
             elif len(parts) == 2 and method == "PUT":

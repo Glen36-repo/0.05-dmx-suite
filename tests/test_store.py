@@ -189,3 +189,52 @@ def test_restore_only_takes_show_files(store):
     bid = store.backups()[0]["id"]
     with pytest.raises(StoreError, match="only show files"):
         store.restore(bid, "NOTE.txt")
+
+
+# ------------------------------------------------------------------ groups (v2 R2)
+
+
+def groups_of(store):
+    out = {}
+    for e in store.read("fixtures")["fixtures"]:
+        for g in e.get("groups") or []:
+            out.setdefault(g, []).append(e["id"])
+    return out
+
+
+def test_make_and_change_a_group(store):
+    store.edit_group("set", "front", ["wash_l", "wash_r", "kick"])
+    assert groups_of(store)["front"] == ["wash_l", "wash_r", "kick"]
+    store.edit_group("set", "front", ["wash_l"])
+    assert groups_of(store)["front"] == ["wash_l"]
+    text = (store.root / "fixtures.yaml").read_text(encoding="utf-8")
+    assert "# " in text  # comments kept
+
+
+def test_group_names_checked(store):
+    for bad in ("all", "kick", "bar", "mh_a", "Bad Name"):
+        with pytest.raises(StoreError):
+            store.edit_group("set", bad, ["mh_a"])
+    with pytest.raises(StoreError, match="unknown fixtures"):
+        store.edit_group("set", "x", ["ghost"])
+    with pytest.raises(StoreError, match="no group"):
+        store.edit_group("delete", "nope")
+
+
+def test_rename_follows_every_reference(store):
+    store.edit_group("rename", "movers", new_name="spots")
+    g = groups_of(store)
+    assert "movers" not in g and g["spots"] == ["mh_a", "mh_b"]
+    blue = store.read("scene", "blue_chase")
+    assert {"fixtures": ["spots"], "position": "drum_kit", "gobo": "dots"} in blue["layers"]
+    from dmx_suite.showfiles import check_all
+
+    assert [p for p in check_all(store.root) if not p.startswith("warning")] == []
+
+
+def test_delete_refused_while_used(store):
+    with pytest.raises(StoreError, match="unknown fixture or group 'movers'"):
+        store.edit_group("delete", "movers")
+    store.edit_group("set", "spare", ["kick"])
+    store.edit_group("delete", "spare")
+    assert "spare" not in groups_of(store)

@@ -20,6 +20,7 @@ from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
 from .node.health import HealthEvent
 from .output import NodeSerialDriver, OutputDriver
+from .profile import resolve_exempt
 from .rig import parse_placement
 from .scenes import ScenePlayer, parse_scene
 from .showctl import ShowController
@@ -187,6 +188,10 @@ class App:
             notes.append("fixture/rig changes take effect after a restart")
         live = self.files.rig
         live.layout = new.rig.layout  # the layout is display only: apply now
+        for fid, fx in live.patch.fixtures.items():  # groups are labels: apply now too
+            if fid in new.patch.fixtures:
+                fx.groups = list(new.patch.fixtures[fid].groups)
+        live.exempt = resolve_exempt(live.profile, live.patch, live.present)
         new.rig, new.patch = live, self.files.patch  # keep the live patch
         self.files = new
         self.ctl.files = new

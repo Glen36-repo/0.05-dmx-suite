@@ -222,3 +222,14 @@ def test_node_drop_alert_and_health_log(tmp_path):
     assert '"to": "offline"' in log
     assert {"mac", "state", "rssi"} <= set(app.nodes()[0])
     app.engine.stop()
+
+
+def test_groups_over_http_apply_live(running):
+    app, url, _ = running
+    status, r = call(url + "/api/store/group", "POST", {"action": "set", "name": "front", "fixtures": ["wash_l", "wash_r"]})
+    assert status == 200 and r["backup"]
+    assert app.catalogue()["groups"]["front"] == ["wash_l", "wash_r"]  # no restart
+    status, r = call(url + "/api/store/group", "POST", {"action": "set", "name": "all", "fixtures": ["kick"]})
+    assert status == 400
+    app.set_gig_lock(True)
+    assert call(url + "/api/store/group", "POST", {"action": "delete", "name": "front"})[0] == 423
