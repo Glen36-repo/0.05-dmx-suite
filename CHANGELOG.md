@@ -6,7 +6,6 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 
 ### Added
 - Rule profiles: rules split into safety rules (always on) and profile rules (per rig file). Profiles "generic" (standard dimmer behaviour, scenes may set `intensity`, no drum flash) and "0.05 band" (v1 behaviour).
-- Strobe rate limit (safety): at most 3 rig-wide flashes a second by default, from any source; `strobe_limit_hz` per rig, can't be turned off.
 - Show file format versions (`version:`): older files upgrade automatically at start-up with a backup; files from a newer app are refused.
 - Saving show files keeps comments and layout.
 - If the show folder won't load at start-up, the last good version from the backups runs and the status bar says so.

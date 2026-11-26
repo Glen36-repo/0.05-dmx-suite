@@ -10,4 +10,4 @@ Pages are filled in as each v2 release lands. Where a page says "coming", the fe
 4. [Shows and setlists](shows.md): steps, repeats, fades, auto shows, setlists
 5. [Busking](busking.md): live buttons and faders
 6. [MIDI and OSC](midi-osc.md): mapping pedals, drums and controllers
-7. [Safety and troubleshooting](troubleshooting.md): the safety rules, strobe limit, when something goes wrong
+7. [Safety and troubleshooting](troubleshooting.md): the safety rules, when something goes wrong

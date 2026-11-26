@@ -105,14 +105,9 @@ def test_shipped_rigs_use_band_profile():
         assert load_show(SHOWS, rig=name).rig.profile is BAND_005
 
 
-def _no_strobe_limit(rig):
-    # v1 had no strobe limit; this compares the profile split alone (strobe tests are below)
-    return replace(rig, strobe_limit_hz=None)
-
-
 def test_band_profile_renders_v1_frames_byte_for_byte():
     golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    now = capture(_no_strobe_limit)
+    now = capture()
     diff = sorted(k for k in golden if now.get(k) != golden[k])
     assert not diff, f"{len(diff)} scenarios changed, e.g. {diff[:5]}"
     assert now.keys() == golden.keys()
@@ -120,7 +115,7 @@ def test_band_profile_renders_v1_frames_byte_for_byte():
 
 def test_rig_without_profile_renders_v1_frames():
     golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    assert capture(lambda rig: replace(_no_strobe_limit(rig), profile=V1_DEFAULT)) == golden
+    assert capture(lambda rig: replace(rig, profile=V1_DEFAULT)) == golden
 
 
 # ------------------------------------------------------------------ safety rules: both profiles
@@ -329,123 +324,3 @@ def test_drum_flash_mappings_warn_on_generic_rigs(shows):
     assert not any("drum flash" in p for p in check_all(shows))
     _set_profile(shows, "generic")
     assert any(p.startswith("warning") and "drum flash" in p and "rule 2" in p for p in check_all(shows))
-
-
-# ------------------------------------------------------------------ strobe rate limit (safety)
-
-
-def _lit_fraction(view, e) -> float:
-    lights = [f.id for f in e.rig.fixtures if view.emitters(f.id)]
-    return sum(1 for f in lights if any(view.emitters(f))) / len(lights)
-
-
-def _onsets(samples: list[tuple[float, float]]) -> list[float]:
-    """Times the rig's lit fraction jumps by FLASH_STEP or more from its low since the last jump."""
-    out, low = [], 1.0
-    for t, lit in samples:
-        if lit - low >= 0.25:
-            out.append(t)
-            low = lit
-        low = min(low, lit)
-    return out
-
-
-def test_strobe_limit_from_rig_file():
-    patch = parse_patch(PATCH)
-    assert parse_rig(RIG, patch).strobe_limit_hz == 3.0  # on by default
-    assert parse_rig({**RIG, "strobe_limit_hz": 10}, patch).strobe_limit_hz == 10.0
-    for bad in (0, 0.1, 30, "fast", None):
-        with pytest.raises(ConfigError, match="strobe_limit_hz"):
-            parse_rig({**RIG, "strobe_limit_hz": bad}, patch)
-
-
-def test_raised_strobe_limit_warns(shows):
-    assert not any("strobe" in p for p in check_all(shows))
-    rig = shows / "rigs" / "full.yaml"
-    rig.write_text(rig.read_text(encoding="utf-8") + "\nstrobe_limit_hz: 8\n", encoding="utf-8")
-    assert any(p.startswith("warning: rigs/full.yaml: strobe limit raised to 8") for p in check_all(shows))
-
-
-def test_strobe_limit_holds_a_20_hit_drum_roll():
-    e, view, clock = build("0.05_band")
-    clock.advance(5)
-    e.set_master(False)
-    clock.advance(5)
-    lights = [f.id for f in e.rig.fixtures if f.id not in e.rig.exempt]
-    samples, start = [], clock()
-    for i in range(200):  # 1 s in 5 ms steps; a hit every 50 ms (20 hits), each 40 ms long
-        if i % 10 == 0:
-            e.flash(lights, 127, "white", length_ms=40)
-        else:
-            e.tick()
-        samples.append((clock() - start, _lit_fraction(view, e)))
-        clock.advance(0.005)
-    onsets = _onsets(samples)
-    assert 2 <= len(onsets) <= 3  # 20 hits, at most 3 flashes reach the rig
-    assert all(b - a >= 1 / 3 - 1e-9 for a, b in zip(onsets, onsets[1:]))
-    assert e.rules.held > 0
-
-
-@pytest.mark.parametrize("profile", PROFILES)
-def test_strobe_limit_holds_a_fast_strobe_effect(profile):
-    from dmx_suite.palettes import parse_palettes
-    from dmx_suite.scenes import ScenePlayer, parse_scene
-
-    e, view, clock = build(profile)
-    pal = parse_palettes({"colours": {"white": [1, 1, 1]}}, e.rig.patch)
-    sc = parse_scene({"layers": [{"fixtures": ["all"], "effect": "flash", "colour": "white", "rate_hz": 10, "duty": 0.5}]},
-                     e.rig.patch, pal, "strobe")
-    clock.advance(5)
-    e.set_source(ScenePlayer(sc, e.rig, clock()))
-    samples = []
-    for _ in range(120):  # 3 s at 40 frames a second
-        clock.advance(0.025)
-        e.tick()
-        samples.append((clock(), _lit_fraction(view, e)))
-    onsets = _onsets(samples)
-    assert 8 <= len(onsets) <= 10  # 30 flashes asked for, about 3 a second delivered
-    assert all(b - a >= 1 / 3 - 1e-9 for a, b in zip(onsets, onsets[1:]))
-
-
-def test_raised_strobe_limit_lets_more_through():
-    from dmx_suite.palettes import parse_palettes
-    from dmx_suite.scenes import ScenePlayer, parse_scene
-
-    e, view, clock = build("generic", strobe_limit_hz=12)
-    pal = parse_palettes({"colours": {"white": [1, 1, 1]}}, e.rig.patch)
-    sc = parse_scene({"layers": [{"fixtures": ["all"], "effect": "flash", "colour": "white", "rate_hz": 10, "duty": 0.5}]},
-                     e.rig.patch, pal, "strobe")
-    clock.advance(5)
-    e.set_source(ScenePlayer(sc, e.rig, clock()))
-    samples = []
-    for _ in range(120):
-        clock.advance(0.025)
-        e.tick()
-        samples.append((clock(), _lit_fraction(view, e)))
-    assert len(_onsets(samples)) >= 25
-
-
-def test_chases_are_not_flashes():
-    """Light moving round the rig without a rig-wide jump passes through untouched."""
-    from dmx_suite.palettes import parse_palettes
-    from dmx_suite.scenes import ScenePlayer, parse_scene
-
-    def frames(limit):
-        e, _, clock = build("generic")
-        e.rig.strobe_limit_hz = limit
-        pal = parse_palettes({"colours": {"red": [1, 0, 0], "blue": [0, 0, 1]}}, e.rig.patch)
-        sc = parse_scene({"layers": [
-            {"fixtures": ["bars"], "effect": "pixel_chase", "colour": "red", "width": 1, "period_s": 0.3},
-            {"fixtures": ["mh_a", "wash", "uk", "kick"], "effect": "colour_chase", "colours": ["red", "blue"],
-             "period_s": 0.2, "spread": 1},
-        ]}, e.rig.patch, pal, "chase")
-        clock.advance(5)
-        e.set_source(ScenePlayer(sc, e.rig, clock()))
-        out = []
-        for _ in range(120):
-            clock.advance(0.025)
-            e.tick()
-            out.append(bytes(e.frames[0]))
-        return out
-
-    assert frames(3.0) == frames(None)

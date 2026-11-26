@@ -66,7 +66,6 @@ def test_rule2_velocity_sets_brightness(engine, view):
 
 
 def test_rule2_flash_white_or_show_colour(engine, view, clock):
-    clock.advance(1)  # the rig came on at start-up; a flash in the same instant is held (strobe limit)
     engine.set_master(False)
     engine.flash(["bar_1"], colour="white")
     assert [view("bar_1", r, 0) for r in ("red", "green", "blue")] == [255, 255, 255]

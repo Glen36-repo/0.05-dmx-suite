@@ -4,7 +4,7 @@ The rules come in two kinds (docs/SCOPE.md, CLAUDE.md):
 
 Safety rules are always on, for every user, and nothing here can turn them off:
     4 no background glow, 5 haze only from the Haze controls, 6 grand master scales intensity
-    only, 8 head limits (plus the strobe rate limit).
+    only, 8 head limits.
 
 Profile rules are settings, picked per rig config:
     1 `master_gate`   MASTER owns on/off; scenes are colour only and can't set `intensity`.

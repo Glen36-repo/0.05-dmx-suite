@@ -276,7 +276,6 @@ class App:
             "profile": e.rig.profile.summary(),
             "fault": {"message": e.fault, "count": e.faults} if e.fault else None,
             "show_problem": self.show_problem,
-            "strobe_limit": {"hz": e.rig.strobe_limit_hz, "held": e.rules.held},
             "blackout": e.blackout,
             "gig_lock": self.gig_lock,
             "grand": e.masters.grand.target,

@@ -11,9 +11,6 @@ from .fixtures import EMITTERS, ConfigError, Kind, Patch
 from .profile import V1_DEFAULT, Profile, parse_profile, resolve_exempt
 from .versions import read_doc
 
-STROBE_DEFAULT_HZ = 3.0  # common photosensitive-epilepsy guidance: no more than 3 flashes a second
-STROBE_MAX_HZ = 25.0
-
 
 @dataclass
 class HeadLimit:
@@ -70,7 +67,6 @@ class Rig:
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
-    strobe_limit_hz: float | None = STROBE_DEFAULT_HZ  # safety rule; None only in tests
 
     @property
     def fixtures(self):
@@ -180,18 +176,7 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         layout=_layout(data.get("layout"), patch),
         profile=profile,
         exempt=resolve_exempt(profile, patch, present),
-        strobe_limit_hz=_strobe_limit(data.get("strobe_limit_hz", STROBE_DEFAULT_HZ)),
     )
-
-
-def _strobe_limit(v: Any) -> float:
-    try:
-        hz = float(v)
-    except (TypeError, ValueError) as e:
-        raise ConfigError("strobe_limit_hz must be a number of flashes per second") from e
-    if not 0.5 <= hz <= STROBE_MAX_HZ:
-        raise ConfigError(f"strobe_limit_hz must be 0.5-{STROBE_MAX_HZ:g} (it can't be turned off)")
-    return hz
 
 
 def _stage(d: Any) -> tuple[float, float]:

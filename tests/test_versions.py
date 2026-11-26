@@ -69,17 +69,13 @@ def test_v1_folder_upgrades_with_backup_and_comments(v1):
 
 def test_format_1_folder_renders_v1_frames_before_and_after_upgrade(v1):
     import json
-    from dataclasses import replace
 
     from golden import GOLDEN, capture
 
-    def no_limit(rig):  # v1 had no strobe limit (test_profiles covers it)
-        return replace(rig, strobe_limit_hz=None)
-
     golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    assert capture(no_limit, root=v1) == golden  # read as format 1, upgraded in memory
+    assert capture(root=v1) == golden  # read as format 1, upgraded in memory
     ShowStore(v1).upgrade()
-    assert capture(no_limit, root=v1) == golden  # written as the current format
+    assert capture(root=v1) == golden  # written as the current format
 
 
 def test_newer_format_refused(tmp_path):

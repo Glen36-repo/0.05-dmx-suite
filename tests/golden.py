@@ -38,10 +38,8 @@ def _hash(frames: dict[int, bytearray]) -> str:
     return h.hexdigest()[:16]
 
 
-def capture(rig_transform=None, forward_time: bool = False, root: Path = SHOWS) -> dict[str, str]:
-    """rig_transform(rig) lets the test apply a profile before rendering. The v1 capture restarts
-    the clock at the same time for every scenario; `forward_time` moves it on 100 s per scenario
-    instead, as a real clock would (needed for anything that measures time between frames)."""
+def capture(rig_transform=None, root: Path = SHOWS) -> dict[str, str]:
+    """rig_transform(rig) lets the test apply a profile before rendering."""
     out: dict[str, str] = {}
     base = [1000.0]
     for rig_name in ("full", "small"):
@@ -52,8 +50,6 @@ def capture(rig_transform=None, forward_time: bool = False, root: Path = SHOWS) 
 
         def run(tag: str, source_at) -> None:
             for master in (True, False):
-                if forward_time:
-                    base[0] += 100.0
                 clock.t = base[0]
                 e.set_master(master)
                 e.set_source(source_at(clock.t))

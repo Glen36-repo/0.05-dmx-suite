@@ -36,7 +36,6 @@ def test_program_change_toggles_master(engine, midi):
 
 
 def test_drum_hit_flashes_with_velocity(engine, midi, view, clock):
-    clock.advance(1)  # the rig came on at start-up; a flash in the same instant is held (strobe limit)
     midi.program(0)  # MASTER off
     assert midi.note(38, 127).startswith("flash bars")
     assert view("bar_1", "blue", 0) == 255

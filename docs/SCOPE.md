@@ -48,7 +48,6 @@ The engine enforces the rules itself in the rule layer, so no look can break the
 - HAZE is never set by scenes or auto shows; it runs only from the Haze controls (rule 5)
 - Grand master scales intensity only: never pan/tilt, colour choice or haze (rule 6)
 - Moving head pan/tilt limits from the active rig config are always enforced (rule 8)
-- Strobe rate limit: flashes per second across the rig capped, default 3 Hz (v2)
 
 **Profile rules (settings per rig config; "Generic" and "0.05 band" profiles ship):**
 
@@ -253,7 +252,7 @@ Each phase ends with something usable at rehearsal; Daslight stays as backup unt
 
 Planned 26/11/2026. One release per branch, hardening and features side by side; every item has tests and is tested against every rule under both shipped profiles.
 
-1. **R1 Rule profiles and safety net:** safety/profile rule split (first; later releases depend on it), Generic and 0.05 band profiles, strobe rate limit, `version:` in every show file with automatic upgrade, engine loop timing fix, crash-proof render with fallback to the last good show files, value range checks, comment-keeping YAML saves, MIT licence and project files, user manual, CI (tests, lint, type-check, firmware build), file log, signed installer and update check
+1. **R1 Rule profiles and safety net:** safety/profile rule split (first; later releases depend on it), Generic and 0.05 band profiles, `version:` in every show file with automatic upgrade, engine loop timing fix, crash-proof render with fallback to the last good show files, value range checks, comment-keeping YAML saves, MIT licence and project files, user manual, CI (tests, lint, type-check, firmware build), file log, signed installer and update check
 2. **R2 Layout, groups, themes:** left-hand page menu; grid light layout (one square per light or pixel, live colours, group tabs, select, arrange, zoom, beam-line overlay) replacing the metre stage plan; groups made from a selection; themes (neutral default + 0.05); all UI text in one strings file
 3. **R3 Effects and scene builder:** effect registry; layer level and blend; new effects; spatial (matrix) mapping across the layout; spread, direction, width, waveform and groups-of on every effect; on-screen scene builder with live preview
 4. **R4 Outputs and OSC:** non-blocking driver threads; Art-Net and sACN; OSC input sharing the MIDI map and learn; thread-safety fixes
@@ -339,7 +338,7 @@ Decided 26/11/2026 (v2):
 | Name | "0.05 DMX Suite" kept for now |
 | UI first | Everything can be done in the UI with no YAML or Claude; MCP is an optional extra |
 | Rule profiles | Rules split into safety rules (always on) and profile rules (per rig config); "Generic" and "0.05 band" profiles ship; existing 0.05 shows run under "0.05 band" unchanged |
-| Strobe limit | Safety rule, on by default at 3 Hz across the rig (drum flash, strobe effects, busk flashes); can be raised per rig config with a warning |
+| Strobe limit | Not included: no rate limit on flashing (decided 26/11/2026, replacing the earlier 3 Hz safety rule). Flash effects and drum hits run at the rate set |
 | File versions | `version:` in every show file; older files upgraded automatically after a backup; newer files refused with a clear message |
 | Light layout | Grid layout (one square per light or pixel, group tabs, zoom) replaces the metre-based stage plan; beam lines kept as an overlay |
 | Navigation | Page menu down the left-hand side; bottom bar on a phone |
@@ -359,7 +358,6 @@ Decided 26/11/2026 (v2):
 | Update check (v2) | On request only (`dmx-suite update-check`, `/api/update`): reads the latest GitHub release and says if it's newer. Check only, nothing downloaded. The repo is private, so it needs the repo public, a public release feed, or DMX_SUITE_UPDATE_URL |
 | Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
 | Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
-| Strobe limit: what counts | A flash is a rise of a quarter (or more) of the rig's light output from the darkest point since the last flash, measured on the final frame, so drum hits, flash effects and busking are all covered; a flash too soon is held (lights that got brighter keep last frame's light) rather than dropped; chases that move light without a rig-wide jump pass untouched. `strobe_limit_hz` 0.5-25, can't be turned off. Fixture hardware strobe channels aren't rate-checked until capability ranges arrive (R7) |
 | MASTER-exempt fixtures | Fixture ids, groups or a kind name (`kick` = every kick-kind fixture, as v1); they ignore MASTER and drum flashes and use the rig's `kick_colour` when the scene leaves them off. Under "generic" nothing is exempt and a kick-kind light is an ordinary light (auto shows use it like a wash) |
 
 Open:

@@ -25,7 +25,6 @@ Numbers are kept from v1 so tests and docs still match. From v2 R1, every rule i
 5. HAZE is never set by scenes or auto shows; only the Haze controls.
 6. Grand master scales intensity only: never pan/tilt, colour choice or haze.
 8. Moving head pan/tilt limits from the active rig config are always enforced.
-- Strobe rate limit: flashes per second across the rig capped (default 3 Hz; drum flash, strobe effects, busk flashes).
 
 **Profile rules: settings in the rig config's profile. "0.05 band" turns all three on; "Generic" uses standard dimmer behaviour with no drum flash.**
 
@@ -57,7 +56,7 @@ v1 (built):
 6. Phase 2 MIDI, second universe
 
 v2 (general release; details in `docs/SCOPE.md`):
-- R1 Rule profiles (first), strobe limit, file versions, engine safety, comment-keeping store, project basics, CI
+- R1 Rule profiles (first), file versions, engine safety, comment-keeping store, project basics, CI
 - R2 Left-hand menu, grid light layout, groups, themes, strings file
 - R3 Effect registry, spatial effects, spread, scene builder
 - R4 Non-blocking outputs, Art-Net/sACN, OSC input, thread safety

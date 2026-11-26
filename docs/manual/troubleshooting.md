@@ -6,7 +6,6 @@
 - **Haze** only comes from the Haze controls, never from scenes or shows.
 - **Grand master** changes brightness only, never position or colour choice.
 - **Moving-head limits** from the rig file are always kept to.
-- **Strobe limit:** the whole rig can flash at most 3 times a second (common photosensitive-epilepsy guidance). A flash that comes too soon is held back. Raise it per rig with `strobe_limit_hz` if you must; it can't be turned off. Hardware strobe channels on a fixture aren't covered yet.
 
 ## When something goes wrong
 
