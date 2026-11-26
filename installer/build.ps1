@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 function Check($what) { if ($LASTEXITCODE -ne 0) { throw "$what failed (exit $LASTEXITCODE)" } }
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
-$version = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
+$version = (Select-String -Path dmx_suite\__init__.py -Pattern '^__version__\s*=\s*"(.+)"').Matches[0].Groups[1].Value
 Write-Host "Building 0.05 DMX Suite $version"
 
 python -m venv .build-venv; Check "venv"

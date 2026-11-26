@@ -2,7 +2,7 @@
 
 Live lighting software for the band 0.05: MIDI in, DMX out, automatic shows, drum flash, and scene editing through Claude via MCP.
 
-See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules.
+See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules. The user manual is in `docs/manual/`; contributing: `CONTRIBUTING.md`; changes: `CHANGELOG.md`. MIT licence (`LICENSE`).
 
 ## Layout
 
@@ -218,6 +218,14 @@ dmx-node-test --port COM5 identify F4:12:FA:00:A0:01
 ```
 
 `check` pings the node 20 times (round-trip times), then lists status and every node heard with its state: online, weak, offline or new.
+
+## Updates
+
+```bash
+dmx-suite update-check
+```
+
+Says whether a newer version has been released (also `/api/update` for the UI). It only checks; installing is up to you. Nothing else is sent anywhere: no telemetry. `dmx-suite --version` shows the installed version.
 
 ## Firmware
 

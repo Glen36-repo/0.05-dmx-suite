@@ -408,6 +408,14 @@ def cmd_midi_monitor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_update_check(args: argparse.Namespace) -> int:
+    from .update import check
+
+    r = check()
+    print(r["message"] + (f"\n{r['url']}" if r.get("newer") and r.get("url") else ""))
+    return 0 if r["ok"] else 1
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     problems = check_all(args.shows)
     errors = [p for p in problems if not p.startswith("warning")]
@@ -420,6 +428,9 @@ def cmd_check(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="dmx-suite", description="0.05 DMX Suite")
     ap.add_argument("--shows", type=Path, default=None, help="show folder (default: DMX_SUITE_SHOWS, else the app's own)")
+    from . import __version__
+
+    ap.add_argument("--version", action="version", version=f"0.05 DMX Suite {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def show_args(p: argparse.ArgumentParser) -> None:
@@ -454,6 +465,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--channel", type=int, help="only this channel (1-16)")
 
     sub.add_parser("check", help="validate show files")
+    sub.add_parser("update-check", help="see if a newer version has been released (checks only)")
     sub.add_parser("mcp", help="MCP server for Claude Desktop (stdio)")
     p = sub.add_parser("claude-setup", help="add the 0.05 tools to Claude Desktop's config")
     p.add_argument("--config", type=Path, help="config file (default: every Claude Desktop config found)")
@@ -515,6 +527,10 @@ def resolve_shows(args: argparse.Namespace) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = resolve_shows(build_parser().parse_args(argv))
+    if args.cmd not in ("mcp",):  # MCP talks over stdio: keep its logging out of the way
+        from .logs import setup
+
+        setup()
     try:
         return {
             "run": cmd_run,
@@ -526,6 +542,7 @@ def main(argv: list[str] | None = None) -> int:
             "claude-setup": cmd_claude_setup,
             "addresses": cmd_addresses,
             "import-ofl": cmd_import_ofl,
+            "update-check": cmd_update_check,
         }[args.cmd](args)
     except ConfigError as e:
         print(f"show file error: {e}", file=sys.stderr)

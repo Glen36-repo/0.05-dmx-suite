@@ -277,6 +277,10 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             if path == "/api/ping":
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
+            if path == "/api/update":  # only when the user asks (UI button); check only, nothing installed
+                from ..update import check
+
+                return self._json(200, check())
             if path == "/api/devices":
                 return self._json(200, app.devices())
             if path == "/api/state":

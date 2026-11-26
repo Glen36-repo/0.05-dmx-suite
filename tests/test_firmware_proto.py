@@ -1,5 +1,6 @@
 """Compile firmware/include/proto.h on the host and check it matches the Python protocol byte for byte."""
 
+import os
 import shutil
 import struct
 import subprocess
@@ -17,6 +18,8 @@ SRC = ROOT / "firmware" / "test" / "host_proto_check.cpp"
 def firmware_output(tmp_path_factory) -> dict[str, str]:
     cxx = shutil.which("g++") or shutil.which("clang++")
     if not cxx:
+        if os.environ.get("REQUIRE_FIRMWARE_TEST"):  # CI: a missing compiler is a failure, not a skip
+            pytest.fail("no C++ compiler, and REQUIRE_FIRMWARE_TEST is set")
         pytest.skip("no C++ compiler")
     exe = tmp_path_factory.mktemp("fw") / "check"
     subprocess.run([cxx, "-std=c++17", "-Wall", "-Werror", "-o", str(exe), str(SRC)], check=True)
@@ -54,3 +57,13 @@ def test_fallback_render_matches(firmware_output):
 
 def test_firmware_parser_resyncs(firmware_output):
     assert firmware_output["parser"] == "good=2 crc_errors=2"
+
+
+def test_simulated_node_reports_the_firmware_version():
+    import re
+
+    from dmx_suite.node import sim
+
+    cfg = (ROOT / "firmware" / "include" / "config.h").read_text(encoding="utf-8")
+    fw = tuple(int(re.search(rf"#define FW_{p} (\d+)", cfg).group(1)) for p in ("MAJOR", "MINOR", "PATCH"))
+    assert sim.FW_VERSION == fw

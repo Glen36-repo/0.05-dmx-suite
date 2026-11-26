@@ -43,7 +43,9 @@ Numbers are kept from v1 so tests and docs still match. From v2 R1, every rule i
 - Everything a user needs must be doable in the UI; Claude (MCP) is optional.
 - UI text lives in `web/static/i18n/en.json` from v2 R2; no hard-coded strings in views.
 - Output drivers are pluggable (`node_serial`, `enttec_open`, `enttec_pro`, `artnet`, `sacn`, `log`, `null`).
-- Small commits, one feature each, with tests. Update `docs/SCOPE.md` decisions if a design choice changes.
+- Small commits, one feature each, with tests. Update `docs/SCOPE.md` decisions if a design choice changes; user-visible changes go in `CHANGELOG.md` and `docs/manual/`.
+- Before committing: `ruff check dmx_suite tests installer`, `mypy dmx_suite`, `pytest`; `pio run -d firmware` if firmware changed (CI runs all four).
+- Show file format changes: bump `FORMAT` in `dmx_suite/versions.py` and add an upgrade step with a test.
 
 ## Phase order
 v1 (built):

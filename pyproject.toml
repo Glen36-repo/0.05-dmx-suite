@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dmx-suite"
-version = "0.1.0"
-description = "0.05 DMX Suite: live lighting for the band 0.05"
+dynamic = ["version"]  # from dmx_suite/__init__.py
+description = "0.05 DMX Suite: live lighting software for Windows, MIDI/OSC in, DMX out"
 requires-python = ">=3.12"
 dependencies = ["pyserial>=3.5", "mido>=1.3", "PyYAML>=6", "ruamel.yaml>=0.18,<0.19"]
 
@@ -20,6 +20,9 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "types-PyYAML"]
 [project.scripts]
 dmx-suite = "dmx_suite.cli:main"
 dmx-node-test = "dmx_suite.tools.node_test:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "dmx_suite.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["dmx_suite*"]
