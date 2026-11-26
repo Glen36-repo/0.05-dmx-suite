@@ -107,9 +107,19 @@ export class LightGrid {
   drawLight(id) {
     const f = this.fixtures[id];
     const old = this.items[id];
-    const g = svg("g", { class: `fx ${f.kind}`, "data-id": id });
+    const g = svg("g", { class: `fx ${f.kind}` + ((f.pixels || 1) > 1 ? " pixel" : ""), "data-id": id });
+    const p0 = this.layout[id];
+    if ((f.pixels || 1) > 1) {
+      // a pixel light is one object: an outline round its segments, drawn in the light's own frame and turned with it
+      const offs = cellOffsets(f.pixels, p0.shape, p0.cols);
+      const xs = offs.map(([x]) => x), ys = offs.map(([, y]) => y), m = 0.46; // bars end to end still show a gap
+      const [x0, x1, y0, y1] = [Math.min(...xs) - m, Math.max(...xs) + m, Math.min(...ys) - m, Math.max(...ys) + m];
+      g.append(svg("rect", { class: "outline", x: (p0.x + x0) * C, y: (p0.y + y0) * C, width: (x1 - x0) * C, height: (y1 - y0) * C, rx: 5,
+                             transform: `rotate(${p0.rot || 0} ${p0.x * C} ${p0.y * C})` }));
+    }
+    const cs = (f.pixels || 1) > 1 ? 0.74 : SIZE; // segments sit inside the outline
     const cells = this.cellsOf(id).map(([x, y]) => {
-      const r = svg("rect", { x: (x - SIZE / 2) * C, y: (y - SIZE / 2) * C, width: SIZE * C, height: SIZE * C, rx: 3, class: "cell" });
+      const r = svg("rect", { x: (x - cs / 2) * C, y: (y - cs / 2) * C, width: cs * C, height: cs * C, rx: 3, class: "cell" });
       g.append(r);
       return r;
     });
