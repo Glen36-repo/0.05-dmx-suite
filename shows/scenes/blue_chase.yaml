@@ -1,0 +1,9 @@
+# Bars pixel chase, washes blue, heads chase blue/white on the kit.
+name: Blue chase
+show_colour: blue
+layers:
+  - {fixtures: [bars], effect: pixel_chase, colour: blue, background: deep_blue, width: 3, tail: 2, period_s: 2}
+  - {fixtures: [washes], colour: deep_blue}
+  - {fixtures: [ukings], effect: colour_chase, colours: [blue, white], period_s: 4, spread: 1}
+  - {fixtures: [movers], effect: colour_chase, colours: [blue, white], period_s: 4, spread: 1, fade: true}
+  - {fixtures: [movers], position: drum_kit, gobo: dots}

@@ -1,0 +1,8 @@
+# High-energy: white flash effect on bars, heads sweeping fast.
+name: Strobe hit
+show_colour: white
+layers:
+  - {fixtures: [bars], effect: flash, colour: white, rate_hz: 8, duty: 0.3, spread: 0.25}
+  - {fixtures: [washes], effect: colour_chase, colours: [magenta, cyan], period_s: 1, spread: 1}
+  - {fixtures: [heads], colour: white}
+  - {fixtures: [movers], effect: sweep, from: audience_l, to: ceiling, period_s: 2, spread: 1}

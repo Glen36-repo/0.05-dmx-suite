@@ -5,6 +5,8 @@
     dmx-suite midi-ports
     dmx-suite midi-monitor                  live MIDI list with what each message triggers
     dmx-suite check                         validate every show file
+    dmx-suite addresses                     patch / address check
+    dmx-suite import-ofl FILE [--mode M]    fixture type from an Open Fixture Library file
 """
 
 from __future__ import annotations
@@ -22,7 +24,9 @@ from .midi.map import save_map
 from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
 from .output import LogDriver, NodeSerialDriver, make_driver
-from .showfiles import check_all, load_show
+from .ofl import import_ofl
+from .setup import format_report, patch_report
+from .showfiles import ShowFiles, check_all, load_show
 
 DEFAULT_SHOWS = Path(__file__).resolve().parents[1] / "shows"
 
@@ -85,13 +89,19 @@ HELP = """commands:
   cc N VALUE [CH]             control change (e.g. cc 7 64 = expression pedal)
   gm PCT | sub KIND PCT       grand master / sub-master (head bar wash kick)
   haze off|manual|pulse|boost|release
+  scene NAME | scenes | look  play a scene / list scenes / back to the static look
   rig                         show the rig          monitor [N]   last N MIDI lines
+setup / test:
+  find FIXTURE | find off     light one fixture (ignores MASTER)
+  chan CH VALUE [UNI] | chan CH off    raw channel tester
+  setup off                   clear find and channel tests
+  addresses                   patch / address check   nodes   node + receiver health
   learn ACTION [k=v ...]      next MIDI message maps to ACTION (e.g. learn flash fixtures=bars)
   save                        write the MIDI map    map           list mappings
   status                      outputs + counters    quit"""
 
 
-def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path) -> None:
+def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path, show: ShowFiles | None = None) -> None:
     print(rig_view(engine))
     print("\ntype 'help' for commands")
     while True:
@@ -151,6 +161,41 @@ def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path
                 print(rig_view(engine).splitlines()[1])
             elif cmd == "rig":
                 print(rig_view(engine))
+            elif cmd == "scenes":
+                for k, sc in (show.scenes if show else {}).items():
+                    mark = "*" if engine.scene is sc else " "
+                    print(f" {mark} {k:16} {sc.name}  ({len(sc.layers)} layers)")
+            elif cmd == "scene":
+                if not show or rest[0] not in show.scenes:
+                    print(f"no scene {rest[0]!r}; scenes: {', '.join(show.scenes) if show else ''}")
+                else:
+                    engine.set_scene(show.scenes[rest[0]])
+                    print(rig_view(engine))
+            elif cmd == "look":
+                if show:
+                    engine.set_look(show.look)
+                print(rig_view(engine))
+            elif cmd == "find":
+                engine.find_fixture(None if rest[0] == "off" else rest[0])
+                print(rig_view(engine))
+            elif cmd == "chan":
+                uni = int(rest[2]) if len(rest) > 2 else 0
+                engine.test_channel(int(rest[0]), None if rest[1] == "off" else int(rest[1]), uni)
+                print(f"channel {rest[0]} = {rest[1]}  (setup off to clear)")
+            elif cmd == "setup" and rest and rest[0] == "off":
+                engine.clear_setup()
+                print("setup cleared")
+            elif cmd == "addresses":
+                print(format_report(*patch_report(engine.rig.patch, engine.rig)))
+            elif cmd == "nodes":
+                nodes = [d for d in engine.drivers if isinstance(d, NodeSerialDriver)]
+                if not nodes:
+                    print("no node output in use (third-party interfaces show as connected/disconnected only)")
+                for d in nodes:
+                    for r in d.link.health.nodes.values():
+                        hb = r.heartbeat
+                        sig = f"rssi {hb.rssi} loss {hb.loss_pct}%" if hb and hb.rssi is not None else ""
+                        print(f"  {r.mac}  {r.state.value:7}  {r.name or '(new node)':16}  {sig}")
             elif cmd == "monitor":
                 n = int(rest[0]) if rest else 15
                 for e in list(router.monitor.entries)[-n:]:
@@ -191,6 +236,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         if isinstance(d, NodeSerialDriver):
             d.link.health.expect(show.rig.nodes)
     engine = Engine(show.rig, drivers, show.look)
+    if args.scene:
+        if args.scene not in show.scenes:
+            raise ConfigError(f"no scene {args.scene!r}; have: {', '.join(show.scenes)}")
+        engine.set_scene(show.scenes[args.scene])
     router = MidiRouter(engine, show.midimap, MidiMonitor())
     fake = FakeMidiIn(router.handle_mido)
     real = None
@@ -200,7 +249,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     engine.start()
     try:
         if args.sim or sys.stdin.isatty():
-            console(engine, router, fake, show.midimap_path)
+            console(engine, router, fake, show.midimap_path, show)
         else:
             while True:
                 time.sleep(1)
@@ -271,6 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
     show_args(p)
     p.add_argument("--sim", action="store_true", help="simulator: fake MIDI, log output, no hardware")
     p.add_argument("--sim-node", action="store_true", help="with --sim, also drive the simulated node")
+    p.add_argument("--scene", help="scene to start with (default: the static look)")
 
     sub.add_parser("midi-ports", help="list MIDI inputs")
     p = sub.add_parser("midi-monitor", help="live MIDI list with what each message triggers")
@@ -278,7 +328,29 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--channel", type=int, help="only this channel (1-16)")
 
     sub.add_parser("check", help="validate show files")
+    p = sub.add_parser("addresses", help="patch / address check")
+    p.add_argument("--rig", default="full")
+    p = sub.add_parser("import-ofl", help="fixture type YAML from an Open Fixture Library JSON file")
+    p.add_argument("file", type=Path)
+    p.add_argument("--mode", help="OFL mode name (needed if the fixture has several)")
+    p.add_argument("--key", help="type key to use in fixtures.yaml")
+    p.add_argument("--kind", choices=[k.value for k in Kind], help="override the guessed kind")
     return ap
+
+
+def cmd_addresses(args: argparse.Namespace) -> int:
+    from .fixtures import load_patch
+    from .rig import load_rig
+
+    patch = load_patch(args.shows / "fixtures.yaml")
+    rig = load_rig(args.shows / "rigs" / f"{args.rig}.yaml", patch)
+    print(format_report(*patch_report(patch, rig)))
+    return 0
+
+
+def cmd_import_ofl(args: argparse.Namespace) -> int:
+    print(import_ofl(args.file, args.mode, args.key, args.kind), end="")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -289,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
             "midi-ports": cmd_midi_ports,
             "midi-monitor": cmd_midi_monitor,
             "check": cmd_check,
+            "addresses": cmd_addresses,
+            "import-ofl": cmd_import_ofl,
         }[args.cmd](args)
     except ConfigError as e:
         print(f"show file error: {e}", file=sys.stderr)

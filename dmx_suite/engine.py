@@ -8,12 +8,13 @@ import time
 from typing import Callable
 
 from .faders import Masters
-from .fixtures import Kind
+from .fixtures import DMX_CHANNELS, Kind
 from .haze import Haze, HazeMode
-from .look import Colour, Look
+from .look import Colour, FixtureLook, Look
 from .output import OutputDriver
 from .rig import Rig
 from .rules import ControlState, Flash, RuleLayer
+from .scenes import Scene, ScenePlayer
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +37,12 @@ class Engine:
         now = clock()
         self.master = rig.startup_master  # safe default on (re)start
         self.blackout = False
-        self.look = look or Look()
+        self.look = look or Look()  # static look (or last look a scene produced)
+        self.source: Callable[[float], Look] | None = None  # scene player
+        self.scene: Scene | None = None
+        # setup/test page: find one fixture, raw channel tester
+        self.find: str | None = None
+        self.channel_test: dict[tuple[int, int], int] = {}  # (universe, 1-based channel) -> value
         self.flashes: dict[str, Flash] = {}
         self.masters = Masters(rig.grand_master, rig.sub_masters, rig.flash_level, rig.fade_s)
         self.haze = Haze(rig.haze, now)
@@ -61,7 +67,15 @@ class Engine:
             now = self.clock()
             for fid in [f for f, fl in self.flashes.items() if fl.until <= now]:
                 del self.flashes[fid]
-            self.frames = self.rules.render(self.look, self._state(now), self.masters)
+            if self.source is not None:
+                self.look = self.source(now)
+            if self.find is not None:
+                self.frames = self._render_find(now)
+            else:
+                self.frames = self.rules.render(self.look, self._state(now), self.masters)
+            for (uni, ch), val in self.channel_test.items():
+                if uni in self.frames:
+                    self.frames[uni][ch - 1] = val
             for drv in self.drivers:
                 for uni, frame in self.frames.items():
                     try:
@@ -124,7 +138,69 @@ class Engine:
 
     def set_look(self, look: Look) -> None:
         with self.lock:
+            self.source, self.scene = None, None
             self.look = look
+        self._changed()
+
+    def set_scene(self, scene: Scene) -> None:
+        """Play a scene from its start. The rule layer still applies to every frame."""
+        with self.lock:
+            self.scene = scene
+            self.source = ScenePlayer(scene, self.rig, self.clock())
+        self._changed()
+
+    # ------------------------------------------------------------------ setup / test page
+    # Operator tools, not show output: `find` lights one fixture regardless of MASTER and the
+    # masters; the channel tester sets raw values. Neither can drive a haze channel (rule 5),
+    # and head limits still apply to `find`.
+
+    def _render_find(self, now: float) -> dict[int, bytearray]:
+        full = Masters(1.0, {}, 1.0, 0.0)
+        white = {e: 1.0 for e in ("red", "green", "blue", "white")}
+        look = Look(fixtures={self.find: FixtureLook(colour=white)})
+        state = ControlState(True, False, {}, self.haze.tick(now))
+        frames = self.rules.render(look, state, full)
+        for fx in self.rig.fixtures:  # the kick light ignores MASTER, so dark it explicitly
+            if fx.kind == Kind.KICK and fx.id != self.find:
+                for ch in fx.type.channels:
+                    frames[fx.universe][fx.slot(ch)] = 0
+        return frames
+
+    def find_fixture(self, fid: str | None) -> None:
+        with self.lock:
+            if fid is not None and fid not in self.rig.present:
+                raise ValueError(f"{fid} is not in this rig")
+            if fid is not None and self.rig.patch.fixtures[fid].kind == Kind.HAZE:
+                raise ValueError("haze is only run from the Haze controls (rule 5)")
+            self.find = fid
+        self._changed()
+
+    def haze_slots(self) -> set[tuple[int, int]]:
+        out = set()
+        for fx in self.rig.patch.fixtures.values():
+            for ch in fx.type.channels:
+                if ch.role == "haze":
+                    out.add((fx.universe, fx.slot(ch) + 1))
+        return out
+
+    def test_channel(self, channel: int, value: int | None, universe: int = 0) -> None:
+        if not 1 <= channel <= DMX_CHANNELS:
+            raise ValueError("channel 1-512")
+        if (universe, channel) in self.haze_slots():
+            raise ValueError("that's the haze channel: use the Haze controls (rule 5)")
+        with self.lock:
+            if value is None:
+                self.channel_test.pop((universe, channel), None)
+            else:
+                if not 0 <= value <= 255:
+                    raise ValueError("value 0-255")
+                self.channel_test[(universe, channel)] = value
+        self._changed()
+
+    def clear_setup(self) -> None:
+        with self.lock:
+            self.find = None
+            self.channel_test.clear()
         self._changed()
 
     def set_master(self, on: bool) -> None:
