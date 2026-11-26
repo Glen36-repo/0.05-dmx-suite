@@ -370,6 +370,16 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                      "missing": [f.id for f in rig.fixtures if f.type.has("pan") and not f.type.colour_only
                                  and f.id not in pt.heads]} for pt in rig.points.values()],
                     "problems": rig.point_problems()})
+            if path == "/api/alerts":
+                return self._json(200, app.alerts_view())
+            if path == "/api/kelvin":
+                from ..colourtheory import KELVIN_PRESETS, hex_of, kelvin
+
+                return self._json(200, [{"name": n, "kelvin": k, "hex": hex_of(kelvin(k))} for n, k in KELVIN_PRESETS])
+            if path.startswith("/api/palette/export/"):
+                return self._json(200, app.store.export_palette(path.rsplit("/", 1)[1]))
+            if path.startswith("/api/colours/used/"):
+                return self._json(200, {"used": app.store.colour_users(path.rsplit("/", 1)[1])})
             if path.startswith("/api/points/used/"):
                 return self._json(200, {"used": app.store.point_users(path.rsplit("/", 1)[1])})
             if path.startswith("/api/inputs/used/"):
@@ -664,6 +674,36 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     raise ApiError(400, "preview needs a scene name or scene data")
                 msg = app.preview_scene(scene, float(body.get("seconds", 10)))
                 return self._json(200, {"ok": True, "message": msg})
+            if path == "/api/alerts" and method == "POST":  # banners: dismiss, minimise, snooze, mute, quiet
+                ac, a = app.alert_center, str(body.get("action", ""))
+                try:
+                    if a == "dismiss":
+                        ac.dismiss(str(body["id"]))
+                    elif a == "minimise":
+                        ac.minimise(str(body["id"]))
+                    elif a == "snooze":
+                        ac.snooze(str(body["id"]), str(body.get("for", "10min")))
+                    elif a == "mute":
+                        ac.mute(str(body["id"]), bool(body.get("on", True)))
+                    elif a == "quiet":
+                        ac.set_quiet(bool(body.get("on", True)))
+                    else:
+                        raise ApiError(400, "alerts action: dismiss, minimise, snooze, mute or quiet")
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+                return self._json(200, {"ok": True, **app.alerts_view()})
+            if path == "/api/colour/preview" and method == "POST":  # read-only: what each light makes of a colour
+                return self._json(200, app.colour_preview(body.get("colour"), list(body.get("fixtures") or [])))
+            if path == "/api/colour/generate" and method == "POST":
+                from ..colourtheory import generate, hex_of
+                from ..look import parse_colour
+
+                base = parse_colour(body.get("base", "#ff0000"), "base colour")
+                return self._json(200, {"colours": [hex_of(c) for c in generate(base, str(body.get("scheme", "analogous")),
+                                                                                   int(body.get("count", 4)))]})
+            if path == "/api/palette/preview" and method == "POST":
+                msg = app.palette_preview(str(body["palette"]), str(body.get("mode", "static")), float(body.get("seconds", 10)))
+                return self._json(200, {"ok": True, "message": msg})
             if path.startswith("/api/midi/") and method == "POST":
                 return self._json(200, self._midi(path.rsplit("/", 1)[1], body))
             if path.startswith("/api/nodes/") and method == "POST":
@@ -744,6 +784,16 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     bid = s.delete_input(str(b["name"]))
                 else:
                     raise ApiError(400, "input action: put, rename or delete")
+            elif parts == ["colour"] and method == "POST" and b.get("action") == "rename":  # named colours (v3)
+                bid = s.rename_colour(str(b["name"]), str(b["new_name"]))
+            elif parts == ["palette"] and method == "POST":
+                a = str(b.get("action", ""))
+                if a == "rename":
+                    bid = s.rename_palette(str(b["name"]), str(b["new_name"]))
+                elif a == "import":
+                    bid = s.import_palette(b.get("data") or {}, bool(b.get("overwrite")))
+                else:
+                    raise ApiError(400, "palette action: rename or import")
             elif parts == ["point"] and method == "POST":  # head position points (v3)
                 a = str(b.get("action", "put"))
                 rig = str(b.get("rig") or app.names[0])

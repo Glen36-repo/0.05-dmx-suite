@@ -336,6 +336,152 @@ class ShowStore:
                 changes[f] = self.text_for(f, rename_refs(d, old, new))
         return self.apply(changes, f"rename input {old} -> {new}")
 
+    # ------------------------------------------------------------------ named colours and palettes (v3)
+
+    COLOUR_KEYS = ("colour", "colours", "pixels", "show_colour", "background", "colour_b")
+
+    def _colour_refs(self, data: Any, name: str, new: str | None = None, keys: tuple[str, ...] = COLOUR_KEYS) -> tuple[int, Any]:
+        """(times `data` names colour `name` under a colour key, the data with it renamed `new`)."""
+        def swap(v: Any) -> tuple[int, Any]:
+            if v == name:
+                return 1, (new if new is not None else v)
+            if isinstance(v, list):
+                n, out = 0, []
+                for x in v:
+                    c, y = swap(x) if not isinstance(x, (dict, list)) else self._colour_refs(x, name, new, keys)
+                    n += c
+                    out.append(y)
+                return n, out
+            if isinstance(v, dict):
+                return self._colour_refs(v, name, new, keys)
+            return 0, v
+
+        if isinstance(data, dict):
+            n, out = 0, {}
+            for k, v in data.items():
+                if k in keys:
+                    c, out[k] = swap(v)
+                else:
+                    c, out[k] = self._colour_refs(v, name, new, keys)
+                n += c
+            return n, out
+        if isinstance(data, list):
+            n, items = 0, []
+            for x in data:
+                c, y = self._colour_refs(x, name, new, keys)
+                n += c
+                items.append(y)
+            return n, items
+        return 0, data
+
+    def _files_using(self, fn: Any) -> list[str]:
+        out = []
+        for kind in ("scene", "look", "show", "setlist", "rig", "midi"):
+            for n in self.names(kind):
+                c = fn(self.read(kind, n))
+                if c:
+                    out.append(f"{FOLDERS[kind]}/{n}.yaml ({c})")
+        for kind, fname in (("panels", "panels.yaml"), ("palettes", "palettes.yaml")):
+            c = fn(self.read(kind))
+            if c:
+                out.append(f"{fname} ({c})")
+        return out
+
+    def colour_users(self, name: str) -> list[str]:
+        """Show files that use named colour `name` (scenes, looks, busk panels, palettes...)."""
+        def count(d: Any) -> int:
+            if isinstance(d, dict) and "colours" in d and isinstance(d.get("colours"), dict):
+                d = {k: v for k, v in d.items() if k != "colours"}  # palettes.yaml's own definitions
+            return self._colour_refs(d, name)[0]
+        return self._files_using(count)
+
+    def palette_users(self, name: str) -> list[str]:
+        """Files that pick palette `name` (`palette: name`, e.g. Ride presets and the auto show)."""
+        def count(d: Any) -> int:
+            if isinstance(d, dict) and isinstance(d.get("palettes"), dict):
+                d = {k: v for k, v in d.items() if k != "palettes"}
+            return self._colour_refs(d, name, keys=("palette", "palettes"))[0]
+        return self._files_using(count)
+
+    def rename_colour(self, old: str, new: str) -> str:
+        """Rename a named colour, and every scene, look, panel and palette that uses it."""
+        from .palettes import BUILTIN_COLOURS
+
+        self._check_name(new)
+        if old in BUILTIN_COLOURS:
+            raise StoreError(f"{old} is built in and can't be renamed")
+        pal = self.read("palettes")
+        cols = pal.get("colours") or {}
+        if old not in cols:
+            raise StoreError(f"no colour {old!r}")
+        if new in cols or new in BUILTIN_COLOURS:
+            raise StoreError(f"there's already a colour {new!r}")
+        pal["colours"] = {(new if k == old else k): v for k, v in cols.items()}
+        sets = pal.get("palettes") or {}
+        for v in sets.values():
+            if isinstance(v, dict) and isinstance(v.get("colours"), list):
+                v["colours"] = [new if c == old else c for c in v["colours"]]
+        pp = self.path("palettes", "")
+        changes: dict[Path, str | None] = {pp: self.text_for(pp, pal)}
+        for kind in ("scene", "look", "show", "setlist"):
+            for n in self.names(kind):
+                c, d = self._colour_refs(self.read(kind, n), old, new)
+                if c:
+                    p = self.path(kind, n)
+                    changes[p] = self.text_for(p, d)
+        c, d = self._colour_refs(self.read("panels"), old, new)
+        if c:
+            p = self.root / "panels.yaml"
+            changes[p] = self.text_for(p, d)
+        return self.apply(changes, f"rename colour {old} -> {new}")
+
+    def rename_palette(self, old: str, new: str) -> str:
+        self._check_name(new)
+        pal = self.read("palettes")
+        sets = pal.get("palettes") or {}
+        if old not in sets:
+            raise StoreError(f"no palette {old!r}")
+        if new in sets:
+            raise StoreError(f"there's already a palette {new!r}")
+        pal["palettes"] = {(new if k == old else k): v for k, v in sets.items()}
+        pp = self.path("palettes", "")
+        changes: dict[Path, str | None] = {pp: self.text_for(pp, pal)}
+        for kind in ("scene", "look", "show", "setlist", "rig"):
+            for n in self.names(kind):
+                c, d = self._colour_refs(self.read(kind, n), old, new, keys=("palette", "palettes"))
+                if c:
+                    p = self.path(kind, n)
+                    changes[p] = self.text_for(p, d)
+        return self.apply(changes, f"rename palette {old} -> {new}")
+
+    def import_palette(self, data: dict[str, Any], overwrite: bool = False) -> str:
+        """A palette exported from another show: {palette: {key: {...}}, colours: {...}} (its named
+        colours come with it). Names already here are refused unless overwrite."""
+        if not isinstance(data, dict) or not isinstance(data.get("palette"), dict) or len(data["palette"]) != 1:
+            raise StoreError("a palette file has palette: {name: {name, tags, colours}} and its colours")
+        pal = self.read("palettes")
+        key, value = next(iter(data["palette"].items()))
+        sets = pal.setdefault("palettes", {}) or {}
+        pal["palettes"] = sets
+        cols = pal.setdefault("colours", {}) or {}
+        pal["colours"] = cols
+        clash = ([key] if key in sets else []) + [c for c, v in (data.get("colours") or {}).items() if c in cols and cols[c] != v]
+        if clash and not overwrite:
+            raise StoreError(f"already here: {', '.join(clash)} (import again with overwrite to replace)")
+        cols.update(data.get("colours") or {})
+        sets[key] = value
+        pp = self.path("palettes", "")
+        return self.apply({pp: self.text_for(pp, pal)}, f"import palette {key}")
+
+    def export_palette(self, key: str) -> dict[str, Any]:
+        pal = self.read("palettes")
+        sets = pal.get("palettes") or {}
+        if key not in sets:
+            raise StoreError(f"no palette {key!r}")
+        have = pal.get("colours") or {}
+        named = {c: have[c] for c in sets[key].get("colours") or [] if isinstance(c, str) and c in have}
+        return {"version": FORMAT, "palette": {key: sets[key]}, "colours": named}
+
     # ------------------------------------------------------------------ head points (v3)
 
     POINT_KEYS = ("position", "from", "to")
@@ -587,7 +733,7 @@ class ShowStore:
 
     def put_entry(self, kind: str, section: str, name: str, value: Any) -> str:
         """kind 'palettes' (section colours/positions/gobos) or 'fixtures' (section types)."""
-        sections = {"palettes": ("colours", "positions", "gobos"), "fixtures": ("types",)}
+        sections = {"palettes": ("colours", "positions", "gobos", "palettes"), "fixtures": ("types",)}
         if section not in sections.get(kind, ()):
             raise StoreError(f"{kind} sections: {sections.get(kind)}")
         self._check_name(name)
@@ -596,6 +742,10 @@ class ShowStore:
         if value is None:
             if name not in (data[section] or {}):
                 raise StoreError(f"no {section} entry {name!r}")
+            if kind == "palettes" and section in ("colours", "palettes"):
+                users = self.colour_users(name) if section == "colours" else self.palette_users(name)
+                if users:
+                    raise StoreError(f"{section[:-1]} {name} is still used: {', '.join(users)}")
             del data[section][name]
         else:
             data[section][name] = value

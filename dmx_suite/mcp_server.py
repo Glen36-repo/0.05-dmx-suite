@@ -72,6 +72,12 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.get_midi_map()
 
     @tool
+    def get_alerts() -> str:
+        """Alerts: what's offline or failing now and recently (time, device, message, state: active,
+        dismissed, muted, snoozed, cleared), and which devices are muted for this rig. Read only."""
+        return t.get_alerts()
+
+    @tool
     def list_inputs() -> str:
         """Named MIDI/OSC inputs (inputs.yaml): devices, each input's notes / numbers / OSC address, roles."""
         return t.list_inputs()

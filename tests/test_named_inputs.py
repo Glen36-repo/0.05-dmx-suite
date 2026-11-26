@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from rulecheck import rule_matrix
 
 from dmx_suite.fixtures import ConfigError
 from dmx_suite.midi.inputs import FakeMidiIn
@@ -26,6 +25,8 @@ from dmx_suite.midi.router import MidiRouter
 from dmx_suite.showctl import ShowController
 from dmx_suite.showfiles import check_all, load_show
 from dmx_suite.store import ShowStore, StoreError
+
+from rulecheck import rule_matrix
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"
 

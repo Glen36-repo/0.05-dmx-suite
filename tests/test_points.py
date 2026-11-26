@@ -6,7 +6,6 @@ import shutil
 from pathlib import Path
 
 import pytest
-from rulecheck import rule_matrix
 
 from dmx_suite.fixtures import ConfigError, parse_patch
 from dmx_suite.palettes import Palettes
@@ -16,6 +15,7 @@ from dmx_suite.showfiles import check_all, load_show
 from dmx_suite.store import ShowStore, StoreError
 
 from conftest import PATCH, RIG
+from rulecheck import rule_matrix
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"
 

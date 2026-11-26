@@ -62,7 +62,7 @@ def test_delete_refused_while_referenced(store):
 
 
 def test_palette_change_that_breaks_a_scene_is_rejected(store):
-    with pytest.raises(StoreError, match="unknown colour"):
+    with pytest.raises(StoreError, match="still used: scenes/"):
         store.put_entry("palettes", "colours", "blue", None)  # scenes use blue
     store.put_entry("palettes", "colours", "teal", "#00a090")
     assert yaml.safe_load((store.root / "palettes.yaml").read_text())["colours"]["teal"] == "#00a090"

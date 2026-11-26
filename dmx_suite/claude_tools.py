@@ -257,6 +257,9 @@ class DmxTools:
         names = self.local.names("midi")
         return "\n---\n".join(f"# midi/{n}.yaml\n" + self.local.read_text("midi", n) for n in names)
 
+    def get_alerts(self) -> str:
+        return _dump(self._live("GET", "/api/alerts"))
+
     def list_inputs(self) -> str:
         return self.local.read_text("inputs") if (self.shows / "inputs.yaml").exists() else "no inputs.yaml yet"
 

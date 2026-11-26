@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from . import effects
+from .alerts import AlertCenter
 from .busk import Override
 from .engine import Engine
 from .fixtures import EMITTERS, ConfigError, Kind
@@ -70,6 +71,9 @@ class App:
                     d._connected()
         self._load_lock_state(state_path)
         self._loaded_sig = self._rig_sig()
+        # alerts and banners (v3.1): mutes kept in app data per rig config, changes logged
+        alerts_file = state_path.with_name("alerts.json") if state_path else None
+        self.alert_center = AlertCenter(alerts_file, log_dir, rig=rig)
 
     # ------------------------------------------------------------------ gig lock
 
@@ -366,10 +370,12 @@ class App:
             old = self.names
             self.names = (name, old[1], old[2])
             try:
-                return self._reload()
+                notes = self._reload()
             except Exception:
                 self.names = old
                 raise
+            self.alert_center.set_rig(name)
+            return notes
 
     def _reload(self) -> list[str]:
         """Pick up edited show files without stopping. A changed patch or rig (fixtures, addresses,
@@ -536,6 +542,61 @@ class App:
                 self.reload()
                 return {"ok": True, "velocity": value, "hits": len(hits), "curve": curve, "backup": bid}
         raise ValueError(f"no input {name!r} in inputs.yaml")
+
+    # ------------------------------------------------------------------ colour wheel and palettes (v3)
+
+    def colour_preview(self, colour: Any, fixtures: list[str]) -> dict[str, Any]:
+        """What each light can really make of `colour` (colour wheel): the channel values after
+        colour mixing, the colour you'd see, and for wheel lights the slot it snaps to."""
+        from .colourmix import brightness, mix, nearest_slot
+        from .colourtheory import hex_of
+        from .look import parse_colour
+
+        c = self.files.palettes.colour(colour, "colour") if isinstance(colour, str) else parse_colour(colour, "colour")
+        want = hex_of({k: min(1.0, c.get(k, 0.0) + c.get("white", 0.0)) for k in ("red", "green", "blue")})
+        out = []
+        for fid in fixtures:
+            fx = self.engine.rig.patch.fixtures.get(fid)
+            if fx is None:
+                continue
+            t = fx.type
+            em = t.emitters
+            row: dict[str, Any] = {"id": fid, "emitters": sorted(em)}
+            if em:
+                m = mix(c, t)
+                row["channels"] = {k: round(m.get(k, 0.0), 4) for k in em}
+                shown = {k: m.get(k, 0.0) for k in ("red", "green", "blue")}
+                for k, (r, g, b) in (("white", (1, 1, 1)), ("amber", (1, 0.5, 0))):
+                    if k in em:
+                        shown = {"red": shown["red"] + r * m.get(k, 0.0), "green": shown["green"] + g * m.get(k, 0.0),
+                                 "blue": shown["blue"] + b * m.get(k, 0.0)}
+                if not any(x in em for x in ("red", "green", "blue")):
+                    level = brightness(m)
+                    shown = {"red": level, "green": level, "blue": level}
+                row["shown"] = hex_of({k: min(1.0, v) for k, v in shown.items()})
+            slot = nearest_slot(c, t) if t.wheel else None
+            if slot is not None:
+                row["slot"] = next((k for k, v in t.wheel.items() if v is slot), str(slot.value))
+                row["shown"] = hex_of(slot.colour or {})
+            row["differs"] = row.get("shown", want) != want
+            out.append(row)
+        return {"colour": want, "fixtures": out}
+
+    def palette_preview(self, key: str, mode: str = "static", seconds: float = 10) -> str:
+        """Show a palette on the rig for a few seconds: one colour per light (static) or a chase."""
+        pal = self.files.palettes.sets.get(key)
+        if pal is None:
+            raise ValueError(f"no palette {key!r}")
+        lights = [f.id for f in self.engine.rig.fixtures if f.type.emitters and f.kind != Kind.HAZE
+                  and f.id not in self.engine.rig.exempt]
+        cols = pal["colours"]
+        if mode == "chase":
+            if len(cols) < 2:
+                cols = [cols[0], "off"]
+            layers = [{"fixtures": lights, "effect": "colour_chase", "colours": cols, "period_s": 4, "spread": 1, "fade": True}]
+        else:
+            layers = [{"fixtures": [f], "colour": cols[i % len(cols)]} for i, f in enumerate(lights)]
+        return self.preview_scene({"name": f"palette {pal['name']}", "layers": layers}, seconds)
 
     def make_starter(self, overwrite: bool = False) -> dict[str, Any]:
         """Write the starter show (and its scenes) for the running rig, then play it."""
@@ -741,6 +802,19 @@ class App:
             out.append(item)
         return out
 
+    def alert_devices(self) -> list[dict[str, Any]]:
+        """The status bar's devices plus every 0.05 node and receiver that's offline or weak."""
+        out = self.devices()
+        for n in self.nodes():
+            if n.get("mac") and n["state"] in ("offline", "weak"):
+                out.append({"kind": "node", "name": n["name"] or n["mac"], "state": "bad" if n["state"] == "offline" else "warn",
+                            "detail": f"{n['name'] or n['mac']} {n['state']}"})
+        return out
+
+    def alerts_view(self) -> dict[str, Any]:
+        self.alert_center.update(self.alert_devices())
+        return self.alert_center.snapshot()
+
     def snapshot(self) -> dict[str, Any]:
         e, now = self.engine, self.engine.clock()
         hz = e.haze.status(now)
@@ -771,6 +845,7 @@ class App:
             "nodes": self.nodes(),
             "node_setup": self.node_setup,
             "alerts": self.alerts[-5:],
+            "alert_center": self.alerts_view(),
             "learning": self.router.learning,
             "rig": e.rig.name,
             "midi_inputs": self.midi_inputs.status() if self.midi_inputs is not None else [],

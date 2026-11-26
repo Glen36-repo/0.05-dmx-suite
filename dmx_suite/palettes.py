@@ -30,6 +30,18 @@ BUILTIN_COLOURS: dict[str, Colour] = {
 
 Position = tuple[float, float]
 
+# Curated palettes every show has (v3.1): the Ride page and auto show pick from these by tag.
+# A palette of the same name in palettes.yaml replaces the built-in one.
+CURATED: dict[str, dict[str, Any]] = {
+    "warm": {"name": "Warm", "tags": ["warm", "low", "mid"], "colours": ["#ff2a00", "#ff6a00", "#ffa31a", "#ffd6a0"]},
+    "cool": {"name": "Cool", "tags": ["cool", "low", "mid"], "colours": ["#0030ff", "#0090ff", "#00d0ff", "#7a40ff"]},
+    "fire": {"name": "Fire", "tags": ["warm", "high"], "colours": ["#ff0000", "#ff3c00", "#ff7a00", "#ffb400"]},
+    "ice": {"name": "Ice", "tags": ["cool", "low"], "colours": ["#c8f0ff", "#60c8ff", "#0080ff", "#ffffff"]},
+    "neon": {"name": "Neon", "tags": ["high"], "colours": ["#ff00a0", "#00ff60", "#00e0ff", "#ffe000"]},
+    "white": {"name": "White", "tags": ["white", "low"], "colours": ["#ffffff", "#ffe2b8", "#fff4e6"]},
+    "band": {"name": "Band colours", "tags": ["band", "mid", "high"], "colours": ["#ff0030", "#2040ff", "#ffffff"]},
+}
+
 
 @dataclass
 class Palettes:
@@ -147,13 +159,53 @@ def parse_palettes(data: dict, patch: Patch) -> Palettes:
             p.gobos[name] = {tk: _dmx(x, f"gobo {name}") for tk, x in v.items()}
         else:
             raise ConfigError(f"gobo {name}: DMX value or per-type values")
+    p.sets = parse_sets({**CURATED, **(data.get("palettes") or {})}, p)
+    for k in CURATED:
+        p.sets[k]["builtin"] = k not in (data.get("palettes") or {})
     return p
+
+
+SET_KEYS = {"name", "tags", "colours"}
+
+
+def parse_sets(data: Any, pal: Palettes) -> dict[str, dict[str, Any]]:
+    """`palettes:` (v3.1): named colour sets for the palette editor, Ride page and auto show.
+
+        palettes:
+          warm: {name: Warm, tags: [warm, low], colours: [incandescent, amber, "#ff4000"]}
+
+    Colours are named colours (so changing one updates the palette too) or colour values."""
+    import re
+
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ConfigError("palettes: named sets, each {name, tags, colours: [...]}")
+    out: dict[str, dict[str, Any]] = {}
+    for key, v in data.items():
+        what = f"palette {key}"
+        if not re.match(r"^[a-z0-9][a-z0-9_-]{0,39}$", str(key)):
+            raise ConfigError(f"{what}: names use lower case letters, digits, _ or -")
+        if not isinstance(v, dict) or set(v) - SET_KEYS:
+            raise ConfigError(f"{what}: name, tags and colours")
+        cols = v.get("colours") or []
+        if not isinstance(cols, list) or not cols:
+            raise ConfigError(f"{what}: needs at least one colour")
+        resolved = [pal.colour(c, f"{what} colour {i + 1}") for i, c in enumerate(cols)]
+        tags = v.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+        if not isinstance(tags, list) or not all(isinstance(t, str) and t.strip() for t in tags):
+            raise ConfigError(f"{what}: tags is a list of words, e.g. [warm, low]")
+        out[str(key)] = {"name": str(v.get("name") or key), "tags": [t.strip() for t in tags], "colours": list(cols),
+                         "resolved": resolved}
+    return out
 
 
 def load_palettes(path: str | Path, patch: Patch) -> Palettes:
     path = Path(path)
     if not path.exists():
-        return Palettes()
+        return parse_palettes({}, patch)
     from .versions import read_doc
 
     return parse_palettes(read_doc(path, "palettes"), patch)

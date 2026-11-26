@@ -45,7 +45,7 @@ ignore = ["B023", "B905", "UP042"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["dmx_suite"]
-known-local-folder = ["conftest", "golden"]
+known-local-folder = ["conftest", "golden", "rulecheck"]
 
 [tool.mypy]
 python_version = "3.12"
