@@ -100,3 +100,51 @@ def layout_warnings(rig: Rig) -> list[str]:
         else:
             out.append(f"layout: {p['a']} and {p['b']} touch; leave a gap so they read as two lights")
     return out
+
+
+# ---------------------------------------------------------------------- reading / setting places (v4, Claude)
+
+
+def layout_view(rig: Rig) -> dict[str, object]:
+    """Every light's place (defaults filled in, `placed: false` for those), the stage size the lights
+    take up, and any overlaps. Haze machines aren't drawn on the stage and are listed apart."""
+    lay = full_layout(rig)
+    out: dict[str, dict[str, object]] = {}
+    hazes = []
+    for f in rig.fixtures:
+        if f.kind == Kind.HAZE:
+            hazes.append(f.id)
+            continue
+        if f.id in lay:
+            out[f.id] = {**lay[f.id].to_dict(), "placed": f.id in rig.layout}
+    boxes = [footprint(lay[f.id], f.type.pixels) for f in rig.fixtures if f.id in out]
+    w = max((b[2] for b in boxes), default=0.0)
+    h = max((b[3] for b in boxes), default=0.0)
+    return {"layout": out, "haze": hazes,
+            "stage": {"w_cells": round(w, 2), "h_cells": round(h, 2), "cells_per_m": 4,
+                      "note": "x, y in cells (25 cm) from the top left; back of the stage at the top; "
+                              "rot 0 = facing the audience"},
+            "problems": layout_problems(rig)}
+
+
+def merge_positions(rig: Rig, current: dict[str, object] | None, positions: dict[str, object]) -> dict[str, object]:
+    """The rig file's `layout:` with `positions` ({fixture: {x, y, z, rot | rotation}}) set over it. A
+    fixture not placed yet starts from its default spot, so a partial place (only rot, say) works."""
+    from .fixtures import ConfigError
+    from .rig import parse_placement
+
+    if not isinstance(positions, dict) or not positions:
+        raise ConfigError("positions: {fixture id: {x, y, z, rot}}")
+    lay = full_layout(rig)
+    out = dict(current or {})
+    for fid, v in positions.items():
+        if fid not in rig.patch.fixtures:
+            raise ConfigError(f"layout: unknown fixture {fid!r}")
+        if not isinstance(v, dict):
+            raise ConfigError(f"layout {fid}: {{x, y, z, rot}}")
+        v = dict(v)
+        if "rotation" in v:
+            v["rot"] = v.pop("rotation")
+        base = out.get(fid) if isinstance(out.get(fid), dict) else (lay[fid].to_dict() if fid in lay else {})
+        out[fid] = parse_placement(fid, {**base, **v}).to_dict()  # type: ignore[dict-item]
+    return out

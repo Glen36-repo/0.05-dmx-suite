@@ -1130,6 +1130,22 @@ class App:
         self.reload()
         return bid
 
+    def layout_view(self) -> dict[str, Any]:
+        from .layout import layout_view
+
+        return {"rig": self.names[0], **layout_view(self.engine.rig)}
+
+    def set_positions(self, positions: dict[str, Any]) -> str:
+        """Set some lights' places ({fid: {x, y, z, rot}}) in this rig's file; the rest stay as they are."""
+        from .layout import merge_positions
+
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        data["layout"] = merge_positions(self.engine.rig, data.get("layout"), positions)
+        bid = self.store.put("rig", rig_name, data, f"place {', '.join(sorted(positions))} on rig {rig_name}")
+        self.reload()
+        return bid
+
     # ------------------------------------------------------------------ preview
 
     def preview_scene(self, scene: str | dict, seconds: float = 10, step: int | None = None) -> str:

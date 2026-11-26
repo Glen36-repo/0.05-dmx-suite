@@ -331,6 +331,44 @@ class DmxTools:
                                                                   ("pick", body["pick"]))}
         return self.local.put("presets", "", data)
 
+    # ------------------------------------------------------------------ layout (v4)
+
+    def _rig_name(self, rig: str = "") -> str:
+        if rig:
+            return rig
+        names = self.local.names("rig")
+        return "full" if "full" in names else names[0]
+
+    def get_layout(self, rig: str = "") -> str:
+        try:
+            if not rig:
+                return _dump(self._call("GET", "/api/layout"))
+        except Offline:
+            pass
+        from .layout import layout_view
+
+        name = self._rig_name(rig)
+        r = load_rig(self.shows / "rigs" / f"{name}.yaml", load_patch(self.shows / "fixtures.yaml"))
+        return _dump({"rig": name, **layout_view(r)})
+
+    def set_layout(self, positions_yaml: str, rig: str = "") -> str:
+        positions = _yaml(positions_yaml, "positions")
+        if rig:  # a named rig: straight to its file (the running rig picks it up on its next reload)
+            return f"saved to rigs/{rig}.yaml (backup {self._set_layout_offline(rig, positions)})"
+        return self._write("POST", "/api/layout/positions", {"positions": positions},
+                           lambda: self._set_layout_offline(self._rig_name(), positions))
+
+    def _set_layout_offline(self, rig: str, positions: dict) -> str:
+        from .layout import merge_positions
+
+        r = load_rig(self.shows / "rigs" / f"{rig}.yaml", load_patch(self.shows / "fixtures.yaml"))
+        data = self.local.read("rig", rig)
+        data["layout"] = merge_positions(r, data.get("layout"), positions)
+        return self.local.put("rig", rig, data, f"place {', '.join(sorted(positions))} on rig {rig}")
+
+    def delete_fixture(self, fixture: str) -> str:
+        return self._write("POST", "/api/store/fixture/remove", {"id": fixture}, lambda: self.local.remove_fixture(fixture))
+
     def get_alerts(self) -> str:
         return _dump(self._live("GET", "/api/alerts"))
 

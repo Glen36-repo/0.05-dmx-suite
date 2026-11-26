@@ -46,8 +46,8 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
 DEFAULT_PORT = 8505
 # what Claude's token may change (everything else is the people at the laptop's call)
 MAX_UPLOAD = 20 * 1024 * 1024
-CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/claude/haze", "/api/nodes/assign", "/api/validate/scene",
-                 "/api/undo/claude", "/api/ride/check", "/api/generate")
+CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/claude/haze", "/api/nodes/assign",
+                 "/api/validate/scene", "/api/undo/claude", "/api/ride/check", "/api/generate")
 SESSION_COOKIE = "dmx_session"
 
 
@@ -349,6 +349,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, interfaces())
             if path == "/api/state":
                 return self._json(200, app.snapshot())
+            if path == "/api/layout":
+                return self._json(200, app.layout_view())
             if path == "/api/catalogue":
                 return self._json(200, app.catalogue())
             if path == "/api/events":
@@ -687,6 +689,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
             if path == "/api/layout" and method == "PUT":
                 bid = app.save_layout(body.get("layout") or {})
+                return self._json(200, {"ok": True, "backup": bid})
+            if path == "/api/layout/positions" and method == "POST":  # some lights (Claude: set_layout)
+                bid = app.set_positions(body.get("positions") or {})
                 return self._json(200, {"ok": True, "backup": bid})
             if path == "/api/claude/haze" and method == "POST":
                 app.require_unlocked("changing haze")

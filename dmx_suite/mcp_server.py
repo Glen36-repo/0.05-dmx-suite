@@ -9,6 +9,8 @@ import functools
 import threading
 import time
 
+import yaml
+
 from .claude_tools import DmxTools
 
 PING_S = 20  # how often Claude Desktop tells the engine the 0.05 tools are loaded
@@ -246,6 +248,31 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     def set_haze(action: str) -> str:
         """Haze mode: off, manual or pulse. Not allowed during gig lock. Haze settings live in the rig file."""
         return t.set_haze(action)
+
+    @tool
+    def get_layout(rig: str = "") -> str:
+        """Where every light sits on the stage plan: {x, y, z, rot} per fixture (x, y in 25 cm cells from the
+        top left, back of the stage at the top; rot degrees, 0 = facing the audience), the stage size, and
+        lights in the same place or touching. Spatial effects use these places. Default: the running rig."""
+        return t.get_layout(rig)
+
+    @tool
+    def set_layout(positions_yaml: str, rig: str = "") -> str:
+        """Place one or many lights: '{par_1: {x: 4, y: 2}, par_4: {x: 30, y: 2, rot: 90}, bar_2: {reverse: true}}'.
+        Only the lights named change; a partial place (just rot) keeps the rest. z = height in metres.
+        Validated and backed up; not during gig lock. Default: the running rig."""
+        return t.set_layout(positions_yaml, rig)
+
+    @tool
+    def save_layout_position(fixture: str, x: float, y: float, rot: float = 0, rig: str = "") -> str:
+        """Place one light (same as set_layout with one entry)."""
+        return t.set_layout(yaml.safe_dump({fixture: {"x": x, "y": y, "rot": rot}}), rig)
+
+    @tool
+    def delete_fixture(fixture: str) -> str:
+        """Take a patched light out of the patch and every rig (layout, head limits). Refused if a scene or
+        look names it directly; not during gig lock. Backed up (undo_last_change)."""
+        return t.delete_fixture(fixture)
 
     @tool
     def node_health() -> str:
