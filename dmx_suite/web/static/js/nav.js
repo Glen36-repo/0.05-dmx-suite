@@ -2,10 +2,13 @@
 import { $, $$, remember } from "./dom.js";
 
 const shown = {};
+const left = {};
 export const onShow = (page, fn) => (shown[page] ||= []).push(fn);
+export const onLeave = (page, fn) => (left[page] ||= []).push(fn); // e.g. stop a live feed only that page uses
 export let current = "live";
 
 export function go(page) {
+  if (page !== current) for (const fn of left[current] || []) fn();
   current = page;
   $$("#menu [data-page]").forEach((b) => {
     b.classList.toggle("on", b.dataset.page === page);

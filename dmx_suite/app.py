@@ -1494,7 +1494,10 @@ class App:
                           "roles": sorted({c.role for c in fx.type.channels}),
                           "moves": fx.type.has("pan") and not fx.type.colour_only, "pixels": fx.type.pixels,
                           "gobo": fx.type.has("gobo"), "wheel": fx.type.has("colour_wheel"),
-                          "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range}
+                          "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range,
+                          "type_key": fx.type.key, "universe": fx.universe, "address": fx.address,
+                          "footprint": fx.type.footprint, "groups": list(fx.groups),
+                          "channels": [c.role + (f" px{c.pixel + 1}" if c.pixel is not None else "") for c in fx.type.channels]}
                          for fx in self.engine.rig.fixtures],
             "layout": {fid: p.to_dict() | {"shape": p.shape, "cols": p.cols}
                        for fid, p in full_layout(self.engine.rig).items()},

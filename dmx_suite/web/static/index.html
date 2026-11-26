@@ -93,7 +93,27 @@
     </section>
 
     <!-- LAYOUT -->
-    <section id="page-layout" class="page">
+    <section id="page-layout" class="page wide">
+      <div class="lp-head">
+        <div class="tabs uni-tabs" id="lp-uni" role="tablist" data-i18n-title="layout.uni_tip"></div>
+        <div class="lp-status" id="lp-status"></div>
+        <span class="grow"></span>
+        <div class="lp-actions">
+          <span class="dirty-dot hidden" id="layout-dirty" data-i18n-title="layout.unsaved"></span>
+          <button id="layout-save" class="primary" data-i18n="layout.save"></button>
+          <button id="layout-undo" data-i18n="layout.undo"></button>
+          <button id="layout-reset" data-i18n="layout.reset"></button>
+          <button id="lp-print" data-i18n="layout.print" data-i18n-title="layout.print_tip"></button>
+          <button id="lp-png" data-i18n="layout.png" data-i18n-title="layout.png_tip"></button>
+        </div>
+      </div>
+      <div class="tabs" id="lp-views" role="tablist">
+        <button data-view="stage" class="on" data-i18n="layout.view_stage"></button>
+        <button data-view="addresses" data-i18n="layout.view_addresses"></button>
+      </div>
+      <div class="lp-body">
+        <div class="lp-main">
+          <div id="lp-stage" class="lp-pane">
       <div class="tabs" id="group-tabs" role="tablist"></div>
       <div class="toolbar">
         <div class="tools" role="group">
@@ -110,7 +130,6 @@
       <div class="muted" id="layout-sel"></div>
       <div id="layout-problems-head" class="error hidden"><span data-i18n="layout.problems_help"></span>
         <ul class="layout-problems" id="layout-problems"></ul></div>
-
       <h2 data-i18n="layout.arrange"></h2>
       <div class="row wrap" id="arrange-tools">
         <button data-align="left" data-i18n="layout.align_left"></button>
@@ -133,12 +152,6 @@
         <button data-shape="ring" data-i18n="layout.shape_ring"></button>
         <button data-shape="grid" data-i18n="layout.shape_grid"></button>
       </div>
-      <div class="row wrap">
-        <button id="layout-save" data-i18n="layout.save"></button>
-        <button id="layout-undo" data-i18n="layout.undo"></button>
-        <button id="layout-reset" data-i18n="layout.reset"></button>
-      </div>
-
       <h2 data-i18n="groups.title"></h2>
       <div class="row wrap">
         <input id="group-name" maxlength="40" data-i18n-placeholder="groups.name_placeholder">
@@ -148,6 +161,31 @@
         <button id="group-delete" class="danger-text" data-i18n="groups.delete"></button>
       </div>
       <p class="muted" data-i18n="groups.help"></p>
+          </div>
+          <div id="lp-addresses" class="lp-pane hidden">
+            <div class="row wrap"><span class="muted" data-i18n="layout.addr_help"></span><span class="grow"></span>
+              <label class="muted" for="lp-out" data-i18n="layout.addr_source"></label><select id="lp-out"></select></div>
+            <div id="addr-maps"></div>
+          </div>
+        </div>
+        <aside class="lp-side">
+          <h2 data-i18n="layout.fixture_list"></h2>
+          <div class="table-scroll"><table class="lp-fixtures">
+            <thead><tr><th data-i18n="layout.col_id"></th><th data-i18n="layout.col_type"></th><th data-i18n="layout.col_ch"></th>
+              <th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_addr"></th><th data-i18n="layout.col_range"></th>
+              <th data-i18n="layout.col_groups"></th><th data-i18n="layout.col_out"></th></tr></thead>
+            <tbody id="lp-fixtures"></tbody></table></div>
+          <div class="error hidden" id="lp-clash"></div>
+          <div class="row"><button id="lp-patch-save" class="primary" data-i18n="layout.patch_save" disabled></button>
+            <button id="lp-patch-revert" data-i18n="layout.patch_revert" disabled></button></div>
+          <h2 data-i18n="layout.routing"></h2>
+          <div class="table-scroll"><table class="lp-routing">
+            <thead><tr><th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_interface"></th><th data-i18n="layout.col_state"></th>
+              <th>fps</th><th data-i18n="layout.col_frames"></th><th data-i18n="layout.col_errors"></th><th data-i18n="layout.col_last"></th></tr></thead>
+            <tbody id="lp-routing"></tbody></table></div>
+          <ul class="layout-problems" id="lp-routing-problems"></ul>
+        </aside>
+      </div>
     </section>
 
     <!-- SCENES -->

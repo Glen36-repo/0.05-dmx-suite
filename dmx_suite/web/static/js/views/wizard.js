@@ -6,7 +6,7 @@ import { api, attempt, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
 import { live, refreshCatalogue } from "../state.js";
-import { autoPatch } from "./fixtures.js";
+import { autoPatch } from "../patch.js";
 
 const STEPS = ["interface", "lights", "profile", "starter", "pin"];
 let step = 0;

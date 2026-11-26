@@ -39,7 +39,7 @@ function offsets(n, shape, cols) {
 
 // ---------------------------------------------------------------- labels
 
-const CH_W = 0.23, LABEL_H = 0.42; // label size in cells (9 px text on a 24 px cell)
+const CH_W = 0.23, LABEL_H = 0.52; // label size in cells (9 px text and its halo on a 24 px cell)
 
 // a short name for a crowded spot: "uking_l" -> "UK L", "bar_3" -> "BA 3", "mh_a" -> "MH A"
 export function shortName(id) {
@@ -65,7 +65,8 @@ export function placeLabels(items) {
     const [x0, , x1, y1] = it.icon, cx = (x0 + x1) / 2, top = y1 + 0.05;
     const spots = (text) => {
       const w = text.length * CH_W;
-      return [[cx, top], [cx, top + 0.45], [cx - w / 2 - 0.3, top], [cx + w / 2 + 0.3, top], [cx, top + 0.9]];
+      const r = LABEL_H + 0.04; // one label row lower
+      return [[cx, top], [cx, top + r], [cx - w / 2 - 0.3, top], [cx + w / 2 + 0.3, top], [cx, top + 2 * r]];
     };
     let done = null;
     for (const [text, short] of [[it.full, false], [it.short, true]]) {
@@ -76,8 +77,8 @@ export function placeLabels(items) {
       if (done) break;
     }
     if (!done) { // crowded: go further down until there's room, with a line back to the light
-      let y = top + 1.35;
-      while (!free(box(cx, y, it.short), it) && y < top + 8) y += 0.45;
+      let y = top + 3 * (LABEL_H + 0.04);
+      while (!free(box(cx, y, it.short), it) && y < top + 8) y += LABEL_H + 0.04;
       done = { x: cx, y, text: it.short, short: true, leader: true };
       placed.push(box(cx, y, it.short));
     }
@@ -309,7 +310,7 @@ export class LightGrid {
       const it = this.items[id], s = spots[id], icon = this.iconBox(id);
       it.label.textContent = s.text;
       it.label.setAttribute("x", s.x * C);
-      it.label.setAttribute("y", (s.y + LABEL_H * 0.8) * C);
+      it.label.setAttribute("y", (s.y + LABEL_H * 0.72) * C);
       it.label.classList.toggle("short", s.short);
       it.g.querySelector(".leader")?.remove();
       if (s.leader) {

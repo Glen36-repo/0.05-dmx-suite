@@ -225,3 +225,59 @@ def test_cell_offsets_match_python(ui):
         assert len(got) == len(want)
         for (gx, gy), (wx, wy) in zip(got, want, strict=True):
             assert abs(gx - wx) < 1e-9 and abs(gy - wy) < 1e-9, c
+
+
+# ---------------------------------------------------------------- Layout / Patch page (item 7)
+
+
+def test_layout_patch_page_universe_list_and_address_map(shot):
+    page, app, root, _ = shot
+    go(page, "layout")
+    page.wait_for_selector("#lp-uni [data-uni=all]")
+    assert page.inner_text("#lp-uni") .split() == ["All", "U0"]
+    page.wait_for_selector("#lp-fixtures tr[data-id=par_1]")
+    # clicking a light in the list selects it on the stage
+    page.click("#lp-fixtures tr[data-id=bar_2] td:first-child")
+    assert page.eval_on_selector_all("#layout-grid .fx.sel", "els => els.map(e => e.dataset.id)") == ["bar_2"]
+    assert "sel" in page.eval_on_selector("#lp-fixtures tr[data-id=bar_2]", "e => e.className")
+    # routing table and status strip: U0 goes out the simulator
+    page.wait_for_selector("#lp-routing tr")
+    assert "Simulator" in page.inner_text("#lp-routing") and "U0 → Simulator" in page.inner_text("#lp-status")
+    # address map: blocks labelled, live values from what the interface sent
+    page.click("#lp-views [data-view=addresses]")
+    page.wait_for_selector("#addr-maps .addr-map[data-u='0'] .ac[data-ch='129'].start .lbl")
+    assert page.inner_text("#addr-maps .ac[data-ch='129'] .lbl") == "bar_1"
+    assert page.eval_on_selector("#addr-maps .ac[data-ch='2']", "e => e.dataset.ids") == ""  # free channel blank
+    page.wait_for_function("document.querySelector('[data-note=\"0\"]').textContent.includes('Simulator')")
+    app.engine.channel_test[(0, 2)] = 200  # a value only the channel tester sets
+    page.wait_for_function("document.querySelector('#addr-maps .ac[data-ch=\"2\"] .v').textContent === '200'")
+    del app.engine.channel_test[(0, 2)]
+
+
+def test_layout_patch_inline_address_edit(shot):
+    page, app, root, _ = shot
+    go(page, "layout")
+    page.wait_for_selector("#lp-fixtures tr[data-id=par_1]")
+    addr = "#lp-fixtures tr[data-id=par_1] td:nth-child(5) input"
+    page.fill(addr, "386")  # on top of par_2 (385-391)
+    page.wait_for_selector("#lp-fixtures tr[data-id=par_1].error")
+    assert "par_1" in page.inner_text("#lp-clash") and page.is_disabled("#lp-patch-save")
+    page.click("#lp-views [data-view=addresses]")
+    page.wait_for_selector("#addr-maps .ac[data-ch='386'].clash")
+    page.fill(addr, "450")
+    page.wait_for_function("!document.querySelector('#lp-patch-save').disabled")
+    page.click("#lp-patch-save")
+    page.wait_for_function("document.querySelector('#lp-patch-save').disabled")
+    assert app.files.patch.fixtures["par_1"].address == 450
+
+
+def test_patch_sheet_png(shot):
+    page, *_ = shot
+    go(page, "layout")
+    page.wait_for_selector("#lp-fixtures tr[data-id=par_1]")
+    with page.expect_download() as dl:
+        page.click("#lp-png")
+    assert dl.value.suggested_filename.startswith("patch-sheet-") and dl.value.suggested_filename.endswith(".png")
+    page.emulate_media(media="print")
+    assert page.is_visible("#addr-maps") and not page.is_visible("#menu")
+    page.emulate_media(media="screen")
