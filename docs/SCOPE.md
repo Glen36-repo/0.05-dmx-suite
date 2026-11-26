@@ -323,7 +323,7 @@ Decided 26/11/2026:
 | Claude without the engine | MCP edits the show files directly with the same checks; live tools report the engine isn't running |
 | Universes | 0-15 per fixture; every universe rendered and sent each frame (and on drum hits) |
 | Port-specific MIDI | Mappings can name an input (`port`, part of the port name); a port-specific mapping wins, so SamplePad and TD-25 can share ch 10 notes |
-| Stage plan | 2D top-down view like Daslight's: per-rig `stage` + `layout` (metres, rotation), defaults for unplaced lights, arranged by drag on the Setup tab, applied live without a restart |
+| Stage plan | Replaced in v2 R2 by the grid light layout (see "Light layout" below); v1 metre stage plans upgrade to grid cells (file format 3) |
 | Status bar | Engine fps, every output driver, MIDI inputs, Claude (MCP check-in every 20 s; last tool), open screens, nodes; red banner + beep when anything drops |
 | USB DMX unplug | Enttec Open/Pro and the node keep the show running when unplugged and reopen the port every 2 s |
 | MIDI hot-plug | Wanted ports (rig `midi_inputs`) rescanned every 2 s; reconnect under a new name; status shown as connected/unplugged |
@@ -356,6 +356,12 @@ Decided 26/11/2026 (v2):
 | CI (v2) | GitHub Actions on every push: ruff, mypy, pytest on Windows and Linux (the firmware parity test must run on Linux, never skip), `pio run` for node and receiver; the installer workflow signs the installer when the certificate secrets exist |
 | Logs (v2) | `dmx-suite.log` in app data, INFO and up, 1 MB x 5 rotating; warnings also on the console |
 | Update check (v2) | On request only (`dmx-suite update-check`, `/api/update`): reads the latest GitHub release and says if it's newer. Check only, nothing downloaded. The repo is private, so it needs the repo public, a public release feed, or DMX_SUITE_UPDATE_URL |
+| Light layout (R2) | Grid cells, not metres: `layout: {id: {x, y, rot, shape, cols}}`, x/y the light's centre from the top left (back of the stage at the top), half cells; pixel lights draw each pixel as a square laid out as a row, ring or grid. Format 2 -> 3 converts metre plans at 4 cells a metre and drops `stage:`. Defaults: heads at the back, bars end to end, washes and kick at the front, haze to the side |
+| Layout editing (R2) | Select by tap/shift-tap/box/lasso/group tab; move, align, space out, make row/ring/grid, rotate 45°, pixel shape; undo; save rewrites the rig's `layout:` (validated, backed up) and applies live |
+| Groups (R2) | Stored on the fixture entries in fixtures.yaml; `POST /api/store/group` set/rename/delete; rename updates every scene, look, rig and MIDI map in one change; delete refused while used; names can't be a fixture id, kind or `all`; applied live |
+| Themes (R2) | Folders under `web/static/themes/` (theme.css variables, logo, name); Neutral default, 0.05 shipped; chosen per laptop in app data `settings.json`; the page names itself with `application-name` meta (desktop app and installer smoke test check that, not the title) |
+| UI text (R2) | Every string in `web/static/i18n/en.json`, filled by `data-i18n*` attributes and `t()`; tests fail on missing, unused or hard-coded text |
+| UI code (R2) | ES modules under `web/static/js/` (no build step); browser tests with Playwright in `tests/test_ui.py` (skipped without a browser, run in CI on Linux) |
 | Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
 | Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
 | MASTER-exempt fixtures | Fixture ids, groups or a kind name (`kick` = every kick-kind fixture, as v1); they ignore MASTER and drum flashes and use the rig's `kick_colour` when the scene leaves them off. Under "generic" nothing is exempt and a kick-kind light is an ordinary light (auto shows use it like a wash) |
@@ -369,8 +375,8 @@ Open:
 - [ ] Daslight import: need a sample Daslight show/patch file to read its format
 - [ ] Palette positions and gobo values (`shows/palettes.yaml`): set at rehearsal
 - [ ] Rehearsal: tune auto-show styles (colours, step times, energy) and write the real setlist
-- [ ] Brand assets: replace `dmx_suite/web/static/brand/logo.svg` and `brand.css` (placeholders now); CoreS3 boot logo
-- [ ] Stage plan: arrange the real layout at rehearsal (Setup tab); set pan_range/tilt_range per head type and calibrate palette positions so beam lines point the right way
+- [ ] Brand assets: replace `dmx_suite/web/static/themes/005/logo.svg` and `theme.css` (placeholders now); app icon `static/brand/icon.svg`; CoreS3 boot logo
+- [ ] Light layout: arrange the real layout at rehearsal (Layout page); set pan_range/tilt_range per head type and calibrate palette positions so beam lines point the right way
 - [ ] Phase 2: node fallback look only covers the node's own universe; receivers on other universes go black 5 s after the laptop stops. Decide whether each universe needs its own fallback
 - [ ] Phase 2: SamplePad note numbers and pad map, H2MIDI Pro port name, guitar board MIDI (generic PC/CC/notes already supported)
 - [ ] 0.05 brand assets: logo files (SVG preferred), colours, font

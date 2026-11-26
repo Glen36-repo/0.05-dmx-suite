@@ -2,6 +2,20 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v2, release R2)
+
+### Added
+- Pages in a menu down the left (a bar along the bottom on phones); MASTER, blackout, gig lock and status stay along the top.
+- Light layout: every light and pixel is a square with its live colour (Live page). The Layout page arranges them: select by tap, box, lasso or group; move, align, space out, make a row/ring/grid, rotate, lay out a bar's pixels; undo; save.
+- Groups: make, change, rename (updates everything that uses the group) and delete from the Layout page.
+- Themes: Neutral (default) and 0.05, picked on the Setup page.
+- Tap a setlist song to jump to it; "Check for updates" on the Setup page.
+
+### Changed
+- Show file format 3: layouts are in grid cells; existing stage plans convert automatically.
+- All UI text is in one strings file (`i18n/en.json`).
+- Faders and head pads send at most 25 updates a second.
+
 ## Unreleased (v2, release R1)
 
 ### Added

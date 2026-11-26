@@ -6,8 +6,9 @@ Pages are filled in as each v2 release lands. Where a page says "coming", the fe
 
 1. [Getting started](getting-started.md): install, first run, the simulator
 2. [Fixtures and rigs](fixtures.md): adding lights, addresses, rig files, rule profiles
-3. [Scenes](scenes.md): colours, effects, positions, layers
-4. [Shows and setlists](shows.md): steps, repeats, fades, auto shows, setlists
-5. [Busking](busking.md): live buttons and faders
-6. [MIDI and OSC](midi-osc.md): mapping pedals, drums and controllers
-7. [Safety and troubleshooting](troubleshooting.md): the safety rules, when something goes wrong
+3. [Light layout and groups](layout.md): arranging the lights on screen, making groups
+4. [Scenes](scenes.md): colours, effects, positions, layers
+5. [Shows and setlists](shows.md): steps, repeats, fades, auto shows, setlists
+6. [Busking](busking.md): live buttons and faders
+7. [MIDI and OSC](midi-osc.md): mapping pedals, drums and controllers
+8. [Safety and troubleshooting](troubleshooting.md): the safety rules, when something goes wrong

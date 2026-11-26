@@ -115,15 +115,27 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 
 ## Browser UI
 
-`dmx-suite run` also starts the browser UI at http://localhost:8505/ (`--port` to change, `--no-web` to turn off).
+`dmx-suite run` also starts the UI at http://localhost:8505/ (`--port` to change, `--no-web` to turn off); the desktop app shows the same screens in its own window. Pages are in a menu down the left (a bar along the bottom on a phone); MASTER, blackout, gig lock and the status strip stay along the top.
 
-- **Live:** MASTER, blackout, stage plan (top-down view of the rig with live colours and moving-head beam lines), show/set/scene buttons, next step, tap tempo, setlist, grand master and sub-master faders, haze.
+- **Live:** the light layout with live colours, show/set/scene buttons, next step, tap tempo, setlist (tap a song to jump to it), grand master and sub-master faders, haze.
+- **Layout:** arrange the lights and make groups (below).
 - **Heads:** drag on a pad to hold a head at a spot (head limits still apply); save held positions as a palette position.
 - **MIDI:** live monitor (what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
-- **Setup:** stage plan arrange (drag lights into place, rotate, set the stage size, save), find fixture, channel tester, drum flash test, node health (name/identify nodes), address check.
+- **Setup:** find a light, channel tester, drum flash test, devices, node health (name/identify nodes), address check, theme, check for updates.
 - **Files:** preview or play scenes, and restore any file from the backups.
 
-**Stage plan:** each rig file has `stage: {width, depth}` (metres) and `layout:` with `{x, y, rot}` per fixture: x from stage left as the audience sees it, y from the front edge, rot 0 = facing the audience. Lights not placed yet get a default spot. Arrange it on the Setup tab rather than by hand; saving rewrites the rig file (previous copy in the backups). Fixture types can set `pan_range` / `tilt_range` (degrees, default 540 / 270) so the beam lines match the heads.
+**Light layout:** every light is a square on a grid, and every pixel of a pixel bar is its own square, each showing its live colour. On the Layout page:
+- pick lights with the group tabs, a tap (shift-tap to add), a box or the lasso;
+- move them, align them, space them out, make a row, ring or grid of them, or rotate them;
+- lay out a bar's pixels as a row, ring or grid;
+- zoom, show or hide names and the moving-head beam lines;
+- undo, then save. Saving writes `layout:` into the rig file (previous copy in the backups).
+
+Positions are grid cells from the top left, with the back of the stage at the top: `{x, y, rot, shape, cols}`. Lights not placed yet get a default spot. Fixture types can set `pan_range` / `tilt_range` (degrees, default 540 / 270) so the beam lines match the heads.
+
+**Groups:** select lights and make a group, set an existing group to the selection, rename it (every scene, look, rig and MIDI map that uses it follows), or delete it (refused while anything uses it). Groups are saved on the fixtures in `fixtures.yaml`.
+
+**Themes:** Neutral (default) or 0.05, picked on the Setup page and remembered by each laptop. A theme is a folder in `dmx_suite/web/static/themes/` with `theme.css` (colours and font), `logo.svg` and `theme.json` (name). All UI text is in `dmx_suite/web/static/i18n/en.json`.
 
 **Status bar** (always across the top; full table on the Setup tab):
 
