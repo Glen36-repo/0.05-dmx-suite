@@ -223,8 +223,8 @@ class Engine:
         look = Look(fixtures={self.find: FixtureLook(colour=white)})
         state = ControlState(True, False, {}, self.haze.tick(now))
         frames = self.rules.render(look, state, full)
-        for fx in self.rig.fixtures:  # the kick light ignores MASTER, so dark it explicitly
-            if fx.kind == Kind.KICK and fx.id != self.find:
+        for fx in self.rig.fixtures:  # exempt fixtures (kick light) ignore MASTER: dark them explicitly
+            if fx.id in self.rig.exempt and fx.id != self.find:
                 for ch in fx.type.channels:
                     frames[fx.universe][fx.slot(ch)] = 0
         return frames
@@ -292,10 +292,11 @@ class Engine:
         length_ms: int = 100,
         min_level: float = 0.0,
     ) -> bool:
-        """Drum hit. Only with MASTER off (rule 2). Sends a frame immediately; the loop wakes to
-        cut back to black exactly when the flash ends. Returns False if ignored."""
+        """Drum hit. Only with MASTER off, and only if the rig's profile has drum flash (rule 2).
+        Sends a frame immediately; the loop wakes to cut back to black exactly when the flash
+        ends. Returns False if ignored."""
         with self.lock:
-            if self.master or self.blackout:
+            if not self.rig.profile.drum_flash or self.master or self.blackout:
                 return False
             if colour == "show":
                 col = self.look.show_colour
@@ -306,7 +307,7 @@ class Engine:
             level = max(min_level, min(1.0, velocity / 127))
             until = self.clock() + length_ms / 1000
             for fid in fixtures:
-                if fid in self.rig.present and self.rig.patch.fixtures[fid].kind != Kind.KICK:
+                if fid in self.rig.present and fid not in self.rig.exempt:  # rule 3
                     self.flashes[fid] = Flash(col, level, until)
         self._changed()
         return True

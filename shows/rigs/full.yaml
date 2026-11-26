@@ -2,6 +2,9 @@
 name: Full rig
 fixtures: [all]
 
+# Rule profile: 0.05_band (MASTER on/off, drum flash, kick light ignores MASTER) or generic
+profile: 0.05_band
+
 grand_master: 100
 sub_masters: {head: 100, bar: 100, wash: 100, kick: 100}
 flash_level: 100          # drum flash level, on top of the grand master

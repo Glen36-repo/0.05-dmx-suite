@@ -60,7 +60,6 @@ def test_palette_rejects_position_for_colour_only(patch):
     "layer, msg",
     [
         ({"fixtures": ["wash"], "dimmer": 1.0}, "rule 1"),
-        ({"fixtures": ["bars"], "intensity": 0.5}, "rule 1"),
         ({"fixtures": ["smoke"], "haze": 1.0}, "rule 5"),
         ({"fixtures": ["heads"], "position": "left"}, "rule 7"),
         ({"fixtures": ["uk"], "effect": "random_move"}, "rule 7"),

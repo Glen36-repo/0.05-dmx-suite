@@ -348,6 +348,9 @@ Decided 26/11/2026 (v2):
 | v2 features | Spatial effects, effect spread, busking page, beat sync, undo/redo + copy/paste, OSC input added to v2 (26/11/2026), alongside fades, Art-Net/sACN and the fixture editor |
 | Access | PIN or password on the UI and API; localhost only until LAN/phone access is turned on |
 | Set steps (v2) | Fixed timers stay the default; a step can instead follow the tempo (`hold_beats` / `hold_bars`) |
+| Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
+| Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
+| MASTER-exempt fixtures | Fixture ids, groups or a kind name (`kick` = every kick-kind fixture, as v1); they ignore MASTER and drum flashes and use the rig's `kick_colour` when the scene leaves them off. Under "generic" nothing is exempt and a kick-kind light is an ordinary light (auto shows use it like a wash) |
 
 Open:
 

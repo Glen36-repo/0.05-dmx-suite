@@ -14,7 +14,8 @@ Timing: `period_s` is one full cycle. `spread` (0-1) is how much of a cycle is s
 layer's fixtures in order: 0 = all in step, 1 = evenly round the whole cycle.
 
 Layers apply in order; a later layer overrides what an earlier one set on the same fixture.
-No layer can set a dimmer or haze (rules 1 and 5) or move a colour-only head (rule 7).
+No layer can set haze (rule 5) or move a colour-only head (rule 7). A layer may set `intensity`
+(0-1) only where the rig's profile doesn't make MASTER own on/off (rule 1, see profile.py).
 Fixtures missing from the active rig are skipped.
 """
 
@@ -43,7 +44,7 @@ EFFECTS = {
 }
 MOVEMENT = {"sweep", "random_move"}
 STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe"}
-COMMON = {"fixtures", "effect", "name", "fallback"}
+COMMON = {"fixtures", "effect", "name", "fallback", "intensity"}
 
 
 # --------------------------------------------------------------------------- model
@@ -63,6 +64,10 @@ class Scene:
     name: str
     layers: list[Layer]
     show_colour: Colour = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
+
+    @property
+    def uses_intensity(self) -> bool:
+        return any("intensity" in ly.params for ly in self.layers)
 
 
 # --------------------------------------------------------------------------- parsing / validation
@@ -127,6 +132,8 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
         p["colour_wheel"] = int(_num(d["colour_wheel"], f"{what} colour_wheel", 0, 255))
     if "strobe" in d:
         p["strobe"] = int(_num(d["strobe"], f"{what} strobe", 0, 255))
+    if "intensity" in d:
+        p["intensity"] = _num(d["intensity"], f"{what} intensity", 0, 1)
     if "speed" in d:
         p["speed"] = _num(d["speed"], f"{what} speed", 0, 1)
 
@@ -263,6 +270,8 @@ class ScenePlayer:
                 fl.strobe = p["strobe"]
             if "speed" in p:
                 fl.speed = p["speed"]
+            if "intensity" in p:
+                fl.intensity = p["intensity"]
 
         eff = ly.effect
         if eff == "colour_chase":

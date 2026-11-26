@@ -2,6 +2,9 @@
 name: Small rig
 fixtures: [bars, kick, smoke]
 
+# Rule profile: 0.05_band (MASTER on/off, drum flash, kick light ignores MASTER) or generic
+profile: 0.05_band
+
 grand_master: 100
 sub_masters: {bar: 100, kick: 100}
 

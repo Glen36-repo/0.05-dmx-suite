@@ -1,4 +1,5 @@
-"""Rig configs: which fixtures are present, master levels, head limits, haze settings, nodes, outputs."""
+"""Rig configs: which fixtures are present, rule profile, master levels, head limits, haze settings,
+nodes, outputs."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from typing import Any
 import yaml
 
 from .fixtures import ConfigError, Kind, Patch
+from .profile import V1_DEFAULT, Profile, parse_profile, resolve_exempt
 
 
 @dataclass
@@ -64,6 +66,8 @@ class Rig:
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
     stage: tuple[float, float] = (6.0, 4.0)  # width, depth in metres (stage plan)
     layout: dict[str, "Placement"] = field(default_factory=dict)  # fixture id -> where it is
+    profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
+    exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
 
     @property
     def fixtures(self):
@@ -94,6 +98,7 @@ def _range(v: Any, what: str) -> tuple[float, float]:
 def parse_rig(data: dict, patch: Patch) -> Rig:
     name = data.get("name", "rig")
     present = patch.resolve(data.get("fixtures", ["all"]))
+    profile = parse_profile(data.get("profile"))
     subs = {k: 1.0 for k in Kind}
     for k, v in (data.get("sub_masters") or {}).items():
         try:
@@ -147,6 +152,8 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         midi_inputs=[str(x) for x in data.get("midi_inputs") or []],
         stage=_stage(data.get("stage")),
         layout=_layout(data.get("layout"), patch),
+        profile=profile,
+        exempt=resolve_exempt(profile, patch, present),
     )
 
 

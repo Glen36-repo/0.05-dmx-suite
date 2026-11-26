@@ -1,5 +1,6 @@
-"""What the show layer asks for. A Look has no dimmer and no haze: those belong to MASTER and
-the Haze controls (hard rules 1 and 5), so they can't even be expressed here.
+"""What the show layer asks for. A Look never carries the haze channel (rule 5) or a raw dimmer
+channel. It can carry an `intensity` (0-1), which only rigs whose profile doesn't use MASTER on/off
+accept (rule 1, see profile.py); under "0.05 band" MASTER owns on/off and scenes are colour only.
 """
 
 from __future__ import annotations
@@ -14,9 +15,10 @@ from .fixtures import EMITTERS, ConfigError, Patch
 
 Colour = dict[str, float]  # emitter role -> 0..1
 
-FORBIDDEN = {"dimmer": "scenes never set dimmers; MASTER owns on/off (rule 1)",
-             "intensity": "scenes never set dimmers; MASTER owns on/off (rule 1)",
+FORBIDDEN = {"dimmer": "scenes never set the dimmer channel; use intensity, and only where the rig's "
+                       "profile doesn't make MASTER own on/off (rule 1)",
              "haze": "haze is only set by the Haze controls (rule 5)"}
+INTENSITY_RULE1 = "sets intensity, but MASTER owns on/off under this rig's profile (rule 1)"
 
 
 class LookError(ConfigError):
@@ -33,6 +35,7 @@ class FixtureLook:
     tilt: float | None = None
     speed: float | None = None  # 0..1, 1 = fastest
     strobe: int | None = None
+    intensity: float | None = None  # 0..1; only under profiles without MASTER on/off (rule 1)
 
     def is_on(self) -> bool:
         if any(v > 0 for v in self.colour.values()):
@@ -46,6 +49,10 @@ class FixtureLook:
 class Look:
     fixtures: dict[str, FixtureLook] = field(default_factory=dict)
     show_colour: Colour = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
+
+    @property
+    def uses_intensity(self) -> bool:
+        return any(fl.intensity is not None for fl in self.fixtures.values())
 
 
 def _unit(v: Any, what: str) -> float:
@@ -78,7 +85,7 @@ def parse_fixture_look(d: dict, what: str) -> FixtureLook:
     for k in d:
         if k in FORBIDDEN:
             raise LookError(f"{what}: {FORBIDDEN[k]}")
-    allowed = {"colour", "pixels", "colour_wheel", "gobo", "pan", "tilt", "speed", "strobe"}
+    allowed = {"colour", "pixels", "colour_wheel", "gobo", "pan", "tilt", "speed", "strobe", "intensity"}
     bad = set(d) - allowed
     if bad:
         raise LookError(f"{what}: unknown keys {sorted(bad)}")
@@ -91,6 +98,7 @@ def parse_fixture_look(d: dict, what: str) -> FixtureLook:
         tilt=_unit(d["tilt"], f"{what} tilt") if "tilt" in d else None,
         speed=_unit(d["speed"], f"{what} speed") if "speed" in d else None,
         strobe=d.get("strobe"),
+        intensity=_unit(d["intensity"], f"{what} intensity") if "intensity" in d else None,
     )
 
 

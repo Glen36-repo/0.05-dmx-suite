@@ -9,7 +9,7 @@ import yaml
 
 from .auto import generate
 from .fixtures import ConfigError, Patch, load_patch
-from .look import Look, load_look
+from .look import INTENSITY_RULE1, Look, load_look
 from .midi.map import MidiMap, load_map
 from .palettes import Palettes, load_palettes
 from .rig import Rig, load_rig
@@ -39,6 +39,16 @@ def _pick(folder: Path, name: str) -> Path:
     return p
 
 
+def profile_problems(rig: Rig, scenes: dict[str, Scene], looks: dict[str, Look]) -> list[str]:
+    """What breaks the rig's profile rules. Scenes and looks are shared by every rig, so this
+    runs per rig: `intensity` is fine on a Generic rig and refused on a "0.05 band" one (rule 1)."""
+    if not rig.profile.master_gate:
+        return []
+    out = [f"scenes/{k}.yaml {INTENSITY_RULE1}" for k, sc in sorted(scenes.items()) if sc.uses_intensity]
+    out += [f"looks/{k}.yaml {INTENSITY_RULE1}" for k, lk in sorted(looks.items()) if lk.uses_intensity]
+    return out
+
+
 def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: str = "default") -> ShowFiles:
     root = Path(root)
     patch = load_patch(root / "fixtures.yaml")
@@ -57,6 +67,9 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
         for key, table in (("show", shows), ("scene", scenes)):
             if key in m.params and m.params[key] not in table:
                 raise ConfigError(f"MIDI map {m.type} ch{m.channel} #{m.number}: unknown {key} {m.params[key]!r}")
+    bad = profile_problems(r, scenes, {look: lk})
+    if bad:
+        raise ConfigError(f"rig {rig} (profile {r.profile.name}): " + "; ".join(bad))
     return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists)
 
 
@@ -71,12 +84,18 @@ def check_all(root: str | Path) -> list[str]:
     unverified = [t.name for t in patch.types.values() if not t.verified]
     if unverified:
         problems.append(f"warning: unverified channel maps: {', '.join(unverified)}")
-    for sub, loader in (("rigs", load_rig), ("looks", load_look)):
-        for p in sorted((root / sub).glob("*.yaml")):
-            try:
-                loader(p, patch)
-            except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
-                problems.append(f"{sub}/{p.name}: {e}")
+    rigs: dict[str, Rig] = {}
+    looks: dict[str, Look] = {}
+    for p in sorted((root / "rigs").glob("*.yaml")):
+        try:
+            rigs[p.stem] = load_rig(p, patch)
+        except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+            problems.append(f"rigs/{p.name}: {e}")
+    for p in sorted((root / "looks").glob("*.yaml")):
+        try:
+            looks[p.stem] = load_look(p, patch)
+        except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+            problems.append(f"looks/{p.name}: {e}")
     try:
         pal = load_palettes(root / "palettes.yaml", patch)
     except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
@@ -100,13 +119,12 @@ def check_all(root: str | Path) -> list[str]:
                 parse_setlist(p.stem, yaml.safe_load(p.read_text(encoding="utf-8")) or {}, shows, scenes)
             except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
                 problems.append(f"setlists/{p.name}: {e}")
+        # scenes and looks are shared: each must suit every rig's profile (rule 1)
+        for rk, rig in rigs.items():
+            problems += [f"rig {rk} (profile {rig.profile.name}): {p}" for p in profile_problems(rig, scenes, looks)]
         # every auto set must produce valid scenes on every rig
         for sk, show in shows.items():
-            for rp in sorted((root / "rigs").glob("*.yaml")):
-                try:
-                    rig = load_rig(rp, patch)
-                except (ConfigError, OSError, KeyError, TypeError, ValueError):
-                    continue
+            for rk, rig in rigs.items():
                 for st in show.sets.values():
                     if st.auto is None:
                         continue
@@ -114,13 +132,18 @@ def check_all(root: str | Path) -> list[str]:
                         for step in range(20):
                             generate(st.auto, rig, pal, step, "check")
                     except (ConfigError, KeyError, ValueError) as e:
-                        problems.append(f"shows/{sk}.yaml set {st.name} on rig {rp.stem}: {e}")
+                        problems.append(f"shows/{sk}.yaml set {st.name} on rig {rk}: {e}")
     for p in sorted((root / "midi").glob("*.yaml")):
         try:
             mp = load_map(p)
             for m in mp.mappings:
                 if m.action == "flash":
                     patch.resolve(m.params["fixtures"])
+            if any(m.action == "flash" for m in mp.mappings):
+                off = [rk for rk, rig in rigs.items() if not rig.profile.drum_flash]
+                if off:
+                    problems.append(f"warning: midi/{p.name} has drum flash mappings; drum flash is off "
+                                    f"in the profile of rig {', '.join(off)} (rule 2)")
                 for key, table in (("show", shows), ("scene", scenes)):
                     if key in m.params and m.params[key] not in table:
                         raise ConfigError(f"{m.type} ch{m.channel} #{m.number}: unknown {key} {m.params[key]!r}")

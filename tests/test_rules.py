@@ -13,10 +13,11 @@ from dmx_suite.output import LogDriver
 # ------------------------------------------------------------------ rule 1: MASTER owns on/off
 
 
-@pytest.mark.parametrize("key", ["dimmer", "intensity"])
-def test_rule1_looks_cannot_set_dimmer(patch, key):
+def test_rule1_looks_cannot_set_dimmer(patch):
+    # the raw dimmer channel is never a look key; `intensity` is checked per rig profile
+    # (test_profiles.py: refused under "0.05 band", allowed under "generic")
     with pytest.raises(LookError, match="rule 1"):
-        parse_look({"fixtures": {"mh_a": {key: 1.0, "colour": [1, 0, 0]}}}, patch)
+        parse_look({"fixtures": {"mh_a": {"dimmer": 1.0, "colour": [1, 0, 0]}}}, patch)
 
 
 def test_rule1_master_sets_dimmers(engine, view):

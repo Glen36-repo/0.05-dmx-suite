@@ -175,6 +175,8 @@ Scenes (`shows/scenes/*.yaml`) are layers applied in order to fixtures or groups
 
 Shows (`shows/shows/*.yaml`) have sets on fixed step timers. A set is either a list of scenes (in order, or random without repeats) or an `auto` style that generates a fresh scene every step from the palette colours, energy (low/mid/high), head colour mix (matching/white/contrast), patterns (all, heads only, bars only, static on the kit) and movement (random/sweep/static), using only the fixtures in the active rig. `band` has LOW / MID / HIGH (60 / 40 / 20 s) plus a `cues` set; `opera` and `acoustic` are single-set shows. Setlists (`shows/setlists/`) list songs, each with a show/set or a scene, optionally forcing MASTER. A scene layer can name a `fallback` group to use when its fixtures aren't in the rig.
 
+**Rule profiles:** each rig file picks which rig rules apply with `profile:`. `0.05_band` (the shipped rigs) is MASTER on/off with colour-only scenes, drum flash with MASTER off, and the kick light ignoring MASTER. `generic` is standard dimmer behaviour: lights follow the scene, a layer or look can set `intensity: 0-1`, and there's no drum flash. A block (`profile: {base: 0.05_band, master_exempt: [wash]}`) changes single settings. A rig file with no `profile:` runs as `0.05_band`. Safety rules (no glow, haze only from the Haze controls, grand master intensity only, head limits) apply under every profile. `dmx-suite check` refuses a scene or look that sets `intensity` while any rig uses a MASTER on/off profile.
+
 Levels in rig files are 0-100 %. Looks (`shows/looks/`) set colour, pixels, wheel, gobo and position only; a `dimmer` or `haze` key is rejected (hard rules 1 and 5). The static look is the fallback when no scene is playing.
 
 ## Node test script

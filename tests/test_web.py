@@ -154,7 +154,7 @@ def test_events_stream(running):
 def test_claude_tools_online(running):
     app, url, root = running
     t = DmxTools(shows=root, url=url, token=TOKEN)
-    assert "HARD RULES" in t.get_guide()
+    assert "Safety rules" in t.get_guide()
     assert "mh_a" in t.list_fixtures()
     scene = "name: Slow purple\nlayers:\n  - {fixtures: [bars], colour: purple}\n  - {fixtures: [movers], position: drum_kit}"
     assert t.validate_scene(scene).startswith("ok")

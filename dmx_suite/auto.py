@@ -106,13 +106,16 @@ class RigGroups:
 
     @classmethod
     def of(cls, rig: Rig) -> "RigGroups":
-        fx = rig.fixtures
+        # fixtures MASTER doesn't affect (rule 3, e.g. the 0.05 kick light) get the kick treatment;
+        # a kick-kind light that isn't exempt (Generic profile) is used like a wash
+        ex = rig.exempt
+        fx = [f for f in rig.fixtures if f.id not in ex]
         return cls(
             bars=[f.id for f in fx if f.kind == Kind.BAR],
-            washes=[f.id for f in fx if f.kind == Kind.WASH],
+            washes=[f.id for f in fx if f.kind in (Kind.WASH, Kind.KICK)],
             movers=[f.id for f in fx if f.kind == Kind.HEAD and not f.type.colour_only and f.type.has("pan")],
             ukings=[f.id for f in fx if f.kind == Kind.HEAD and (f.type.colour_only or not f.type.has("pan"))],
-            kick=[f.id for f in fx if f.kind == Kind.KICK],
+            kick=[f.id for f in rig.fixtures if f.id in ex],
         )
 
     @property

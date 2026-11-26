@@ -16,7 +16,9 @@ from typing import Any
 import yaml
 
 from .fixtures import ConfigError, load_patch
+from .look import INTENSITY_RULE1
 from .palettes import load_palettes
+from .rig import load_rig
 from .scenes import EFFECTS, parse_scene
 from .paths import default_shows
 from .store import ShowStore, StoreError
@@ -26,16 +28,21 @@ DEFAULT_URL = "http://127.0.0.1:8505"
 GUIDE = """\
 0.05 DMX Suite: how shows are built, and the rules every change is checked against.
 
-HARD RULES (a write that breaks one is rejected with the reason):
-1. MASTER owns on/off. Scenes never set dimmers; switch a light on/off with its colour (off = "off").
-2. MASTER off: the rig is dark and drum hits flash it. Scenes don't control this.
-3. MASTER never affects the kick-drum light.
+RULES (a write that breaks one is rejected with the reason).
+Safety rules, always on:
 4. No background glow: anything not lit by the scene is fully off.
 5. Haze is never set by scenes or shows, only by the haze controls (set_haze).
 6. The grand master scales brightness only (not position, colour choice or haze).
+8. Moving-head pan/tilt limits from the rig are always enforced at output.
+Profile rules: each rig file has a `profile:` ("0.05_band", or "generic"); now_playing shows it.
+1. "0.05 band": MASTER owns on/off. Scenes never set dimmers or `intensity`; switch a light on/off
+   with its colour (off = "off"). "generic": lights follow the scene; a layer may set
+   `intensity: 0-1`. A scene is checked against every rig's profile.
+2. "0.05 band": MASTER off = the rig is dark and drum hits flash it. "generic": no drum flash.
+3. "0.05 band": MASTER never affects the kick-drum light (`master_exempt`).
+Fixture definition:
 7. U'King heads (colour_only) are colour only: no position, sweep or random_move on them.
    Use the `movers` group for movement, `heads` for colour.
-8. Moving-head pan/tilt limits from the rig are always enforced at output.
 
 SCENE (scenes/<name>.yaml): layers applied in order; later layers override earlier ones.
   name: Blue kit
@@ -221,6 +228,11 @@ class DmxTools:
         pal = load_palettes(self.shows / "palettes.yaml", patch)
         try:
             sc = parse_scene(data, patch, pal, data.get("name", "scene"))
+            if sc.uses_intensity:  # rule 1: only rigs whose profile doesn't use MASTER on/off
+                gated = [rp.stem for rp in sorted((self.shows / "rigs").glob("*.yaml"))
+                         if load_rig(rp, patch).profile.master_gate]
+                if gated:
+                    return f"rejected: {sc.name} {INTENSITY_RULE1} (rig {', '.join(gated)})"
         except ConfigError as e:
             return f"rejected: {e}"
         return f"ok: {sc.name}, {len(sc.layers)} layers"

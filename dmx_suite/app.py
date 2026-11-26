@@ -13,6 +13,7 @@ from typing import Any
 
 from .engine import Engine
 from .layout import full_layout
+from .look import INTENSITY_RULE1
 from .fixtures import EMITTERS, Kind
 from .midi.map import ACTIONS
 from .midi.monitor import MidiMonitor
@@ -201,9 +202,11 @@ class App:
             sc = self.files.scenes[scene]
         else:
             sc = parse_scene(scene, self.files.patch, self.files.palettes, scene.get("name", "preview"))
+            if sc.uses_intensity and self.engine.rig.profile.master_gate:
+                raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
         self.engine.preview(ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff), seconds, sc)
         msg = f"previewing {sc.name} for {seconds:.0f} s, then back to {self.ctl.describe()}"
-        if not self.engine.master:
+        if self.engine.rig.profile.master_gate and not self.engine.master:
             msg += " (MASTER is off, so the rig stays dark)"
         return msg
 
@@ -254,6 +257,7 @@ class App:
         return {
             "time": time.time(),
             "master": e.master,
+            "profile": e.rig.profile.summary(),
             "blackout": e.blackout,
             "gig_lock": self.gig_lock,
             "grand": e.masters.grand.target,

@@ -1,16 +1,22 @@
 """Rule layer: turns the show's Look plus the control state into DMX frames.
 
-Sits just before output, so no look can break the rig rules (CLAUDE.md hard rules 1-8):
+Sits just before output, so no look can break the rules (CLAUDE.md; profiles in profile.py).
 
-1. MASTER owns on/off: dimmers are written here only; Looks can't carry them.
-2. MASTER off: rig dark except drum flashes (immediate send is the engine's job).
-3. MASTER never affects the kick light.
+Safety rules, always on:
 4. No background glow: every frame starts at zero; a fixture not lit gets 0 on every emitter
    and dimmer. Non-light channels (gobo, wheel, strobe, mode) sit at their defaults.
 5. Haze channel comes only from the haze controller.
 6. Grand/sub-masters scale intensity only (dimmer, or RGB when there's no dimmer).
-7. Colour-only heads stay at home position; pan/tilt speed: 1.0 = fastest = DMX 0 when inverted.
 8. Pan/tilt clamped to the rig's head limits.
+
+Profile rules, per the rig's profile:
+1. `master_gate`: MASTER owns on/off; dimmers are written here only and any `intensity` in the
+   look is ignored. Without it, a fixture lights when its look does, at the look's intensity.
+2. `drum_flash`: MASTER off -> rig dark except drum flashes (immediate send is the engine's job).
+3. `master_exempt`: those fixtures ignore MASTER (and drum flashes).
+
+Fixture definition:
+7. Colour-only heads stay at home position; pan/tilt speed: 1.0 = fastest = DMX 0 when inverted.
 """
 
 from __future__ import annotations
@@ -73,20 +79,26 @@ class RuleLayer:
         self._position(fx, fl, frame)
 
         # decide what (if anything) lights this fixture
+        prof = self.rig.profile
         scale = masters.level(t.kind)  # rule 6
         colour: Colour | None = None
         pixels: list[Colour] | None = None
         use_look = False
         if st.blackout:
             pass
-        elif t.kind == Kind.KICK:  # rule 3: MASTER doesn't touch the kick light
+        elif fx.id in self.rig.exempt:  # rule 3: MASTER doesn't touch exempt fixtures (kick light)
             colour = fl.colour if fl and fl.colour else self.rig.kick_colour
             pixels = fl.pixels if fl else None
             use_look = fl is not None
-        elif not st.master and fx.id in st.flashes:  # rule 2: flashes only with MASTER off
+        elif prof.drum_flash and not st.master and fx.id in st.flashes:  # rule 2: only with MASTER off
             fls = st.flashes[fx.id]
             colour = fls.colour
             scale *= fls.level * masters.flash.value
+        elif not prof.master_gate:  # no MASTER on/off: the look decides, at its intensity
+            if fl is not None and fl.is_on():
+                colour, pixels, use_look = fl.colour, fl.pixels, True
+                if fl.intensity is not None:
+                    scale *= fl.intensity
         elif st.master and fl is not None and fl.is_on():  # rule 1: MASTER owns on/off
             colour, pixels, use_look = fl.colour, fl.pixels, True
 
