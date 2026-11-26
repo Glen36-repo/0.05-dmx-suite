@@ -4,7 +4,7 @@
 // The scene is kept as the same data the file holds ({name, layers: [{fixtures, effect, ...}]}),
 // so what's saved is exactly what was previewed. Settings at their default aren't written.
 import { openWheel } from "../colourwheel.js";
-import { isSteps, renderSteps, toggleSteps } from "../stepedit.js";
+import { isSteps, keyDown as stepKey, renderSteps, selectionChanged, showStepCheck, toggleSteps } from "../stepedit.js";
 import { api, attempt, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
@@ -333,6 +333,7 @@ async function check() {
     return;
   }
   const r = await api("POST", "/api/validate/scene", { data }).catch((e) => ({ ok: false, error: e.message }));
+  showStepCheck(r); // a step scene: errors and head-limit notes pinned to their step
   if (!r.ok) {
     errBox.textContent = r.error;
     errBox.classList.remove("hidden");
@@ -347,6 +348,7 @@ async function check() {
 }
 
 function updateSelection() {
+  selectionChanged();
   const n = grid.selected.size;
   $("#scene-sel").textContent = n ? t("scenes.selected", { n, names: selectionNames().join(", ") }) : t("scenes.select_help");
 }
@@ -402,6 +404,17 @@ export function init() {
   grid = new LightGrid($("#scene-grid"), { select: true, onChange: updateSelection });
   $("#look-copy").onclick = copy;
   $("#look-paste").onclick = paste;
+  // step editor keys (undo / redo, page up / down) first, and kept from the Files page's global undo
+  document.addEventListener("keydown", (ev) => {
+    if (!$("#page-scenes").classList.contains("on") || ev.target.matches("input, select, textarea")) return;
+    if (stepKey(ev)) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+    if (!ev.ctrlKey && !ev.metaKey && (ev.key === "]" || ev.key === "[")) { // next / previous light, in layout order
+      const ids = Object.keys(grid.items).sort((a, b) => grid.layout[a].y - grid.layout[b].y || grid.layout[a].x - grid.layout[b].x);
+      const at = ids.indexOf([...grid.selected][0]);
+      const next = ids[(at + (ev.key === "]" ? 1 : -1) + ids.length) % ids.length];
+      if (next) grid.select([next]);
+    }
+  }, true);
   document.addEventListener("keydown", (ev) => {
     if (!$("#page-scenes").classList.contains("on") || !(ev.ctrlKey || ev.metaKey) || ev.target.matches("input, select, textarea")) return;
     const k = ev.key.toLowerCase();

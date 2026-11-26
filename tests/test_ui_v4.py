@@ -429,3 +429,77 @@ def test_show_and_scene_buttons_are_an_aligned_grid(ui):
     # a long name doesn't widen its button
     w = page.eval_on_selector("#scenes [data-scene=aaa_new]", "b => b.getBoundingClientRect().width")
     assert abs(w - boxes(page, "#scenes > button")[0]["w"]) < 1
+
+
+# ---------------------------------------------------------------- step editor (item 10)
+
+
+def open_steps(page):
+    go(page, "scenes")
+    page.wait_for_selector("#scene-pick option", state="attached")
+    page.wait_for_timeout(300)
+    page.check("#scene-steps")
+    page.wait_for_selector("#steps-list-pane .steps-list li")
+
+
+def test_step_editor_three_panes_tracking_and_record_modes(ui):
+    page, app, root, _ = ui
+    open_steps(page)
+    assert "steps-mode" in page.get_attribute("#page-scenes .builder", "class")
+    for k in ("step_s", "step_beats", "fade_s", "dark_s"):
+        assert page.locator(f"#steps-bar input[data-k={k}]").count() == 1
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#step-programmer .swatches button[title=red]")
+    assert "in the programmer" in page.inner_text("#step-programmer .prog-row[data-attr=colour]")
+    page.click("#rec-new")  # as a new step 2
+    page.wait_for_function("document.querySelectorAll('#steps-list-pane .steps-list li').length === 2")
+    page.click("#steps-list-pane .steps-list li[data-step='1'] .name")
+    page.wait_for_function("document.querySelector('#step-programmer .prog-row[data-attr=colour]').classList.contains('set')")
+    # step 1 -> 3: step 3 tracks red from step 2
+    page.click("#steps-list-pane .steps-list li[data-step='1'] .tools button[title='Insert a step after this one']")
+    page.wait_for_function("document.querySelectorAll('#steps-list-pane .steps-list li').length === 3")
+    page.wait_for_function("document.querySelector('#step-programmer .prog-row[data-attr=colour]').classList.contains('tracked')")
+    assert "tracked from step 2" in page.inner_text("#step-programmer .prog-row[data-attr=colour]")
+    # editor undo / redo
+    page.click("#steps-undo")
+    page.wait_for_function("document.querySelectorAll('#steps-list-pane .steps-list li').length === 2")
+    page.click("#steps-redo")
+    page.wait_for_function("document.querySelectorAll('#steps-list-pane .steps-list li').length === 3")
+    # bulk timing on ticked steps
+    page.check("#steps-list-pane li[data-step='0'] .step-pick")
+    page.check("#steps-list-pane li[data-step='2'] .step-pick")
+    page.fill("#steps-list-pane .bulk input[data-k=bulk-step]", "0.5")
+    page.press("#steps-list-pane .bulk input[data-k=bulk-step]", "Tab")
+    first = "document.querySelector(\"#steps-list-pane li[data-step='0'] .step-time\")"
+    page.wait_for_function(f"{first}.textContent.includes('0.5s')")
+
+
+def test_step_editor_yaml_round_trip_and_validation(ui):
+    page, app, root, _ = ui
+    open_steps(page)
+    page.click("#steps-yaml")
+    page.wait_for_selector("#step-yaml textarea")
+    text = page.input_value("#step-yaml textarea")
+    assert "type: steps" in text
+    page.fill("#step-yaml textarea", text + "\nfade_s: 0.7\n")
+    page.click("#step-yaml button")
+    page.wait_for_function("document.querySelector('#steps-bar input[data-k=fade_s]').value === '0.7'")
+    # a rule break is pinned to its step: position on a colour-only head
+    bad = "name: x\ntype: steps\nsteps:\n- set: {bars: {colour: red}}\n- set: {ukings: {position: drum_kit}}\n"
+    page.fill("#step-yaml textarea", bad)
+    page.click("#step-yaml button")
+    page.wait_for_selector("#steps-list-pane li[data-step='1'].error")
+    assert "rule 7" in page.get_attribute("#steps-list-pane li[data-step='1']", "title")
+
+
+def test_step_editor_live_mode_sends_the_step(ui):
+    page, app, root, _ = ui
+    open_steps(page)
+    page.check("#steps-live")
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#step-programmer .swatches button[title=blue]")  # not recorded yet: still sent live
+    deadline = page.evaluate("Date.now()") + 3000
+    while app.engine.previewing is None and page.evaluate("Date.now()") < deadline:
+        page.wait_for_timeout(50)
+    assert app.engine.previewing is not None
+    page.uncheck("#steps-live")

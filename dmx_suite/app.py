@@ -1491,7 +1491,9 @@ class App:
 
     # ------------------------------------------------------------------ preview
 
-    def preview_scene(self, scene: str | dict, seconds: float = 10, step: int | None = None) -> str:
+    def preview_scene(self, scene: str | dict, seconds: float = 10, step: int | None = None,
+                      play_from: int | None = None) -> str:
+        """Play a scene for a while. step: hold that step (0-based); play_from: run the steps from there."""
         self.require_unlocked("preview")
         if isinstance(scene, str):
             if scene not in self.files.scenes:
@@ -1502,8 +1504,9 @@ class App:
             sc = parse_scene(scene, self.files.patch, self.files.palettes, scene.get("name", "preview"))
             if sc.uses_intensity and self.engine.rig.profile.master_gate:
                 raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
+        first = step if step is not None else (play_from or 0)
         self.engine.preview(ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff,
-                                        first_step=step or 0, only_step=step), seconds, sc)
+                                        first_step=first, only_step=step), seconds, sc)
         msg = f"previewing {sc.name} for {seconds:.0f} s, then back to {self.ctl.describe()}"
         if self.engine.rig.profile.master_gate and not self.engine.master:
             msg += " (MASTER is off, so the rig stays dark)"
@@ -1794,6 +1797,8 @@ class App:
             "layout": {fid: p.to_dict() | {"shape": p.shape, "cols": p.cols}
                        for fid, p in full_layout(self.engine.rig).items()},
             "layout_problems": self.layout_problems(),
+            "head_limits": {f.id: {"pan": list(self.engine.rig.limit(f.id).pan), "tilt": list(self.engine.rig.limit(f.id).tilt)}
+                            for f in self.engine.rig.fixtures if f.type.has("pan") and not f.type.colour_only},
             "rig_name": self.names[0],
             "rigs": sorted(p.stem for p in (self.files.root / "rigs").glob("*.yaml")),
             "groups": self.engine.rig.patch.groups(),

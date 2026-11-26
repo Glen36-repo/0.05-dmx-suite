@@ -826,32 +826,35 @@ def test_store_a_head_point(ui):
 
 
 def test_build_a_step_scene(ui):
+    # v4 editor: select lights, set values in the programmer, Record into the step
     page, app, root, _ = ui
     go(page, "scenes")
     page.wait_for_selector("#scene-pick option", state="attached")
     time.sleep(0.3)  # the page sets up a new scene when it opens
     page.check("#scene-steps")
-    page.wait_for_selector("#steps-editor .steps-list li")
+    page.wait_for_selector("#steps-list-pane .steps-list li")
     page.click("#scene-group-tabs [data-group=bars]")
-    page.click("#steps-editor button:has-text('Set the selected lights')")
-    page.wait_for_selector("#steps-editor .step-sets li")
-    page.click("#steps-editor button:has-text('Add step')")
-    page.wait_for_function("document.querySelectorAll('#steps-editor .steps-list li').length === 2")
+    page.click("#step-programmer .swatches button[title=white]")
+    page.click("#rec-merge")
+    page.wait_for_function("document.querySelector('#steps-list-pane .steps-list li .chip-c')")
+    page.click("#step-add")
+    page.wait_for_function("document.querySelectorAll('#steps-list-pane .steps-list li').length === 2")
     page.click("#scene-group-tabs [data-group=movers]")
-    page.click("#steps-editor button:has-text('Set the selected lights')")
-    page.select_option("#steps-editor .step-sets li:has(b:text-is('movers')) select >> nth=0", "drum_kit")
+    page.click("#step-programmer [data-tab=position]")
+    page.click("#step-programmer [data-point=drum_kit]")
+    page.click("#rec-merge")
     page.fill("#scene-name", "Intro hits")
     page.click("#scene-save")
     page.wait_for_function("document.querySelector('#scene-state').textContent.includes('intro_hits')")
     data = yaml.safe_load((root / "scenes" / "intro_hits.yaml").read_text(encoding="utf-8"))
     assert data["type"] == "steps" and len(data["steps"]) == 2
     assert data["steps"][0]["set"] == {"bars": {"colour": "white"}}
-    assert data["steps"][1]["set"]["movers"] == {"colour": "white", "position": "drum_kit"}
-    page.click("#steps-editor button:has-text('Play from this step')")
+    assert data["steps"][1]["set"] == {"movers": {"position": "drum_kit"}}  # tracking: only what changes
+    page.click("#step-play")
     deadline = time.time() + 3
-    while (app.ctl.now().steps or {}).get("index") != 1 and time.time() < deadline:
+    while app.engine.previewing is None and time.time() < deadline:
         time.sleep(0.05)
-    assert app.ctl.now().steps["index"] == 1
+    assert app.engine.previewing is not None
 
 
 # ------------------------------------------------------------------ v3.4

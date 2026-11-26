@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+import yaml
+
 from .. import qr, settings
 from ..access import Access, lan_addresses
 from ..access import claude_token as default_claude_token
@@ -753,6 +755,18 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 r = app.set_device(str(body.get("id", "")), body.get("alias"), None if uni in (None, "") else int(uni),
                                    body.get("driver") or None, bool(body.get("use", True)))
                 return self._json(200, {"ok": True, **r})
+            if path == "/api/yaml/dump" and method == "POST":  # v4 step editor: the YAML side panel
+                from ..yamlio import plain_dump
+
+                return self._json(200, {"text": plain_dump(body.get("data"))})
+            if path == "/api/yaml/load" and method == "POST":
+                try:
+                    data = yaml.safe_load(str(body.get("text", "")))
+                except yaml.YAMLError as e:
+                    raise ApiError(400, f"not valid YAML: {e}") from e
+                if not isinstance(data, dict):
+                    raise ApiError(400, "a scene is a mapping (name, type, steps ...)")
+                return self._json(200, {"data": data})
             if path == "/api/steps/view" and method == "POST":  # v4 step editor: set vs tracked per light
                 return self._json(200, app.step_view(body.get("scene") or {}, int(body.get("index", 0))))
             if path == "/api/steps/edit" and method == "POST":  # one step of a saved step scene (Claude, editor)
@@ -778,8 +792,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 scene = body.get("scene") or body.get("scene_data")
                 if not isinstance(scene, (str, dict)):
                     raise ApiError(400, "preview needs a scene name or scene data")
-                step = body.get("step")
-                msg = app.preview_scene(scene, float(body.get("seconds", 10)), None if step is None else int(step))
+                step, start = body.get("step"), body.get("play_from")
+                msg = app.preview_scene(scene, float(body.get("seconds", 10)), None if step is None else int(step),
+                                        None if start is None else int(start))
                 return self._json(200, {"ok": True, "message": msg})
             if path in ("/api/claude/connect", "/api/claude/disconnect") and method == "POST":
                 if not self._local():  # it changes this computer's Claude settings: only from this computer
