@@ -58,7 +58,7 @@ class FakeWindow:
         return self.confirm_answer
 
     def evaluate_js(self, code):
-        return desktop.TITLE
+        return "dmx-suite ready"  # the real page's application-name meta, once main.js has started
 
 
 class FakeWebview:

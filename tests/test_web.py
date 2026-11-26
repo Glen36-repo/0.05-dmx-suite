@@ -57,9 +57,10 @@ def test_state_and_page(running):
     assert status == 200 and s["now"]["show"] == "band" and len(s["fixtures"]) == 12
     with urllib.request.urlopen(url + "/") as r:
         html = r.read().decode()
-    assert TOKEN in html and "0.05 DMX Suite" in html
-    with urllib.request.urlopen(url + "/static/app.js") as r:
-        assert r.status == 200
+    assert TOKEN in html and "/static/themes/neutral/theme.css" in html and "<title>DMX Suite</title>" in html
+    for f in ("js/main.js", "js/grid.js", "i18n/en.json", "themes/005/theme.css"):
+        with urllib.request.urlopen(url + "/static/" + f) as r:
+            assert r.status == 200
 
 
 def test_writes_need_token(running):

@@ -99,3 +99,26 @@ def test_manual_pages_linked_from_index():
     index = (ROOT / "docs" / "manual" / "README.md").read_text(encoding="utf-8")
     pages = sorted(p.name for p in (ROOT / "docs" / "manual").glob("*.md") if p.name != "README.md")
     assert pages and all(f"({p})" in index for p in pages)
+
+
+def test_every_ui_text_key_exists():
+    """Text in the page and scripts comes from i18n/en.json; a missing key would show its name."""
+    static = ROOT / "dmx_suite" / "web" / "static"
+    strings = json.loads((static / "i18n" / "en.json").read_text(encoding="utf-8"))
+    used = set(re.findall(r'data-i18n(?:-title|-placeholder)?="([^"]+)"', (static / "index.html").read_text(encoding="utf-8")))
+    for js in (static / "js").rglob("*.js"):
+        text = js.read_text(encoding="utf-8")
+        used |= set(re.findall(r'\bt\(\s*"([a-z0-9_]+\.[a-z0-9_]+)"', text))
+        used |= {k for pair in re.findall(r'\?\s*"([a-z]+\.[a-z0-9_]+)"\s*:\s*"([a-z]+\.[a-z0-9_]+)"', text) for k in pair}
+    used = {k for k in used if not k.endswith(("_", "."))}  # prefixes of keys built at run time:
+    used |= {f"live.sub_{k}" for k in ("head", "bar", "wash", "kick")} | {f"haze.{m}" for m in ("off", "manual", "pulse")}
+    assert sorted(used - set(strings)) == []
+    assert sorted(set(strings) - used) == []  # nothing left over either
+
+
+def test_no_hard_coded_text_in_the_page():
+    html = (ROOT / "dmx_suite" / "web" / "static" / "index.html").read_text(encoding="utf-8")
+    body = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html.split("<body>", 1)[1], flags=re.S)
+    text = re.sub(r"<[^>]+>", " ", body)
+    words = [w for w in text.split() if re.search(r"[A-Za-z]{3,}", w) and w not in ("MAC",)]
+    assert words == []

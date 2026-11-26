@@ -1,0 +1,15 @@
+/* Neutral theme: the default for anyone. Dark and low-glow for use on stage. */
+:root {
+  --bg: #0b0c0e;
+  --panel: #15171a;
+  --panel-2: #1d2024;
+  --line: #2a2e33;
+  --text: #dde1e6;
+  --muted: #818891;
+  --accent: #3d9be9;
+  --ok: #33b36b;
+  --warn: #d9a12b;
+  --bad: #d9474d;
+  --cell-off: #191c20;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}

@@ -1,0 +1,68 @@
+// Setup page: find a light, channel tester, devices, nodes, addresses, theme, update check.
+import { api, attempt, cmd, get } from "../api.js";
+import { $, $$, el } from "../dom.js";
+import { t } from "../i18n.js";
+import { onShow } from "../nav.js";
+import { live, onCatalogue, onState } from "../state.js";
+
+async function nodeAction(n) {
+  if (n.name) return attempt(() => api("POST", "/api/nodes/identify", { mac: n.mac }), t("setup.identifying", { name: n.name }));
+  const name = prompt(t("setup.node_name_prompt", { mac: n.mac }));
+  if (!name) return;
+  const universe = prompt(t("setup.node_universe_prompt"), "0");
+  attempt(() => api("POST", "/api/nodes/assign", { mac: n.mac, name, universe: +universe || 0 }), t("setup.named", { name }));
+}
+
+function render(s) {
+  $$("#find [data-find]").forEach((b) => b.classList.toggle("sel", s.setup.find === b.dataset.find));
+  $("#devices").replaceChildren(...s.devices.map((d) => el("tr", {},
+    el("td", { text: d.name }), el("td", { text: d.kind }),
+    el("td", {}, el("span", { class: "dot inline " + d.state }), d.state), el("td", { text: d.detail }))));
+  // rebuilt only when something changed, so a button isn't swapped out under a finger
+  const key = JSON.stringify(s.nodes.map((n) => [n.mac, n.name, n.state, n.rssi, n.loss_pct, Math.round((n.last_data_age_ms || 0) / 500)]));
+  const nodes = $("#nodes");
+  if (nodes.dataset.key === key) return;
+  nodes.dataset.key = key;
+  nodes.replaceChildren(...s.nodes.map((n) => el("tr", {},
+    el("td", { text: n.name || t("setup.new_node") }), el("td", { text: n.mac || n.driver?.driver || "" }), el("td", { text: n.state }),
+    el("td", { text: n.rssi != null ? n.rssi + " dBm" : "-" }), el("td", { text: n.loss_pct != null ? n.loss_pct + "%" : "-" }),
+    el("td", { text: n.last_data_age_ms != null ? n.last_data_age_ms + " ms" : "-" }),
+    el("td", {}, n.mac ? el("button", { onclick: () => nodeAction(n) }, t(n.name ? "setup.identify" : "setup.name_node")) : ""))));
+}
+
+async function loadAddresses() {
+  const a = await get("/api/addresses");
+  $("#addr").replaceChildren(...a.rows.map((r) => el("tr", {},
+    el("td", { text: r.id }), el("td", { text: r.type }), el("td", { text: r.universe }), el("td", { text: r.start }), el("td", { text: r.end }),
+    el("td", { text: r.in_rig ? t("common.yes") : "-" }), el("td", { text: r.verified ? t("common.yes") : t("setup.not_checked") }))));
+  $("#addrnotes").replaceChildren(...a.notes.map((n) => el("div", { text: n })));
+}
+
+async function loadThemes() {
+  const s = await get("/api/settings");
+  $("#theme").replaceChildren(...Object.entries(s.themes).map(([k, v]) =>
+    el("option", { value: k, selected: k === s.settings.theme }, v.name)));
+}
+
+export function init() {
+  const chan = $("#chan"), val = $("#chanval");
+  val.addEventListener("input", () => {
+    $("#chanshow").textContent = val.value;
+    if (chan.value) cmd("chan", { channel: +chan.value, value: +val.value, universe: +$("#chanuni").value });
+  });
+  $("#chan-off").onclick = () => chan.value && cmd("chan", { channel: +chan.value, value: null, universe: +$("#chanuni").value });
+  $("#theme").onchange = async (e) => {
+    if (await attempt(() => api("POST", "/api/settings", { theme: e.target.value }))) location.reload();
+  };
+  $("#update-check").onclick = async () => {
+    $("#update-result").textContent = t("setup.checking");
+    const r = await get("/api/update");
+    const out = $("#update-result");
+    out.replaceChildren(r.message);
+    if (r.newer && r.url) out.append(" ", el("a", { href: r.url, target: "_blank", rel: "noopener" }, t("setup.release_page")));
+  };
+  onCatalogue((cat) => $("#find").replaceChildren(...cat.fixtures.filter((x) => x.kind !== "haze").map((x) =>
+    el("button", { "data-find": x.id, onclick: () => cmd("find", { fixture: live.state.setup.find === x.id ? null : x.id }) }, x.id))));
+  onState(render);
+  onShow("setup", () => { loadAddresses(); loadThemes(); });
+}

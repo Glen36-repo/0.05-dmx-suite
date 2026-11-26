@@ -14,12 +14,14 @@ import secrets
 import threading
 import time
 from dataclasses import asdict
+from html import escape as html_escape
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from .. import settings
 from ..app import App
 from ..fixtures import ConfigError
 from ..setup import patch_report
@@ -29,7 +31,8 @@ log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon"}
+         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
+         ".json": "application/json; charset=utf-8"}
 DEFAULT_PORT = 8505
 TOKEN_FILE = Path.home() / ".dmx_suite" / "token"
 
@@ -267,8 +270,11 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             if self._query_token():
                 extra["Set-Cookie"] = f"dmx_token={token}; Path=/; HttpOnly; SameSite=Strict"
             if path in ("/", "/index.html"):
-                html = (STATIC / "index.html").read_text(encoding="utf-8").replace("__TOKEN__", token)
-                return self._send(200, html.encode(), TYPES[".html"], extra)
+                key, meta = settings.theme()
+                html = (STATIC / "index.html").read_text(encoding="utf-8")
+                for k, v in (("__TOKEN__", token), ("__THEME__", key), ("__APP_NAME__", html_escape(meta["app_name"]))):
+                    html = html.replace(k, v)
+                return self._send(200, html.encode(), TYPES[".html"], {"Cache-Control": "no-store", **extra})
             if path.startswith("/static/"):
                 f = (STATIC / path[len("/static/"):]).resolve()
                 if not f.is_relative_to(STATIC.resolve()) or not f.is_file():
@@ -277,6 +283,8 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             if path == "/api/ping":
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
+            if path == "/api/settings":
+                return self._json(200, {"settings": settings.load(), "themes": settings.themes()})
             if path == "/api/update":  # only when the user asks (UI button); check only, nothing installed
                 from ..update import check
 
@@ -343,6 +351,11 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             body = self._body()
             if path == "/api/control" and method == "POST":
                 return self._json(200, control(app, body.get("cmd", ""), body))
+            if path == "/api/settings" and method == "POST":  # this laptop's settings (theme)
+                try:
+                    return self._json(200, {"ok": True, "settings": settings.save(body)})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/giglock" and method == "POST":
                 app.set_gig_lock(bool(body.get("on")))
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})

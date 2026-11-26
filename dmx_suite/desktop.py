@@ -37,7 +37,7 @@ def running_ui(port: int, timeout: float = 1.0) -> bool:
     """True if this app's UI is already being served on the port (the app is already open)."""
     try:
         with urllib.request.urlopen(ui_url(port), timeout=timeout) as r:
-            return r.status == 200 and f"<title>{TITLE}</title>".encode() in r.read(4096)
+            return r.status == 200 and b'<meta name="application-name" content="dmx-suite">' in r.read(4096)
     except (OSError, ValueError):
         return False
 
@@ -154,14 +154,16 @@ class Desktop:
         return 0
 
     def smoke(self, seconds: float) -> None:
-        """Build check: wait for the page, record its title, quit."""
+        """Build check: wait for the page, check it's this app's UI and it started, quit."""
         time.sleep(seconds)
         try:
-            title = self.window.evaluate_js("document.title")
+            app = self.window.evaluate_js(
+                "(document.querySelector('meta[name=application-name]') || {}).content"
+                " + (document.body.classList.contains('ready') ? ' ready' : ' not ready')")
         except Exception as e:  # noqa: BLE001
-            title = f"error: {e}"
-        print(f"smoke test: window title {title!r}", flush=True)
-        self.smoke_ok = title == TITLE
+            app = f"error: {e}"
+        print(f"smoke test: page {app!r}", flush=True)
+        self.smoke_ok = app == "dmx-suite ready"
         self.quit()
 
     def run(self) -> int:

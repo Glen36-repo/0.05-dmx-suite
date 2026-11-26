@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 48" role="img" aria-label="DMX Suite">
+  <rect width="120" height="48" rx="8" fill="#15171a"/>
+  <g fill="#3d9be9"><rect x="12" y="14" width="8" height="8" rx="1.5"/><rect x="22" y="14" width="8" height="8" rx="1.5" opacity=".6"/><rect x="12" y="24" width="8" height="8" rx="1.5" opacity=".6"/><rect x="22" y="24" width="8" height="8" rx="1.5"/></g>
+  <text x="40" y="30" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#dde1e6">DMX Suite</text>
+</svg>
