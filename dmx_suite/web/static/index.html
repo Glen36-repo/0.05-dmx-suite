@@ -29,6 +29,8 @@
     <button data-page="live" class="on"><span class="ic">◉</span><span class="lbl" data-i18n="menu.live"></span></button>
     <button data-page="layout"><span class="ic">▦</span><span class="lbl" data-i18n="menu.layout"></span></button>
     <button data-page="scenes"><span class="ic">◆</span><span class="lbl" data-i18n="menu.scenes"></span></button>
+    <button data-page="shows"><span class="ic">▶</span><span class="lbl" data-i18n="menu.shows"></span></button>
+    <button data-page="busk"><span class="ic">◍</span><span class="lbl" data-i18n="menu.busk"></span></button>
     <button data-page="heads"><span class="ic">✥</span><span class="lbl" data-i18n="menu.heads"></span></button>
     <button data-page="midi"><span class="ic">♪</span><span class="lbl" data-i18n="menu.midi"></span></button>
     <button data-page="setup"><span class="ic">⚙</span><span class="lbl" data-i18n="menu.setup"></span></button>
@@ -42,6 +44,8 @@
       <h2 data-i18n="live.show"></h2>
       <div class="row wrap" id="shows"></div>
       <div class="row wrap" id="sets"></div>
+      <ol class="steps" id="steps"></ol>
+      <div class="muted" id="step-info"></div>
       <div class="row wrap">
         <button data-cmd="next" data-i18n="live.next"></button>
         <button data-cmd="look" data-i18n="live.static_look"></button>
@@ -165,6 +169,64 @@
               <label class="field"><span data-i18n="scenes.length"></span><input id="scene-length" type="number" min="0" step="0.5" class="narrow"></label>
             </div>
           </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- SHOWS -->
+    <section id="page-shows" class="page">
+      <h2 data-i18n="shows.title"></h2>
+      <div class="row wrap">
+        <select id="show-pick"></select>
+        <button id="show-new" data-i18n="shows.new"></button>
+        <button id="show-del" class="danger-text" data-i18n="shows.delete"></button>
+        <input id="show-name" maxlength="60" data-i18n-placeholder="shows.name_placeholder">
+        <button id="show-save" data-i18n="shows.save"></button>
+        <span class="muted" id="show-state"></span>
+      </div>
+      <div class="tabs" id="set-tabs" role="tablist"></div>
+      <div class="row wrap">
+        <button id="set-add" data-i18n="shows.add_set"></button>
+        <button id="set-del" class="danger-text" data-i18n="shows.delete_set"></button>
+        <label class="check"><input type="radio" name="default-set" id="set-default"><span data-i18n="shows.default_set"></span></label>
+      </div>
+      <div id="set-form" class="form"></div>
+
+      <h2 data-i18n="setlists.title"></h2>
+      <div class="row wrap">
+        <select id="setlist-pick"></select>
+        <button id="setlist-new" data-i18n="setlists.new"></button>
+        <button id="setlist-del" class="danger-text" data-i18n="setlists.delete"></button>
+        <input id="setlist-name" maxlength="60" data-i18n-placeholder="setlists.name_placeholder">
+        <button id="setlist-save" data-i18n="setlists.save"></button>
+        <span class="muted" id="setlist-state"></span>
+      </div>
+      <ol class="songs-edit" id="songs-edit"></ol>
+      <button id="song-add" data-i18n="setlists.add_song"></button>
+    </section>
+
+    <!-- BUSK -->
+    <section id="page-busk" class="page">
+      <div class="row wrap">
+        <select id="panel-pick"></select>
+        <button id="busk-release" class="danger" data-i18n="busk.release_all"></button>
+        <label class="check"><input type="checkbox" id="busk-edit"><span data-i18n="busk.edit"></span></label>
+      </div>
+      <div class="busk" id="busk"></div>
+      <div id="busk-editor" class="hidden">
+        <div class="row wrap">
+          <input id="panel-key" maxlength="40" data-i18n-placeholder="busk.panel_key">
+          <input id="panel-name" maxlength="60" data-i18n-placeholder="busk.panel_name">
+          <label class="field-inline"><span data-i18n="busk.release_fade"></span><input id="panel-fade" type="number" min="0" max="30" step="0.1" class="narrow"></label>
+          <button id="panel-new" data-i18n="busk.new_panel"></button>
+          <button id="panel-del" class="danger-text" data-i18n="busk.delete_panel"></button>
+        </div>
+        <ol class="widgets-edit" id="widgets-edit"></ol>
+        <div class="row wrap">
+          <select id="widget-type"></select>
+          <button id="widget-add" data-i18n="busk.add_widget"></button>
+          <button id="panels-save" data-i18n="busk.save"></button>
+          <span class="muted" id="busk-state"></span>
         </div>
       </div>
     </section>

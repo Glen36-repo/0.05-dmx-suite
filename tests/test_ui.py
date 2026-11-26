@@ -269,3 +269,93 @@ def test_mute_and_reorder(ui):
     page.wait_for_function("!document.querySelector('#scene-state').textContent.includes('unsaved')")
     data = yaml.safe_load((root / "scenes" / "red_movers.yaml").read_text(encoding="utf-8"))
     assert len(data["layers"]) == n and data["layers"][1].get("mute") is True
+
+
+# ------------------------------------------------------------------ shows, setlists, busk (v2 R5)
+
+
+def test_edit_a_show_into_steps_with_repeats(ui):
+    page, app, root, _ = ui
+    shows_page(page)
+    page.select_option("#show-pick", "band")
+    page.click("#set-tabs [data-set=cues]")
+    rows = page.locator("#set-form .steps-edit li")
+    assert rows.count() == 3  # v1 scenes + step_s opened as steps
+    first = rows.nth(0)
+    first.locator("select").nth(0).select_option("blue_chase")
+    first.locator("select").nth(1).select_option("repeats")
+    first.locator("input").nth(0).fill("3")
+    first.locator("input").nth(0).dispatch_event("change")
+    page.locator("#set-form .field:has(> span:text-is('Fade (s)')) input").fill("1.5")
+    page.locator("#set-form .field:has(> span:text-is('Fade (s)')) input").dispatch_event("change")
+    page.click("#show-save")
+    page.wait_for_function("document.querySelector('#show-state').textContent.includes('shows/band.yaml')")
+    data = yaml.safe_load((root / "shows" / "band.yaml").read_text(encoding="utf-8"))
+    cues = data["sets"]["cues"]
+    assert cues["steps"][0] == {"scene": "blue_chase", "repeats": 3} and cues["fade_s"] == 1.5
+    assert "scenes" not in cues and data["sets"]["mid"]["auto"]["energy"] == "mid"  # auto sets untouched
+    assert app.files.shows["band"].sets["cues"].steps[0].repeats == 3
+
+
+def shows_page(page):
+    go(page, "shows")
+    page.wait_for_selector("body[data-shows-ready='1']")
+
+
+def test_new_show_plays_and_steps_can_be_tapped(ui):
+    page, app, root, _ = ui
+    shows_page(page)
+    page.click("#show-new")
+    page.fill("#show-name", "Test show")
+    for _ in range(3):
+        page.click("#set-form button:text-is('Add step')")
+    page.click("#show-save")
+    page.wait_for_function("document.querySelector('#show-state').textContent.includes('test_show')")
+    app.ctl.select_show("test_show")
+    go(page, "live")
+    page.wait_for_selector("#steps li")
+    assert page.locator("#steps li").count() == 3
+    page.click("#steps [data-step='2']")
+    page.wait_for_selector("#steps li.cur [data-step='2']")
+    assert app.ctl.now().step_index == 2
+    assert "s left" in page.inner_text("#step-info")
+
+
+def test_setlist_editor(ui):
+    page, _, root, _ = ui
+    shows_page(page)
+    page.wait_for_selector("#songs-edit li")
+    n = page.locator("#songs-edit li").count()
+    page.click("#song-add")
+    row = page.locator("#songs-edit li").nth(n)
+    row.locator("input").fill("Encore")
+    row.locator("select").last.select_option("off")
+    page.click("#setlist-save")
+    page.wait_for_selector("#toast:not(.hidden)")
+    data = yaml.safe_load((root / "setlists" / "example.yaml").read_text(encoding="utf-8"))
+    assert data["songs"][-1]["name"] == "Encore" and data["songs"][-1]["master"] is False
+
+
+def test_make_and_play_a_busk_panel(ui):
+    page, app, root, _ = ui
+    go(page, "busk")
+    page.check("#busk-edit")
+    page.fill("#panel-key", "band")
+    page.fill("#panel-name", "Band busk")
+    page.click("#panel-new")
+    page.select_option("#widget-type", "colour")
+    page.click("#widget-add")
+    page.select_option("#widget-type", "solo")
+    page.click("#widget-add")
+    page.click("#panels-save")
+    page.wait_for_function("document.querySelectorAll('#busk [data-widget]').length === 2")
+    assert (root / "panels.yaml").exists() and "band" in app.files.panels
+    page.uncheck("#busk-edit")
+    page.click("#busk [data-widget=colour1]")  # a latch: on
+    page.wait_for_selector("#busk [data-widget=colour1].on")
+    go(page, "live")
+    page.wait_for_selector("#live-grid .fx.held")  # the held lights are marked on the layout
+    go(page, "busk")
+    page.click("#busk-release")
+    page.wait_for_selector("#busk [data-widget=colour1]:not(.on)")
+    assert app.engine.held() == []

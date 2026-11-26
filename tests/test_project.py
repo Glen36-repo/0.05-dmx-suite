@@ -114,6 +114,13 @@ def test_every_ui_text_key_exists():
     used |= {f"live.sub_{k}" for k in ("head", "bar", "wash", "kick")} | {f"haze.{m}" for m in ("off", "manual", "pulse")}
     used |= {f"scenes.blend_{b}" for b in ("replace", "max", "add")}
     used |= {f"tempo.{s}" for s in ("tap", "kick", "midi_clock")}
+    used |= {f"shows.hold_{h}" for h in ("repeats", "hold_s", "hold_beats", "hold_bars")}
+    used |= {f"shows.order_{o}" for o in ("sequence", "random")} | {f"shows.energy_{e}" for e in ("low", "mid", "high")}
+    used |= {f"shows.mix_{m}" for m in ("matching", "white", "contrast")}
+    used |= {f"shows.pattern_{p}" for p in ("all", "heads_only", "bars_only", "kit")}
+    used |= {f"shows.move_{m}" for m in ("random", "sweep", "static")}
+    used |= {f"busk.type_{k}" for k in ("colour", "flash", "solo", "effect", "go", "fader", "haze")}
+    used |= {f"busk.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

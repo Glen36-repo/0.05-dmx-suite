@@ -55,6 +55,21 @@ function render(s) {
   }
   $$("#sets [data-set]").forEach((b) => b.classList.toggle("sel", s.now.set === b.dataset.set));
 
+  // the playing set's steps: tap one to jump to it
+  const steps = show && s.now.set ? show.steps?.[s.now.set] || [] : [];
+  const list = $("#steps");
+  const key = `${s.now.show}|${s.now.set}|${steps.length}`;
+  if (list.dataset.key !== key) {
+    list.dataset.key = key;
+    list.replaceChildren(...steps.map((st, i) => el("li", {}, el("button", { class: "link", "data-step": i, onclick: () => cmd("step", { step: i }) },
+      st.name + (st.repeats ? ` ×${st.repeats}` : st.hold_beats ? ` · ${st.hold_beats} ${t("live.beats")}` : st.hold_s ? ` · ${st.hold_s} s` : "")))));
+  }
+  $$("#steps [data-step]").forEach((b) => b.parentElement.classList.toggle("cur", +b.dataset.step === s.now.step_index));
+  const info = [];
+  if (s.now.repeat) info.push(t("live.repeat", { n: s.now.repeat[0], of: s.now.repeat[1] }));
+  if (s.now.time_left_s != null) info.push(t("live.time_left", { s: Math.ceil(s.now.time_left_s) }));
+  $("#step-info").textContent = info.join(" · ");
+
   const sl = s.now.setlist && cat.setlists[s.now.setlist];
   $("#songs").replaceChildren(...(sl ? sl.songs.map((n, i) =>
     el("li", { class: i === s.now.song ? "cur" : "" }, el("button", { class: "link", onclick: () => cmd("song", { song: i }) }, n))) : []));
@@ -80,6 +95,7 @@ function render(s) {
   $$("[data-haze]").forEach((b) => b.classList.toggle("sel", h.mode === b.dataset.haze));
 
   grid.update(s.fixtures);
+  grid.mark(Object.keys(s.busk?.lights || {})); // lights held by busk buttons
 }
 
 export function init() {
