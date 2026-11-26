@@ -432,7 +432,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
         def _page(self, name: str) -> None:
             key, meta = settings.theme()
             html = (STATIC / name).read_text(encoding="utf-8")
-            for k, v in (("__TOKEN__", self._page_token()), ("__THEME__", key),
+            density = settings.load().get("density")
+            density = density if density in settings.DENSITIES else "compact"
+            for k, v in (("__TOKEN__", self._page_token()), ("__THEME__", key), ("__DENSITY__", density),
                          ("__APP_NAME__", html_escape(meta["app_name"]))):
                 html = html.replace(k, v)
             self._send(200, html.encode(), TYPES[".html"])

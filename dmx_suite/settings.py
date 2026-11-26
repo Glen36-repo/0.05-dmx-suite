@@ -14,8 +14,9 @@ from .paths import data_dir
 log = logging.getLogger(__name__)
 
 THEMES = Path(__file__).parent / "web" / "static" / "themes"
-DEFAULTS: dict[str, Any] = {"theme": "neutral", "recent": [], "wizard": ""}  # wizard: "", "done", "skipped"
+DEFAULTS: dict[str, Any] = {"theme": "neutral", "recent": [], "wizard": "", "density": "compact"}  # wizard: "", "done", "skipped"
 RECENT = 8
+DENSITIES = ("compact", "comfortable")  # v4: button size, per laptop
 
 
 def path() -> Path:
@@ -36,6 +37,8 @@ def save(changes: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"unknown settings {sorted(unknown)}")
     if "wizard" in changes and changes["wizard"] not in ("", "done", "skipped"):
         raise ValueError("wizard is done or skipped")
+    if "density" in changes and changes["density"] not in DENSITIES:
+        raise ValueError(f"density is {' or '.join(DENSITIES)}")
     if "theme" in changes and changes["theme"] not in themes():
         raise ValueError(f"no theme {changes['theme']!r}; have {', '.join(themes())}")
     data = {**load(), **changes}

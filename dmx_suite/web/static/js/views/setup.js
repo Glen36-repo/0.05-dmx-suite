@@ -94,6 +94,7 @@ async function loadThemes() {
   const s = await get("/api/settings");
   $("#theme").replaceChildren(...Object.entries(s.themes).map(([k, v]) =>
     el("option", { value: k, selected: k === s.settings.theme }, v.name)));
+  $("#density").value = s.settings.density || "compact";
 }
 
 export function init() {
@@ -105,6 +106,13 @@ export function init() {
   $("#chan-off").onclick = () => chan.value && cmd("chan", { channel: +chan.value, value: null, universe: +$("#chanuni").value });
   $("#theme").onchange = async (e) => {
     if (await attempt(() => api("POST", "/api/settings", { theme: e.target.value }))) location.reload();
+  };
+  $("#density").onchange = async (e) => {
+    const d = e.target.value;
+    if (await attempt(() => api("POST", "/api/settings", { density: d }))) {
+      document.body.classList.remove("density-compact", "density-comfortable");
+      document.body.classList.add(`density-${d}`);
+    }
   };
   $("#update-check").onclick = async () => {
     $("#update-result").textContent = t("setup.checking");

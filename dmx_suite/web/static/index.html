@@ -11,13 +11,13 @@
 <link rel="stylesheet" href="/static/themes/__THEME__/theme.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body class="density-__DENSITY__">
 <header class="top">
   <img src="/static/themes/__THEME__/logo.svg" alt="" class="logo">
   <div class="now" id="now" data-i18n="status.connecting"></div>
   <div class="tempo" id="tempo" data-i18n-title="top.tempo_tip"><span class="beat-dot"></span><span id="tempo-text"></span></div>
-  <button id="master" class="toggle master" data-i18n="top.master"></button>
-  <button id="blackout" class="toggle danger" data-i18n="top.blackout"></button>
+  <button id="master" class="toggle master perform" data-i18n="top.master"></button>
+  <button id="blackout" class="toggle danger perform" data-i18n="top.blackout"></button>
   <button class="lock" id="giglock" data-i18n="top.giglock" data-i18n-title="top.giglock_tip"></button>
   <button class="bell" id="bell" data-i18n-title="alerts.bell_tip"><span aria-hidden="true">🔔</span><span id="bell-count"></span></button>
 </header>
@@ -87,7 +87,7 @@
         <button data-haze="off" data-i18n="haze.off"></button>
         <button data-haze="manual" data-i18n="haze.manual"></button>
         <button data-haze="pulse" data-i18n="haze.pulse"></button>
-        <button id="boost" class="hold" data-i18n="haze.boost"></button>
+        <button id="boost" class="hold perform" data-i18n="haze.boost"></button>
       </div>
       <div class="muted" id="haze"></div>
     </section>
@@ -329,7 +329,7 @@
         <button data-haze="off" data-i18n="haze.off"></button>
         <button data-haze="manual" data-i18n="haze.manual"></button>
         <button data-haze="pulse" data-i18n="haze.pulse"></button>
-        <button id="ride-boost" class="hold" data-i18n="haze.boost"></button>
+        <button id="ride-boost" class="hold perform" data-i18n="haze.boost"></button>
         <button id="ride-walk-on" data-i18n="ride.walk_on"></button>
         <button id="ride-walk-off" data-i18n="ride.walk_off"></button>
       </div>
@@ -515,6 +515,8 @@
       <div class="row wrap">
         <label class="muted" for="theme" data-i18n="setup.theme"></label>
         <select id="theme"></select>
+        <label class="muted" for="density" data-i18n="setup.density"></label>
+        <select id="density"><option value="compact" data-i18n="setup.density_compact"></option><option value="comfortable" data-i18n="setup.density_comfortable"></option></select>
       </div>
       <h2 data-i18n="setup.updates"></h2>
       <div class="row wrap">
