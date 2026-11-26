@@ -49,6 +49,7 @@ MAX_UPLOAD = 20 * 1024 * 1024
 CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/routing/output", "/api/claude/haze",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check", "/api/generate")
 SESSION_COOKIE = "dmx_session"
+FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
 
 def _same(a: str, b: str) -> bool:
@@ -353,6 +354,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.layout_view())
             if path == "/api/routing":
                 return self._json(200, app.routing())
+            if path == "/api/frame":  # one look at what an interface sent (Monitor, Claude)
+                return self._json(200, app.frame_view(int(q.get("u", 0)), q.get("out")))
+            if path == "/api/events/frames":  # live frames, only while a page shows them
+                return self._frames(int(q.get("u", 0)), q.get("out"))
             if path == "/api/catalogue":
                 return self._json(200, app.catalogue())
             if path == "/api/events":
@@ -620,6 +625,28 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 self._stream(seq)
             finally:
                 app.screens.pop(sid, None)
+
+        def _frames(self, universe: int, out: str | None) -> None:
+            """Server-sent events: one interface's frame on one universe, 10 times a second."""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+            self.connection.settimeout(5.0)
+            local, sid = self._local(), self._sid()
+            last = None
+            quiet = time.monotonic()
+            while not app_stopping.is_set() and not live.stopped:
+                if not local and (not access.lan or access.session(sid, touch=False) is None):
+                    return
+                body = json.dumps(app.frame_view(universe, out), default=str)
+                if body != last or time.monotonic() - quiet > HEARTBEAT_S:
+                    self.wfile.write(f"data: {body}\n\n".encode())
+                    self.wfile.flush()
+                    last, quiet = body, time.monotonic()
+                time.sleep(FRAMES_S)
 
         def _stream(self, seq: int) -> None:
             """Send the shared state when it changes, new MIDI monitor lines, else a heartbeat."""

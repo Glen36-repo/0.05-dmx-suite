@@ -371,6 +371,33 @@ class App:
                              "last_frame_age_ms": n.get("last_data_age_ms"), "all_zero": None})
         return {"universes": used, "rows": rows, "problems": routing_problems(rig)}
 
+    def frame_view(self, universe: int, out: str | int | None = None) -> dict[str, Any]:
+        """The 512 channels an interface really sent on a universe (Monitor, address map). `out` is an
+        output index (default: the first that carries the universe), or "engine" for the engine's own
+        frame before the outputs (labelled so). An interface that hasn't sent says so: no values."""
+        import base64
+
+        drivers = self.engine.drivers
+        if out == "engine":
+            f = self.engine.frames.get(universe)
+            return {"universe": universe, "out": "engine", "source": "Engine (before outputs)",
+                    "frame": base64.b64encode(bytes(f)).decode() if f is not None else None,
+                    "no_frames": f is None, "stats": {"frames": self.engine.frames_sent}}
+        if out in (None, ""):
+            idx = next((i for i, d in enumerate(drivers) if d.carries(universe)), None)
+        else:
+            idx = int(out)
+        if idx is None or not 0 <= idx < len(drivers):
+            return {"universe": universe, "out": None, "source": "no output carries this universe", "frame": None,
+                    "no_frames": True, "stats": {}}
+        d = drivers[idx]
+        frame = d.wire.frame(universe) if d.carries(universe) else None
+        st = d.state()
+        return {"universe": universe, "out": idx, "source": (d.cfg or {}).get("alias") or st["name"],
+                "carries": d.carries(universe), "frame": base64.b64encode(frame).decode() if frame is not None else None,
+                "no_frames": frame is None, "stats": {**d.wire.stats(universe), "errors": d.status().get("errors", 0),
+                                                       "state": st["state"], "detail": st["detail"]}}
+
     def set_output(self, index: int, changes: dict[str, Any]) -> dict[str, Any]:
         """Change (or with index -1 add) one `outputs:` entry of the running rig: driver, port, universe,
         alias, device. Written to the rig file (validated, backed up, gig-locked)."""

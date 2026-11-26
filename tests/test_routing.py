@@ -132,3 +132,49 @@ def test_list_outputs_offline(tmp_path):
 def test_node_health_lists_universes_of_wired_outputs():
     app = App(load_show(SHOWS), [LogDriver()])
     assert app.nodes()[0]["universes"] == [0]
+
+
+# ---------------------------------------------------------------- frames feed (Monitor, address map)
+
+
+def test_frame_view_shows_only_what_the_interface_sent():
+    def broken(*a):
+        raise OSError("unplugged")
+
+    files = load_show(SHOWS)
+    dead = EnttecProDriver("COM8", universe=0, serial_factory=broken, threaded=False)
+    log = LogDriver()
+    app = App(files, [dead, log])
+    v = app.frame_view(0)
+    assert v["out"] == 0 and v["no_frames"] and v["frame"] is None  # default: the first output carrying U0
+    app.engine.output()
+    v = app.frame_view(0)
+    assert v["no_frames"] and v["frame"] is None  # the engine made a frame, but this interface never got it out
+    assert app.frame_view(0, 1)["frame"] is not None  # the simulator did
+    eng = app.frame_view(0, "engine")
+    assert eng["source"] == "Engine (before outputs)" and eng["frame"] is not None
+    assert App(files, [dead]).frame_view(5)["source"] == "no output carries this universe"
+    dead.close()
+
+
+def test_frames_stream(tmp_path):
+    import json
+    import urllib.request
+
+    from test_web import TOKEN
+
+    from dmx_suite.web.server import WebServer
+
+    app = App(load_show(SHOWS), [LogDriver()])
+    app.engine.output()
+    web = WebServer(app, "127.0.0.1", 0, token=TOKEN)
+    web.start()
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{web.port}/api/events/frames?u=0", headers={"X-DMX-Token": TOKEN})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            line = r.readline().decode()
+        v = json.loads(line[len("data: "):])
+        assert v["universe"] == 0 and v["frame"] and v["source"] == "Simulator"
+    finally:
+        web.stop()
+        app.engine.stop()
