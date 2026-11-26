@@ -100,9 +100,10 @@
         <span class="grow"></span>
         <div class="lp-actions">
           <span class="dirty-dot hidden" id="layout-dirty" data-i18n-title="layout.unsaved"></span>
-          <button id="layout-save" class="primary" data-i18n="layout.save"></button>
-          <button id="layout-undo" data-i18n="layout.undo"></button>
-          <button id="layout-reset" data-i18n="layout.reset"></button>
+          <button id="layout-save" class="primary" data-i18n="layout.save" data-key="Ctrl+S"></button>
+          <button id="layout-undo" class="icon" data-icon="rotate-l" data-key="Ctrl+Z" data-tip="layout.undo"></button>
+          <button id="layout-redo" class="icon" data-icon="rotate-r" data-key="Ctrl+Shift+Z" data-tip="layout.redo"></button>
+          <button id="layout-reset" class="danger-text" data-i18n="layout.reset"></button>
           <button id="lp-print" data-i18n="layout.print" data-i18n-title="layout.print_tip"></button>
           <button id="lp-png" data-i18n="layout.png" data-i18n-title="layout.png_tip"></button>
         </div>
@@ -126,32 +127,57 @@
         <label class="check"><input type="checkbox" id="show-names" checked><span data-i18n="layout.names"></span></label>
         <label class="check"><input type="checkbox" id="show-beams"><span data-i18n="layout.beams"></span></label>
       </div>
+      <div class="stage-wrap">
       <div class="grid-host edit" id="layout-grid"></div>
+      <div class="arrange" id="arrange" role="toolbar" aria-orientation="vertical">
+        <div class="ar-group" data-group="align"><div class="ar-h" data-i18n="layout.g_align"></div>
+          <div class="seg seg3">
+            <button class="icon" data-align="left" data-icon="align-left" data-key="Alt+←" data-tip="layout.align_left"></button>
+            <button class="icon" data-align="hcentre" data-icon="align-hcentre" data-tip="layout.align_hcentre"></button>
+            <button class="icon" data-align="right" data-icon="align-right" data-key="Alt+→" data-tip="layout.align_right"></button>
+            <button class="icon" data-align="top" data-icon="align-top" data-key="Alt+↑" data-tip="layout.align_top"></button>
+            <button class="icon" data-align="vcentre" data-icon="align-vcentre" data-tip="layout.align_vcentre"></button>
+            <button class="icon" data-align="bottom" data-icon="align-bottom" data-key="Alt+↓" data-tip="layout.align_bottom"></button>
+          </div></div>
+        <div class="ar-group" data-group="distribute"><div class="ar-h" data-i18n="layout.g_distribute"></div>
+          <div class="seg seg3">
+            <button class="icon" data-distribute="h" data-icon="distribute-h" data-tip="layout.distribute_h"></button>
+            <button class="icon" data-distribute="v" data-icon="distribute-v" data-tip="layout.distribute_v"></button>
+          </div></div>
+        <div class="ar-group" data-group="shape"><div class="ar-h" data-i18n="layout.g_shape"></div>
+          <div class="seg seg3">
+            <button class="icon" data-make="row" data-icon="make-row" data-tip="layout.make_row"></button>
+            <button class="icon" data-make="ring" data-icon="make-ring" data-tip="layout.make_ring"></button>
+            <button class="icon" data-make="grid" data-icon="make-grid" data-tip="layout.make_grid"></button>
+          </div>
+          <label class="ar-param"><span data-i18n="layout.p_spacing"></span><input type="number" id="ar-spacing" min="0" max="20" step="0.5" data-i18n-placeholder="layout.p_auto"></label>
+          <label class="ar-param"><span data-i18n="layout.p_cols"></span><input type="number" id="ar-cols" min="0" max="32" step="1" data-i18n-placeholder="layout.p_auto"></label>
+        </div>
+        <div class="ar-group" data-group="rotate"><div class="ar-h" data-i18n="layout.g_rotate"></div>
+          <div class="seg seg3">
+            <button class="icon" data-rotate="-1" data-icon="rotate-l" data-key="Shift+R" data-tip="layout.rotate_l"></button>
+            <button class="icon" data-rotate="1" data-icon="rotate-r" data-key="R" data-tip="layout.rotate_r"></button>
+            <span></span>
+            <button class="icon" data-flip="h" data-icon="flip-h" data-key="H" data-tip="layout.flip_h"></button>
+            <button class="icon" data-flip="v" data-icon="flip-v" data-key="V" data-tip="layout.flip_v"></button>
+          </div>
+          <label class="ar-param"><span data-i18n="layout.p_step"></span><input type="number" id="ar-step" min="1" max="180" step="1" value="45"></label>
+          <label class="ar-param"><span data-i18n="layout.p_angle"></span><input type="number" id="ar-angle" min="0" max="359" step="1"></label>
+        </div>
+        <div class="ar-group" data-group="pixels"><div class="ar-h" data-i18n="layout.g_pixels"></div>
+          <div class="seg seg3">
+            <button class="icon" data-shape="row" data-icon="pixels-row" data-tip="layout.shape_row"></button>
+            <button class="icon" data-shape="ring" data-icon="pixels-ring" data-tip="layout.shape_ring"></button>
+            <button class="icon" data-shape="grid" data-icon="pixels-grid" data-tip="layout.shape_grid"></button>
+            <button class="icon" data-reverse="1" data-icon="reverse" data-tip="layout.reverse"></button>
+          </div>
+          <label class="ar-param"><span data-i18n="layout.p_pcols"></span><input type="number" id="ar-pcols" min="0" max="64" step="1" data-i18n-placeholder="layout.p_auto"></label>
+        </div>
+      </div>
+      </div>
       <div class="muted" id="layout-sel"></div>
       <div id="layout-problems-head" class="error hidden"><span data-i18n="layout.problems_help"></span>
         <ul class="layout-problems" id="layout-problems"></ul></div>
-      <h2 data-i18n="layout.arrange"></h2>
-      <div class="row wrap" id="arrange-tools">
-        <button data-align="left" data-i18n="layout.align_left"></button>
-        <button data-align="hcentre" data-i18n="layout.align_hcentre"></button>
-        <button data-align="right" data-i18n="layout.align_right"></button>
-        <button data-align="top" data-i18n="layout.align_top"></button>
-        <button data-align="vcentre" data-i18n="layout.align_vcentre"></button>
-        <button data-align="bottom" data-i18n="layout.align_bottom"></button>
-        <button data-distribute="h" data-i18n="layout.distribute_h"></button>
-        <button data-distribute="v" data-i18n="layout.distribute_v"></button>
-      </div>
-      <div class="row wrap">
-        <button data-make="row" data-i18n="layout.make_row"></button>
-        <button data-make="ring" data-i18n="layout.make_ring"></button>
-        <button data-make="grid" data-i18n="layout.make_grid"></button>
-        <button data-rotate="-45" data-i18n="layout.rotate_l"></button>
-        <button data-rotate="45" data-i18n="layout.rotate_r"></button>
-        <span class="muted" data-i18n="layout.pixels"></span>
-        <button data-shape="row" data-i18n="layout.shape_row"></button>
-        <button data-shape="ring" data-i18n="layout.shape_ring"></button>
-        <button data-shape="grid" data-i18n="layout.shape_grid"></button>
-      </div>
       <h2 data-i18n="groups.title"></h2>
       <div class="row wrap">
         <input id="group-name" maxlength="40" data-i18n-placeholder="groups.name_placeholder">

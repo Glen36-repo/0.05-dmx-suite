@@ -105,8 +105,8 @@ def test_every_ui_text_key_exists():
     """Text in the page and scripts comes from i18n/en.json; a missing key would show its name."""
     static = ROOT / "dmx_suite" / "web" / "static"
     strings = json.loads((static / "i18n" / "en.json").read_text(encoding="utf-8"))
-    used = {k for page in ("index.html", "login.html")
-            for k in re.findall(r'data-i18n(?:-title|-placeholder)?="([^"]+)"', (static / page).read_text(encoding="utf-8"))}
+    attr = r'data-(?:i18n(?:-title|-placeholder)?|tip)="([^"]+)"'
+    used = {k for page in ("index.html", "login.html") for k in re.findall(attr, (static / page).read_text(encoding="utf-8"))}
     for js in (static / "js").rglob("*.js"):
         text = js.read_text(encoding="utf-8")
         used |= set(re.findall(r'\bt\(\s*"([a-z0-9_]+\.[a-z0-9_]+)"', text))
@@ -144,6 +144,8 @@ def test_every_ui_text_key_exists():
     used |= {f"ride.fader_{k}" for k in ("speed", "fade", "fan", "size", "shift")}
     used |= {f"ride.priority_{k}" for k in ("blackout", "drum_flash", "flash_busk", "hold", "autopilot", "show")}
     used |= {"review.banned_toast", "review.rated"}
+    # v4
+    used |= {f"layout.need_{n}" for n in ("one", "two", "three", "pixels")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

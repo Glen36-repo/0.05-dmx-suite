@@ -281,3 +281,51 @@ def test_patch_sheet_png(shot):
     page.emulate_media(media="print")
     assert page.is_visible("#addr-maps") and not page.is_visible("#menu")
     page.emulate_media(media="screen")
+
+
+# ---------------------------------------------------------------- ARRANGE panel (item 13)
+
+
+def test_arrange_panel_groups_disabled_reasons_redo_revert(ui):
+    page, *_ = ui
+    go(page, "layout")
+    page.wait_for_selector("#arrange [data-align=left] svg")
+    assert page.text_content("#arrange").split() == ["Align", "Distribute", "Shape", "Spacing", "Columns", "Rotate", "Step", "°",
+                                                   "Angle", "°", "Pixels", "Columns"]
+    assert page.is_disabled("[data-align=left]") and "two or more" in page.get_attribute("[data-align=left]", "title")
+    assert "(Alt+←)" in page.get_attribute("[data-align=left]", "title")
+    assert page.is_disabled("#layout-reset") and page.is_disabled("#layout-redo")
+    page.click("#group-tabs [data-group=bars]")
+    assert not page.is_disabled("[data-align=left]") and not page.is_disabled("[data-distribute=h]")
+    assert not page.is_disabled("[data-shape=ring]")  # bars have pixels
+    page.click("#group-tabs [data-group=heads]")
+    assert page.is_disabled("[data-distribute=h]") is False and page.is_disabled("[data-shape=ring]")  # no pixels in heads
+    x0 = page.evaluate("() => document.querySelector('#layout-grid [data-id=mh_a] .cell').getBoundingClientRect().x")
+    page.click("[data-flip=h]")
+    page.wait_for_selector("#layout-dirty:not(.hidden)")
+    x1 = page.evaluate("() => document.querySelector('#layout-grid [data-id=mh_a] .cell').getBoundingClientRect().x")
+    assert x1 != x0
+    page.click("#layout-undo")
+    assert not page.is_disabled("#layout-redo")
+    page.click("#layout-redo")
+    page.keyboard.press("Control+z")
+    page.keyboard.press("Control+Shift+Z")
+    page.on("dialog", lambda d: d.accept())
+    page.click("#layout-reset")  # Revert to saved, after a confirm
+    page.wait_for_selector("#layout-dirty.hidden", state="attached")
+    assert page.is_disabled("#layout-undo") and page.is_disabled("#layout-redo")
+
+
+def test_arrange_shortcuts_and_reverse(ui):
+    page, app, root, _ = ui
+    go(page, "layout")
+    page.wait_for_selector("#arrange [data-align=left] svg")
+    page.click("#group-tabs [data-group=bars]")
+    page.click("[data-reverse]")
+    page.fill("#ar-step", "90")
+    page.eval_on_selector("#ar-step", "e => e.blur()")  # shortcuts don't fire while typing in a field
+    page.keyboard.press("r")
+    page.keyboard.press("Control+s")
+    page.wait_for_selector("#layout-dirty.hidden", state="attached")
+    lay = app.engine.rig.layout
+    assert lay["bar_1"].reverse and lay["bar_1"].rot == 90.0

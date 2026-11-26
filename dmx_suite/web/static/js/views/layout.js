@@ -4,12 +4,16 @@ import { $, $$, el, remember } from "../dom.js";
 import { watchFrames } from "../frames.js";
 import { LightGrid } from "../grid.js";
 import { t } from "../i18n.js";
+import { fillIcons } from "../icons.js";
 import { onLeave, onShow } from "../nav.js";
 import { addressMap, clashes as clashPatch, footprintOf } from "../patch.js";
 import { live, onCatalogue, onState, refreshCatalogue } from "../state.js";
 
 let grid;
 let group = "all"; // the group tab showing
+
+// a button's tooltip: its name and its shortcut
+const tip = (b) => [b.dataset.tip ? t(b.dataset.tip) : b.textContent.trim(), b.dataset.key ? `(${b.dataset.key})` : ""].filter(Boolean).join(" ");
 
 function showProblems() {
   const ps = grid.problems();
@@ -32,7 +36,21 @@ function updateSelection() {
   $("#layout-save").classList.toggle("sel", grid.dirty);
   $("#layout-save").disabled = !grid.dirty;
   $("#layout-undo").disabled = !grid.history.length;
-  $$("#arrange-tools button, [data-make], [data-rotate], [data-shape]").forEach((b) => (b.disabled = !n));
+  $("#layout-redo").disabled = !grid.future.length;
+  $("#layout-reset").disabled = !grid.dirty;
+  // arrange tools: disabled (not hidden) when the selection can't use them, and the tooltip says why
+  const px = grid.pixelIds().length;
+  const need = { align: n < 2 ? "layout.need_two" : null, distribute: n < 3 ? "layout.need_three" : null,
+                 shape: n < 2 ? "layout.need_two" : null, rotate: n < 1 ? "layout.need_one" : null,
+                 pixels: px < 1 ? "layout.need_pixels" : null };
+  for (const g of $$("#arrange .ar-group")) {
+    const why = need[g.dataset.group];
+    g.querySelectorAll("button").forEach((b) => {
+      b.disabled = !!why;
+      b.title = tip(b) + (why ? ` - ${t(why)}` : "");
+    });
+  }
+  if (n === 1) $("#ar-angle").value = grid.layout[ids[0]]?.rot ?? 0;
   $("#group-new").disabled = !n;
   $("#group-set").disabled = !n || group === "all";
   $("#group-rename").disabled = group === "all";
@@ -103,25 +121,44 @@ export function init() {
     grid.tool = b.dataset.tool;
     $$("[data-tool]").forEach((x) => x.classList.toggle("sel", x === b));
   }));
+  fillIcons($("#page-layout"));
+  $$("#page-layout [data-tip], #page-layout [data-key]").forEach((b) => (b.title = tip(b)));
+  const step = () => Math.max(1, +$("#ar-step").value || 45);
   $$("[data-align]").forEach((b) => (b.onclick = () => grid.align(b.dataset.align)));
-  $$("[data-distribute]").forEach((b) => (b.onclick = () => grid.distribute(b.dataset.distribute) || toast(t("layout.distribute_help"))));
-  $$("[data-make]").forEach((b) => (b.onclick = () => grid.make(b.dataset.make)));
-  $$("[data-rotate]").forEach((b) => (b.onclick = () => grid.rotate(+b.dataset.rotate)));
-  $$("[data-shape]").forEach((b) => (b.onclick = () => grid.setShape(b.dataset.shape) || toast(t("layout.shape_help"))));
+  $$("[data-distribute]").forEach((b) => (b.onclick = () => grid.distribute(b.dataset.distribute)));
+  $$("[data-make]").forEach((b) => (b.onclick = () => grid.make(b.dataset.make, { spacing: +$("#ar-spacing").value || 0, cols: +$("#ar-cols").value || 0 })));
+  $$("[data-rotate]").forEach((b) => (b.onclick = () => grid.rotate(+b.dataset.rotate * step())));
+  $$("[data-flip]").forEach((b) => (b.onclick = () => grid.flip(b.dataset.flip)));
+  $$("[data-shape]").forEach((b) => (b.onclick = () => grid.setShape(b.dataset.shape, +$("#ar-pcols").value || 0)));
+  $("[data-reverse]").onclick = () => grid.toggleReverse();
+  $("#ar-angle").onchange = (e) => grid.setAngle(+e.target.value || 0);
   $("#layout-undo").onclick = () => grid.undo();
-  $("#layout-reset").onclick = () => { grid.build(live.cat); updateSelection(); };
-  $("#layout-save").onclick = async () => {
+  $("#layout-redo").onclick = () => grid.redo();
+  $("#layout-reset").onclick = () => { if (grid.dirty && confirm(t("layout.revert_confirm"))) grid.revert(); };
+  $("#layout-save").onclick = saveLayout;
+  async function saveLayout() {
+    if (!grid.dirty) return;
     const r = await attempt(() => api("PUT", "/api/layout", { layout: grid.layout }), t("layout.saved"));
     if (r) {
       grid.saved = JSON.stringify(grid.layout);
       grid.history = [];
+      grid.future = [];
       updateSelection(); // Save greys out straight away
       await refreshCatalogue();
     }
-  };
+  }
   document.addEventListener("keydown", (ev) => {
     if (!$("#page-layout").classList.contains("on") || ev.target.matches("input, select, textarea")) return;
-    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); grid.undo(); }
+    const mod = ev.ctrlKey || ev.metaKey, k = ev.key.toLowerCase();
+    if (mod && k === "z" && !ev.shiftKey) { ev.preventDefault(); grid.undo(); }
+    if (mod && (k === "y" || (k === "z" && ev.shiftKey))) { ev.preventDefault(); grid.redo(); }
+    if (mod && k === "s") { ev.preventDefault(); saveLayout(); }
+    if (ev.altKey && !mod) {
+      const edge = { arrowleft: "left", arrowright: "right", arrowup: "top", arrowdown: "bottom" }[k];
+      if (edge) { ev.preventDefault(); grid.align(edge); }
+    }
+    if (!mod && !ev.altKey && k === "r") grid.rotate((ev.shiftKey ? -1 : 1) * step());
+    if (!mod && !ev.altKey && (k === "h" || k === "v")) grid.flip(k);
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "a") { ev.preventDefault(); grid.select(Object.keys(grid.layout)); }
     if (ev.key === "Escape") grid.select([]);
     if (ev.key === "0" && !ev.ctrlKey && !ev.metaKey) grid.fitView();

@@ -113,6 +113,7 @@ export class LightGrid {
     this.selected = new Set();
     this.items = {};
     this.history = [];
+    this.future = []; // redo
     this.zoom = 100;
     this.view = null; // null: fit to the lights; else [x, y, w, h] in cells (zoomed / panned by hand)
     this.onView = opts.onView || (() => {});
@@ -541,6 +542,7 @@ export class LightGrid {
       if (drag) {
         if (drag.moved) {
           this.history.push(drag.before);
+          this.future = [];
           this.fit();
           this.onChange("move");
         }
@@ -579,6 +581,7 @@ export class LightGrid {
     fn(ids);
     if (JSON.stringify(this.layout) === before) return false;
     this.history.push(before);
+    this.future = [];
     for (const id of ids) this.drawLight(id);
     this.fit();
     this.markSelection();
@@ -616,14 +619,16 @@ export class LightGrid {
     });
   }
 
-  // put the selected lights in a row, a ring or a grid around where they are now
-  make(shape) {
+  // put the selected lights in a row, a ring or a grid around where they are now. opts.spacing:
+  // cells between lights (default: the biggest light + 1.5); opts.cols: grid columns
+  make(shape, opts = {}) {
     return this.change((ids) => {
       ids.sort((a, b) => this.layout[a].x - this.layout[b].x || this.layout[a].y - this.layout[b].y);
       const cx = ids.reduce((s, id) => s + this.layout[id].x, 0) / ids.length;
       const cy = ids.reduce((s, id) => s + this.layout[id].y, 0) / ids.length;
-      const step = Math.max(...ids.map((id) => { const e = this.extent(id); return Math.max(e.right - e.left, e.bottom - e.top); })) + 1.5;
-      const spots = cellOffsets(ids.length, shape, 0).map(([x, y]) => [x * step, y * step]);
+      const size = Math.max(...ids.map((id) => { const e = this.extent(id); return Math.max(e.right - e.left, e.bottom - e.top); }));
+      const step = size + 1 + (opts.spacing > 0 ? opts.spacing : 0.5);
+      const spots = cellOffsets(ids.length, shape, opts.cols || 0).map(([x, y]) => [x * step, y * step]);
       ids.forEach((id, i) => {
         this.layout[id].x = clamp(half(cx + spots[i][0]));
         this.layout[id].y = clamp(half(cy + spots[i][1]));
@@ -635,14 +640,64 @@ export class LightGrid {
     return this.change((ids) => ids.forEach((id) => (this.layout[id].rot = (((this.layout[id].rot || 0) + deg) % 360 + 360) % 360)));
   }
 
-  setShape(shape) {
-    return this.change((ids) => ids.filter((id) => (this.fixtures[id].pixels || 1) > 1).forEach((id) => (this.layout[id].shape = shape)));
+  setAngle(deg) {
+    return this.change((ids) => ids.forEach((id) => (this.layout[id].rot = ((deg % 360) + 360) % 360)));
+  }
+
+  // mirror the selection's places about its middle (and turn each light to match)
+  flip(axis) {
+    return this.change((ids) => {
+      const k = axis === "h" ? "x" : "y";
+      const mid = ids.reduce((s, id) => s + this.layout[id][k], 0) / ids.length;
+      ids.forEach((id) => {
+        const p = this.layout[id];
+        p[k] = clamp(half(2 * mid - p[k]));
+        p.rot = ((((axis === "h" ? 360 - (p.rot || 0) : 180 - (p.rot || 0)) % 360) + 360) % 360);
+      });
+    });
+  }
+
+  pixelIds(ids = [...this.selected]) { return ids.filter((id) => (this.fixtures[id].pixels || 1) > 1); }
+
+  setShape(shape, cols = 0) {
+    return this.change((ids) => this.pixelIds(ids).forEach((id) => {
+      this.layout[id].shape = shape;
+      if (shape === "grid" && cols > 0) this.layout[id].cols = cols;
+      else delete this.layout[id].cols;
+    }));
+  }
+
+  toggleReverse() {
+    return this.change((ids) => {
+      const px = this.pixelIds(ids);
+      const on = !px.every((id) => this.layout[id].reverse);
+      px.forEach((id) => { if (on) this.layout[id].reverse = true; else delete this.layout[id].reverse; });
+    });
   }
 
   undo() {
     const prev = this.history.pop();
     if (!prev) return false;
-    this.layout = JSON.parse(prev);
+    this.future.push(JSON.stringify(this.layout));
+    return this.restore(prev);
+  }
+
+  redo() {
+    const next = this.future.pop();
+    if (!next) return false;
+    this.history.push(JSON.stringify(this.layout));
+    return this.restore(next);
+  }
+
+  // back to the last saved layout (no undo history left)
+  revert() {
+    this.history = [];
+    this.future = [];
+    return this.restore(this.saved);
+  }
+
+  restore(json) {
+    this.layout = JSON.parse(json);
     for (const id of Object.keys(this.items)) this.drawLight(id);
     this.fit();
     this.markSelection();
