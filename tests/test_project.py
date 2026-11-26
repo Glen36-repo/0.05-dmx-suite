@@ -139,10 +139,10 @@ def test_every_ui_text_key_exists():
     used |= {f"steps.channel_{k}" for k in ("zoom", "focus", "frost")}
     used |= {"steps.move_dark", "steps.move_lit"}
     # v3.4
-    used |= {f"ride.bank_{b}" for b in ("move", "colour", "drum")} | {"ride.autopilot_on"}
-    used |= {f"ride.class_{c}" for c in ("head", "wash", "pixel", "strobe", "effect")}
-    used |= {f"ride.fader_{k}" for k in ("speed", "fade", "fan", "size", "shift")}
-    used |= {f"ride.priority_{k}" for k in ("blackout", "drum_flash", "flash_override", "hold", "autopilot", "show")}
+    used |= {f"autopilot.bank_{b}" for b in ("move", "colour", "drum")} | {"autopilot.autopilot_on"}
+    used |= {f"autopilot.class_{c}" for c in ("head", "wash", "pixel", "strobe", "effect")}
+    used |= {f"autopilot.fader_{k}" for k in ("speed", "fade", "fan", "size", "shift")}
+    used |= {f"autopilot.priority_{k}" for k in ("blackout", "drum_flash", "flash_override", "hold", "autopilot", "show")}
     used |= {"review.banned_toast", "review.rated"}
     # v4
     used |= {f"layout.need_{n}" for n in ("one", "two", "three", "pixels")}

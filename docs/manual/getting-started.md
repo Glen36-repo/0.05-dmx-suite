@@ -23,7 +23,7 @@ Type `help` at the `dmx>` prompt, or open http://localhost:8505/ for the screens
 
 ## Finding your way round
 
-The menu on the left is grouped: **Perform** (Live, Ride, Override), **Build** (Scenes, Shows, Review, Palettes), **Rig** (Layout, Fixtures, Heads, MIDI) and **System** (Setup, Files). ☰ folds it to icons. On a phone it's a bar along the bottom with Live, Ride, Override, Scenes and Shows; **More** opens the rest. Folding sections (Addresses, the MIDI mapping table, the generator) stay as you last left them on that screen.
+The menu on the left is grouped: **Perform** (Live, Autopilot, Override), **Build** (Scenes, Shows, Review, Palettes), **Rig** (Layout, Fixtures, Heads, MIDI) and **System** (Setup, Files). ☰ folds it to icons. On a phone it's a bar along the bottom with Live, Autopilot, Override, Scenes and Shows; **More** opens the rest. Folding sections (Addresses, the MIDI mapping table, the generator) stay as you last left them on that screen.
 
 ## Phones and the PIN
 

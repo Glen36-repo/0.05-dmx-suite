@@ -18,7 +18,7 @@ Named colours (e.g. `band_red`, `incandescent`) are kept in `palettes.yaml`. Sce
 
 ## Palettes
 
-A palette is a set of colours with tags. Seven come built in (Warm, Cool, Fire, Ice, Neon, White, Band colours); one of yours with the same name replaces it. Tags like `warm`, `cool`, `low`, `mid`, `high` let the Ride page and auto show (from v3.3) pick a palette that suits the mood.
+A palette is a set of colours with tags. Seven come built in (Warm, Cool, Fire, Ice, Neon, White, Band colours); one of yours with the same name replaces it. Tags like `warm`, `cool`, `low`, `mid`, `high` let the Autopilot page and auto show (from v3.3) pick a palette that suits the mood.
 
 On the **Palettes** page:
 

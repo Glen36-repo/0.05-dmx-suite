@@ -82,7 +82,7 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     @tool
     def preview_look(pick_yaml: str, seconds: float = 10) -> str:
         """Try an auto-show look on the rig: '{move: pan_sweep, colour: colour_chase, drum: kick_pump,
-        palette: cool, ride: {speed: 1, fan: 0.5, size: 0.5}, mood: mid}'. Says what the look quality rules
+        palette: cool, feel: {speed: 1, fan: 0.5, size: 0.5}, mood: mid}'. Says what the look quality rules
         think. Not during gig lock. Haze is never part of a look."""
         return t.preview_look(pick_yaml, seconds)
 
@@ -126,7 +126,7 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     @tool
     def save_preset(name: str, yaml_text: str) -> str:
         """Save a preset: '{name: Verse blues, tags: [low], pick: {move: swim, colour: colour_fade, palette: cool,
-        ride: {speed: 0.8}}}'. Use presets in show steps ({preset: id}) and setlist songs ({preset: id} or
+        feel: {speed: 0.8}}}'. Use presets in show steps ({preset: id}) and setlist songs ({preset: id} or
         {presets: [ids], mood: high} to have the autopilot play only those for the song)."""
         return t.save_preset(name, yaml_text)
 

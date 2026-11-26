@@ -48,7 +48,8 @@ DEFAULT_PORT = 8505
 MAX_UPLOAD = 20 * 1024 * 1024
 CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/routing/output", "/api/claude/haze",
                  "/api/haze/settings", "/api/devices/set",
-                 "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check", "/api/generate")
+                 "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
+                 "/api/autopilot/check", "/api/generate")
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
@@ -707,6 +708,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._dispatch(method, path, body)
 
         def _dispatch(self, method: str, path: str, body: dict) -> None:
+            if method == "POST" and path.startswith("/api/autopilot/"):  # v4 names for the Ride page's routes
+                rest = path[len("/api/autopilot/"):]
+                path = "/api/ride" if rest == "play" else f"/api/ride/{rest}"
             if path == "/api/access" and method == "POST":
                 return self._json(200, self._access_change(body))
             if path == "/api/starter" and method == "POST":

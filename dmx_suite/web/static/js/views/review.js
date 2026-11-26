@@ -40,7 +40,7 @@ function render() {
 function play() {
   const lk = list.looks[index];
   if (!lk) return;
-  attempt(() => api("POST", "/api/ride", { pick: { move: lk.move, colour: lk.colour, drum: lk.drum || null, palette: lk.palette }, fade_s: 0.5 }));
+  attempt(() => api("POST", "/api/autopilot/play", { pick: { move: lk.move, colour: lk.colour, drum: lk.drum || null, palette: lk.palette }, fade_s: 0.5 }));
 }
 
 async function rate(v) {

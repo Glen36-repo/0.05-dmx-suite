@@ -36,7 +36,7 @@
     <button class="collapse" id="collapse" data-i18n-title="menu.collapse"><span class="ic">☰</span></button>
     <div class="menu-group" data-i18n="menu.group_perform"></div>
     <button data-page="live" class="on"><span class="ic">◉</span><span class="lbl" data-i18n="menu.live"></span></button>
-    <button data-page="ride"><span class="ic">◎</span><span class="lbl" data-i18n="menu.ride"></span></button>
+    <button data-page="autopilot"><span class="ic">◎</span><span class="lbl" data-i18n="menu.autopilot"></span></button>
     <button data-page="override"><span class="ic">◍</span><span class="lbl" data-i18n="menu.override"></span></button>
     <div class="menu-group" data-i18n="menu.group_build"></div>
     <button data-page="scenes"><span class="ic">◆</span><span class="lbl" data-i18n="menu.scenes"></span></button>
@@ -419,68 +419,68 @@
     </section>
 
     <!-- RIDE -->
-    <section id="page-ride" class="page">
+    <section id="page-autopilot" class="page">
       <div class="row wrap ride-top">
-        <button id="ap-toggle" class="toggle big" data-i18n="ride.autopilot_off"></button>
+        <button id="ap-toggle" class="toggle big" data-i18n="autopilot.autopilot_off"></button>
         <span class="row" id="ride-moods">
-          <button data-mood="low" class="big" data-i18n="ride.mood_low"></button>
-          <button data-mood="mid" class="big" data-i18n="ride.mood_mid"></button>
-          <button data-mood="high" class="big" data-i18n="ride.mood_high"></button>
-          <button data-mood="auto" data-i18n="ride.mood_auto"></button>
+          <button data-mood="low" class="big" data-i18n="autopilot.mood_low"></button>
+          <button data-mood="mid" class="big" data-i18n="autopilot.mood_mid"></button>
+          <button data-mood="high" class="big" data-i18n="autopilot.mood_high"></button>
+          <button data-mood="auto" data-i18n="autopilot.mood_auto"></button>
         </span>
-        <button id="ap-hold" class="toggle big" data-i18n="ride.hold"></button>
-        <button id="ap-prev" class="big" data-i18n="ride.prev"></button>
-        <button id="ap-next" class="big" data-i18n="ride.next"></button>
-        <button id="ride-learn" data-i18n="ride.learn" data-i18n-title="ride.learn_help"></button>
+        <button id="ap-hold" class="toggle big" data-i18n="autopilot.hold"></button>
+        <button id="ap-prev" class="big" data-i18n="autopilot.prev"></button>
+        <button id="ap-next" class="big" data-i18n="autopilot.next"></button>
+        <button id="ride-learn" data-i18n="autopilot.learn" data-i18n-title="autopilot.learn_help"></button>
       </div>
       <div class="row wrap">
-        <div class="energy" data-i18n-title="ride.energy"><i id="ap-energy"></i></div>
+        <div class="energy" data-i18n-title="autopilot.energy"><i id="ap-energy"></i></div>
         <span class="muted" id="ap-state"></span>
       </div>
       <div class="grid-host strip" id="ride-grid"></div>
       <div class="ride-banks">
-        <div><h2 data-i18n="ride.move_fx"></h2><div class="ride-col" id="ride-move"></div></div>
-        <div><h2 data-i18n="ride.flash_fx"></h2><div class="ride-col" id="ride-flash"></div></div>
-        <div><h2 data-i18n="ride.colour_fx"></h2><div class="ride-col" id="ride-colour"></div></div>
+        <div><h2 data-i18n="autopilot.move_fx"></h2><div class="ride-col" id="ride-move"></div></div>
+        <div><h2 data-i18n="autopilot.flash_fx"></h2><div class="ride-col" id="ride-flash"></div></div>
+        <div><h2 data-i18n="autopilot.colour_fx"></h2><div class="ride-col" id="ride-colour"></div></div>
       </div>
       <div class="pair">
-        <div><h2 data-i18n="ride.drum_fx"></h2><div class="row wrap" id="ride-drum"></div></div>
-        <div><h2 data-i18n="ride.palette"></h2>
-          <div class="row wrap"><span id="ride-palettes" class="row wrap"></span><button id="ride-lock" class="toggle" data-i18n="ride.lock"></button></div></div>
+        <div><h2 data-i18n="autopilot.drum_fx"></h2><div class="row wrap" id="ride-drum"></div></div>
+        <div><h2 data-i18n="autopilot.palette"></h2>
+          <div class="row wrap"><span id="ride-palettes" class="row wrap"></span><button id="ride-lock" class="toggle" data-i18n="autopilot.lock"></button></div></div>
       </div>
-      <h2 data-i18n="ride.controls"></h2>
+      <h2 data-i18n="autopilot.controls"></h2>
       <div class="tabs" id="ride-tabs" role="tablist"></div>
       <div class="ride-faders" id="ride-faders"></div>
-      <h2 data-i18n="ride.presets"></h2>
+      <h2 data-i18n="autopilot.presets"></h2>
       <div class="row wrap ride-presets" id="ride-presets"></div>
       <div class="row wrap">
-        <button id="ride-save-preset" data-i18n="ride.save_preset"></button>
-        <button id="ride-capture" data-i18n="ride.capture"></button>
-        <button id="ride-more" data-i18n="ride.more"></button>
+        <button id="ride-save-preset" data-i18n="autopilot.save_preset"></button>
+        <button id="ride-capture" data-i18n="autopilot.capture"></button>
+        <button id="ride-more" data-i18n="autopilot.more"></button>
         <span class="sep-v"></span>
-        <button id="ride-reroll" data-i18n="ride.reroll"></button>
-        <span class="muted" data-i18n="ride.keep"></span>
-        <label class="chip"><input type="checkbox" data-lock="move"><span data-i18n="ride.bank_move"></span></label>
-        <label class="chip"><input type="checkbox" data-lock="colour"><span data-i18n="ride.bank_colour"></span></label>
-        <label class="chip"><input type="checkbox" data-lock="drum"><span data-i18n="ride.bank_drum"></span></label>
-        <label class="chip"><input type="checkbox" data-lock="palette"><span data-i18n="ride.palette"></span></label>
-        <label class="chip"><input type="checkbox" data-lock="feel"><span data-i18n="ride.controls"></span></label>
+        <button id="ride-reroll" data-i18n="autopilot.reroll"></button>
+        <span class="muted" data-i18n="autopilot.keep"></span>
+        <label class="chip"><input type="checkbox" data-lock="move"><span data-i18n="autopilot.bank_move"></span></label>
+        <label class="chip"><input type="checkbox" data-lock="colour"><span data-i18n="autopilot.bank_colour"></span></label>
+        <label class="chip"><input type="checkbox" data-lock="drum"><span data-i18n="autopilot.bank_drum"></span></label>
+        <label class="chip"><input type="checkbox" data-lock="palette"><span data-i18n="autopilot.palette"></span></label>
+        <label class="chip"><input type="checkbox" data-lock="feel"><span data-i18n="autopilot.controls"></span></label>
       </div>
       <div class="row wrap" id="ride-variations"></div>
-      <h2 data-i18n="ride.haze"></h2>
+      <h2 data-i18n="autopilot.haze"></h2>
       <div class="row wrap">
         <button data-haze="off" data-i18n="haze.off"></button>
         <button data-haze="manual" data-i18n="haze.manual"></button>
         <button data-haze="pulse" data-i18n="haze.pulse"></button>
         <button id="ride-boost" class="hold perform" data-i18n="haze.boost"></button>
-        <button id="ride-walk-on" data-i18n="ride.walk_on"></button>
-        <button id="ride-walk-off" data-i18n="ride.walk_off"></button>
+        <button id="ride-walk-on" data-i18n="autopilot.walk_on"></button>
+        <button id="ride-walk-off" data-i18n="autopilot.walk_off"></button>
       </div>
-      <h2 data-i18n="ride.why"></h2>
+      <h2 data-i18n="autopilot.why"></h2>
       <ul class="ride-why" id="ride-why"></ul>
       <details class="scene-more">
-        <summary data-i18n="ride.lights"></summary>
-        <p class="muted" data-i18n="ride.lights_help"></p>
+        <summary data-i18n="autopilot.lights"></summary>
+        <p class="muted" data-i18n="autopilot.lights_help"></p>
         <ul class="point-list" id="ride-lights"></ul>
       </details>
     </section>
@@ -489,18 +489,18 @@
     <section id="page-review" class="page">
       <p class="muted" data-i18n="review.help"></p>
       <div class="row wrap">
-        <select id="rv-mood"><option value="" data-i18n="review.all_moods"></option><option value="low" data-i18n="ride.mood_low"></option><option value="mid" data-i18n="ride.mood_mid"></option><option value="high" data-i18n="ride.mood_high"></option></select>
-        <select id="rv-bank"><option value="" data-i18n="review.both_banks"></option><option value="move" data-i18n="ride.move_fx"></option><option value="colour" data-i18n="ride.colour_fx"></option></select>
+        <select id="rv-mood"><option value="" data-i18n="review.all_moods"></option><option value="low" data-i18n="autopilot.mood_low"></option><option value="mid" data-i18n="autopilot.mood_mid"></option><option value="high" data-i18n="autopilot.mood_high"></option></select>
+        <select id="rv-bank"><option value="" data-i18n="review.both_banks"></option><option value="move" data-i18n="autopilot.move_fx"></option><option value="colour" data-i18n="autopilot.colour_fx"></option></select>
         <select id="rv-palette"></select>
         <span class="muted" id="rv-count"></span>
       </div>
       <div class="row wrap">
-        <button id="rv-prev" class="big" data-i18n="ride.prev"></button>
+        <button id="rv-prev" class="big" data-i18n="autopilot.prev"></button>
         <button id="rv-up" class="big" data-i18n="review.like"></button>
         <button id="rv-down" class="big" data-i18n="review.dislike"></button>
         <button id="rv-ban" class="big danger-text" data-i18n="review.ban"></button>
         <button id="rv-clear" data-i18n="review.clear"></button>
-        <button id="rv-next" class="big" data-i18n="ride.next"></button>
+        <button id="rv-next" class="big" data-i18n="autopilot.next"></button>
         <button id="rv-auto" data-i18n="review.auto"></button>
         <input id="rv-every" type="number" min="2" max="60" value="8" class="narrow" data-i18n-title="review.every">
       </div>
@@ -510,7 +510,7 @@
       <summary data-i18n="review.generator"></summary>
       <p class="muted" data-i18n="review.generator_help"></p>
       <div class="row wrap">
-        <select id="gen-mood"><option value="low" data-i18n="ride.mood_low"></option><option value="mid" selected data-i18n="ride.mood_mid"></option><option value="high" data-i18n="ride.mood_high"></option></select>
+        <select id="gen-mood"><option value="low" data-i18n="autopilot.mood_low"></option><option value="mid" selected data-i18n="autopilot.mood_mid"></option><option value="high" data-i18n="autopilot.mood_high"></option></select>
         <select id="gen-style"><option value="" data-i18n="review.any_style"></option><option value="rock" data-i18n="review.style_rock"></option><option value="ballad" data-i18n="review.style_ballad"></option><option value="acoustic" data-i18n="review.style_acoustic"></option><option value="opera" data-i18n="review.style_opera"></option><option value="dance" data-i18n="review.style_dance"></option></select>
         <select id="gen-palette"></select>
         <input id="gen-count" type="number" min="1" max="50" value="4" class="narrow" data-i18n-title="review.how_many">

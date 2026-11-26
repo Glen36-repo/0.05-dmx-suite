@@ -122,7 +122,7 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 
 `dmx-suite run` also starts the UI at http://localhost:8505/ (`--port` to change, `--no-web` to turn off); the desktop app shows the same screens in its own window. Pages are in a menu down the left (a bar along the bottom on a phone); MASTER, blackout, gig lock and the status strip stay along the top.
 
-- **Ride:** the auto show: autopilot and mood, Move / Flash / Colour / drum FX, palettes, ride faders, presets, re-roll, the decision log ("why did it do that?"), haze alongside.
+- **Autopilot** (v3 "Ride"): the auto show: autopilot and mood, Move / Flash / Colour / drum FX, palettes, Feel faders, presets, re-roll, the decision log ("why did it do that?"), haze alongside.
 - **Review:** rate or ban looks at rehearsal; the generator makes scenes and shows from the FX banks.
 - **Live:** the light layout with live colours, show/set/scene buttons, the playing set's steps (tap one to jump to it, with repeat count and time left), next step, tap tempo or type a BPM, speed fader, setlist (tap a song to jump to it), grand master and sub-master faders, haze.
 - **Layout:** arrange the lights and make groups (below).

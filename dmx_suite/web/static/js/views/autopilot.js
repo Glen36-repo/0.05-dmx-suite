@@ -1,4 +1,4 @@
-// Ride page (v3.4): ride the auto show live. Autopilot, mood and hold along the top; Move FX on the
+// Autopilot page (v3.4 "Ride page"): ride the auto show live. Autopilot, mood and hold along the top; Move FX on the
 // left, Flash FX in the middle, Colour FX on the right; drum FX, palettes and ride faders below; the
 // haze controls stay alongside (separate: the auto show never touches haze). Big touch targets.
 // "Learn" makes any control MIDI/OSC-learnable: tap it, then hit a pad or press a pedal.
@@ -21,13 +21,13 @@ function act(action, params = {}, level) {
   if (learning) {
     learning = false;
     $("#ride-learn").classList.remove("sel");
-    return attempt(() => api("POST", "/api/ride/learn", { action, params }), (r) => r.message);
+    return attempt(() => api("POST", "/api/autopilot/learn", { action, params }), (r) => r.message);
   }
-  return attempt(() => api("POST", "/api/ride/action", { action, ...params, ...(level !== undefined ? { level } : {}) }));
+  return attempt(() => api("POST", "/api/autopilot/action", { action, ...params, ...(level !== undefined ? { level } : {}) }));
 }
 
 function fxButton(item, onClick) {
-  return el("button", { class: "ride-fx", "data-fx": item.id, title: `${item.label} · ${t("ride.busy", { n: Math.round(item.busy * 100) })}`, onclick: onClick }, item.label);
+  return el("button", { class: "ride-fx", "data-fx": item.id, title: `${item.label} · ${t("autopilot.busy", { n: Math.round(item.busy * 100) })}`, onclick: onClick }, item.label);
 }
 
 function flashButton(item) {
@@ -69,21 +69,21 @@ function render() {
   const pick = live.state?.ride?.pick || fx.pick;
   const byBank = (b) => ok.filter((i) => i.bank === b);
   $("#ride-move").replaceChildren(
-    el("button", { class: "ride-fx" + (!pick.move ? " sel" : ""), onclick: () => act("autopilot_fx", { bank: "move", item: "" }) }, t("ride.no_move")),
+    el("button", { class: "ride-fx" + (!pick.move ? " sel" : ""), onclick: () => act("autopilot_fx", { bank: "move", item: "" }) }, t("autopilot.no_move")),
     ...byBank("move").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "move", item: i.id }))));
   $("#ride-colour").replaceChildren(...byBank("colour").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "colour", item: i.id }))));
   $("#ride-flash").replaceChildren(...byBank("flash").map(flashButton));
   $("#ride-drum").replaceChildren(
-    el("button", { class: "ride-fx" + (!pick.drum ? " sel" : ""), onclick: () => act("autopilot_fx", { bank: "drum", item: "" }) }, t("ride.no_drum")),
+    el("button", { class: "ride-fx" + (!pick.drum ? " sel" : ""), onclick: () => act("autopilot_fx", { bank: "drum", item: "" }) }, t("autopilot.no_drum")),
     ...byBank("drum").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "drum", item: i.id }))));
   $("#ride-palettes").replaceChildren(...Object.entries(fx.palettes).map(([k, p]) => el("button", {
     class: "ride-pal", "data-palette": k, onclick: () => act("autopilot_palette", { palette: k }) }, p.name)));
   $("#ride-tabs").replaceChildren(...["", "move", "colour", "drum"].map((b) => el("button", {
-    class: b === bank ? "on" : "", onclick: () => { bank = b; render(); } }, b ? t("ride.bank_" + b) : t("ride.all_banks"))));
+    class: b === bank ? "on" : "", onclick: () => { bank = b; render(); } }, b ? t("autopilot.bank_" + b) : t("autopilot.all_banks"))));
   $("#ride-faders").replaceChildren(...FADERS.map((k) => {
     const src = bank ? pick.bank_feel?.[bank] || { speed: 1, fade: 0.5, fan: 0.5, size: 0.5, shift: 0 } : pick.feel;
     const v = k === "speed" ? (Math.log(src.speed) / Math.log(4) + 1) / 2 : src[k];
-    const inp = el("input", { type: "range", min: 0, max: 1, step: 0.01, value: v, "aria-label": t("ride.fader_" + k) });
+    const inp = el("input", { type: "range", min: 0, max: 1, step: 0.01, value: v, "aria-label": t("autopilot.fader_" + k) });
     let last = 0;
     inp.addEventListener("input", () => {
       const now = performance.now();
@@ -92,7 +92,7 @@ function render() {
       act("feel_" + k, bank ? { bank } : {}, +inp.value);
     });
     inp.addEventListener("pointerdown", (e) => { if (learning) { e.preventDefault(); act("feel_" + k, bank ? { bank } : {}); } });
-    return el("label", { class: "ride-fader" }, el("span", { text: t("ride.fader_" + k) }), inp);
+    return el("label", { class: "ride-fader" }, el("span", { text: t("autopilot.fader_" + k) }), inp);
   }));
   renderLights();
   update(live.state);
@@ -106,8 +106,8 @@ function renderLights() {
   $("#ride-lights").replaceChildren(...rows.map(([f, c]) => el("li", {},
     el("b", { text: f }),
     el("select", { onchange: (e) => saveClass(f, e.target.value) },
-      ...CLASSES.map((x) => el("option", { value: x, selected: x === c || undefined }, t("ride.class_" + x))),
-      el("option", { value: "exclude", selected: c === null || undefined }, t("ride.class_exclude"))))));
+      ...CLASSES.map((x) => el("option", { value: x, selected: x === c || undefined }, t("autopilot.class_" + x))),
+      el("option", { value: "exclude", selected: c === null || undefined }, t("autopilot.class_exclude"))))));
 }
 
 async function saveClass(fid, value) {
@@ -116,33 +116,33 @@ async function saveClass(fid, value) {
   const exclude = rig.excluded.filter((f) => f !== fid);
   if (value === "exclude") exclude.push(fid);
   else classes[fid] = value;
-  const r = await attempt(() => api("POST", "/api/store/auto", { classes, exclude }), t("ride.lights_saved"));
+  const r = await attempt(() => api("POST", "/api/store/auto", { classes, exclude }), t("autopilot.lights_saved"));
   if (r) load();
 }
 
 async function loadWhy() {
   const r = await get("/api/autopilot?n=12");
   $("#ride-why").replaceChildren(...r.log.slice().reverse().map((d) => el("li", {
-    title: t("ride.why_open"), onclick: () => { review.jump = d.look; go("review"); } },
+    title: t("autopilot.why_open"), onclick: () => { review.jump = d.look; go("review"); } },
     el("span", { class: "muted", text: new Date(d.time * 1000).toLocaleTimeString("en-AU", { hour12: false }) }),
     el("b", { text: [d.look.move, d.look.colour, d.look.drum].filter(Boolean).join(" + ") + " · " + d.look.palette }),
-    el("span", { text: t("ride.why_line", { why: d.why, mood: t("ride.mood_" + d.mood), energy: Math.round(d.energy * 100) }) }))));
+    el("span", { text: t("autopilot.why_line", { why: d.why, mood: t("autopilot.mood_" + d.mood), energy: Math.round(d.energy * 100) }) }))));
 }
 
 let lastDecision = null;
 
 function update(s) {
-  if (!s || !fx || !$("#page-ride").classList.contains("on")) return;
+  if (!s || !fx || !$("#page-autopilot").classList.contains("on")) return;
   const ap = s.autopilot, pick = s.ride.pick;
   $("#ap-toggle").classList.toggle("on", ap.on);
-  $("#ap-toggle").textContent = t(ap.on ? "ride.autopilot_on" : "ride.autopilot_off");
+  $("#ap-toggle").textContent = t(ap.on ? "autopilot.autopilot_on" : "autopilot.autopilot_off");
   $("#ap-hold").classList.toggle("on", ap.hold);
   document.querySelectorAll("#ride-moods [data-mood]").forEach((b) => b.classList.toggle("sel",
     b.dataset.mood === "auto" ? !ap.mood_manual : ap.mood_manual && ap.mood === b.dataset.mood));
   $("#ap-energy").style.width = Math.round(ap.energy * 100) + "%";
-  $("#ap-state").textContent = [t("ride.mood_now", { mood: t("ride.mood_" + ap.mood) }),
-    ap.paused ? t("ride.paused") : ap.between ? t("ride.between") : ap.next_change_s != null ? t("ride.next_in", { s: Math.round(ap.next_change_s) }) : "",
-    t("ride.priority_" + s.priority.top)].filter(Boolean).join(" · ");
+  $("#ap-state").textContent = [t("autopilot.mood_now", { mood: t("autopilot.mood_" + ap.mood) }),
+    ap.paused ? t("autopilot.paused") : ap.between ? t("autopilot.between") : ap.next_change_s != null ? t("autopilot.next_in", { s: Math.round(ap.next_change_s) }) : "",
+    t("autopilot.priority_" + s.priority.top)].filter(Boolean).join(" · ");
   const now = ap.pick || pick;
   document.querySelectorAll("#ride-move [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === now.move));
   document.querySelectorAll("#ride-colour [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === now.colour));
@@ -163,28 +163,28 @@ export function init() {
   $("#ride-walk-off").onclick = () => act("walk_off");
   $("#ride-lock").onclick = () => act("palette_lock");
   $("#ride-save-preset").onclick = async () => {
-    const id = (prompt(t("ride.preset_name")) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    const id = (prompt(t("autopilot.preset_name")) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
     if (!id) return;
-    if (await attempt(() => api("POST", "/api/store/preset", { id }), t("ride.preset_saved", { id }))) loadPresets();
+    if (await attempt(() => api("POST", "/api/store/preset", { id }), t("autopilot.preset_saved", { id }))) loadPresets();
   };
   $("#ride-capture").onclick = async () => {
-    const id = (prompt(t("ride.capture_name")) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-    if (id) await attempt(() => api("POST", "/api/capture", { key: id }), t("ride.captured", { id }));
+    const id = (prompt(t("autopilot.capture_name")) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    if (id) await attempt(() => api("POST", "/api/capture", { key: id }), t("autopilot.captured", { id }));
   };
   $("#ride-reroll").onclick = () => {
     const locks = [...document.querySelectorAll("[data-lock]")].filter((c) => c.checked).map((c) => c.dataset.lock);
-    attempt(() => api("POST", "/api/ride/reroll", { locks }));
+    attempt(() => api("POST", "/api/autopilot/reroll", { locks }));
   };
   $("#ride-more").onclick = async () => {
-    const r = await attempt(() => api("POST", "/api/ride/more", { n: 4 }));
+    const r = await attempt(() => api("POST", "/api/autopilot/more", { n: 4 }));
     if (r) $("#ride-variations").replaceChildren(...r.picks.map((p, i) => el("button", {
-      onclick: () => attempt(() => api("POST", "/api/ride", { pick: p })) }, t("ride.variation", { n: i + 1, palette: p.palette }))));
+      onclick: () => attempt(() => api("POST", "/api/autopilot/play", { pick: p })) }, t("autopilot.variation", { n: i + 1, palette: p.palette }))));
   };
   document.querySelectorAll("#ride-moods [data-mood]").forEach((b) => (b.onclick = () => act("mood", { mood: b.dataset.mood })));
   $("#ride-learn").onclick = () => {
     learning = !learning;
     $("#ride-learn").classList.toggle("sel", learning);
-    if (learning) toast(t("ride.learn_help"));
+    if (learning) toast(t("autopilot.learn_help"));
   };
   const boost = $("#ride-boost");
   boost.addEventListener("pointerdown", (e) => { e.preventDefault(); boost.classList.add("on"); cmd("haze", { action: "boost" }); });
@@ -196,5 +196,5 @@ export function init() {
     grid.build(cat);
   });
   onState(update);
-  onShow("ride", load);
+  onShow("autopilot", load);
 }

@@ -194,8 +194,8 @@ def test_theme_switch(ui):
     assert page.locator("link[href='/static/themes/005/theme.css']").count() == 1
 
 
-PAGES = ("live", "ride", "override", "scenes", "shows", "review", "palettes", "layout", "fixtures", "heads", "midi", "monitor",
-         "setup", "files")
+PAGES = ("live", "autopilot", "override", "scenes", "shows", "review", "palettes", "layout", "fixtures", "heads", "midi",
+         "monitor", "setup", "files")
 
 
 def test_phone_layout_has_bottom_menu(ui):
@@ -267,7 +267,7 @@ def test_group_pills_none_and_invert(ui):
 
 def test_live_and_ride_lights_fill_their_box(ui):
     page, *_ = ui
-    for name, host in (("live", "#live-grid"), ("ride", "#ride-grid")):
+    for name, host in (("live", "#live-grid"), ("autopilot", "#ride-grid")):
         go(page, name)
         page.wait_for_selector(f"{host} .cell")
         b = light_boxes(page, host)
@@ -859,7 +859,7 @@ def test_build_a_step_scene(ui):
 
 def test_ride_page_autopilot_mood_and_fx(ui):
     page, app, root, _ = ui
-    go(page, "ride")
+    go(page, "autopilot")
     page.wait_for_selector("#ride-move [data-fx=pan_sweep]")
     page.wait_for_selector("#ride-colour [data-fx=comet]")  # the full rig has pixel bars
     page.click("#ride-colour [data-fx=colour_chase]")
@@ -882,7 +882,7 @@ def test_ride_page_autopilot_mood_and_fx(ui):
 
 def test_ride_flash_fx_held_while_pressed(ui):
     page, app, *_ = ui
-    go(page, "ride")
+    go(page, "autopilot")
     page.wait_for_selector("#ride-flash [data-flash=blinder]")
     b = page.locator("#ride-flash [data-flash=blinder]").bounding_box()
     page.mouse.move(b["x"] + 10, b["y"] + 10)
@@ -902,7 +902,7 @@ def test_ride_learn_maps_a_pad(ui):
     page, app, root, _ = ui
     from dmx_suite.midi.inputs import FakeMidiIn
 
-    go(page, "ride")
+    go(page, "autopilot")
     page.wait_for_selector("#ap-next")
     page.click("#ride-learn")
     page.click("#ap-next")
@@ -940,7 +940,7 @@ def test_review_rate_and_generate(ui):
 
 def test_ride_presets_and_reroll(ui):
     page, app, root, _ = ui
-    go(page, "ride")
+    go(page, "autopilot")
     page.wait_for_selector("#ride-presets [data-preset=fire_wave]")
     page.click("#ride-presets [data-preset=fire_wave]")
     deadline = time.time() + 3

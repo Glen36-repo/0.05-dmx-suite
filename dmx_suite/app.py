@@ -896,7 +896,7 @@ class App:
                 "palettes": {k: {"name": v["name"], "tags": v["tags"]} for k, v in self.files.palettes.sets.items()},
                 "pick": self.ride_pick.to_dict(), "quality": self.quality().r}
 
-    def compose(self, pick: Any, name: str = "Ride") -> Any:
+    def compose(self, pick: Any, name: str = "Autopilot") -> Any:
         """A pick as a checked scene for the running rig (rules, rig scaling)."""
         from .classify import auto_rig
         from .fxbanks import compose
@@ -924,7 +924,7 @@ class App:
         issues = self.quality().combo_issues(pick, "mid")
         self.ride_pick = pick
         label = " + ".join(x for x in (pick.move, pick.colour, pick.drum) if x) + f" · {pick.palette}"
-        prefix = "Autopilot" if by == "autopilot" else "Ride"
+        prefix = "Autopilot" if by == "autopilot" else "Autopilot look"
         self.ctl.select_ride(f"{prefix}: {label}", ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff),
                              sc, fade, manual=by != "autopilot")
         return {"ok": True, "playing": label, "issues": issues, "scene": data}
@@ -1144,7 +1144,7 @@ class App:
         return {"levels": [k for k, on in levels if on], "top": top}
 
     def ride_action(self, action: str, p: dict[str, Any], level: float | None = None) -> str:
-        """Ride page and autopilot controls, from the page, MIDI or OSC."""
+        """Autopilot page controls (v3 Ride page), from the page, MIDI or OSC."""
         from .fxbanks import BY_ID, RANGES
 
         now = self.engine.clock()

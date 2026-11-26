@@ -270,7 +270,7 @@ class ShowController:
     def now(self) -> Now:
         n = Now(self.mode, "static look", bpm=self.tempo.bpm)
         if self.mode == "ride":
-            n.label = getattr(self, "ride_label", "Ride")
+            n.label = getattr(self, "ride_label", "Autopilot")
         if self.mode == "scene" and self.scene_key:
             n.scene, n.label = self.scene_key, self.files.scenes[self.scene_key].name
         elif self.mode == "show" and self.player and self.show:

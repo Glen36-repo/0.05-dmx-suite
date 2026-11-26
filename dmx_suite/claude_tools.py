@@ -89,7 +89,7 @@ HEAD POINTS (v3, per rig file `positions:`): named aim points, e.g. drum_kit, au
   per-head pan/tilt 0-1. Scenes name them (`position: drum_kit`, sweep from/to). list_points shows
   them with descriptions: use them to work out where to aim. A head a point doesn't cover stays put.
 PRESETS AND GENERATOR (v3.5): presets.yaml {presets: {id: {name, tags, pick: {move, colour, drum,
-  palette, ride}}}} (starter presets built in). Show step {preset: id, hold_s}; setlist song
+  palette, feel}}}} (starter presets built in). Show step {preset: id, hold_s}; setlist song
   {name, preset: id} or {name, presets: [ids], mood} (the autopilot plays only those for that song).
   generate kind scenes {mood, style rock|ballad|acoustic|opera|dance, palette, count, prefix, seed},
   show {name, plan: [{section, mood, length}], style, palette, hold_s}, setlist {setlist, style}:
@@ -102,7 +102,7 @@ AUTOPILOT (v3.4): changes looks on a timer per mood (rig `autopilot:` moods {low
   was chosen); save_autopilot_settings tunes it, e.g. "less movement, more blue in the verses" ->
   palettes: [cool, ice], and quality busy scores for the move items.
 AUTO SHOW (v3.3): list_fx shows the FX banks for this rig (Move, Colour, Flash, drum-reactive), how the
-  lights are classified, and the palettes. preview_look tries a pick {move, colour, drum, palette, ride:
+  lights are classified, and the palettes. preview_look tries a pick {move, colour, drum, palette, feel:
   {speed, fade, fan, size, shift}, mood} and says what the look quality rules think (get_quality_rules,
   save_quality_rules tune them: busy scores, one lead at a time, mood speeds, contrast, palettes).
 NAMED INPUTS (v3, inputs.yaml): MIDI/OSC inputs defined once in devices (e.g. td25: kick, snare,
@@ -314,7 +314,7 @@ class DmxTools:
     def preview_look(self, pick_yaml: str, seconds: float = 10) -> str:
         """Compose an FX pick for this rig, say what the quality rules think, and play it for a while."""
         pick = _yaml(pick_yaml, "pick")
-        r = self._live("POST", "/api/ride/check", {"pick": pick, "mood": pick.get("mood", "mid")})
+        r = self._live("POST", "/api/autopilot/check", {"pick": pick, "mood": pick.get("mood", "mid")})
         msg = self._live("POST", "/api/preview", {"scene_data": r["scene"], "seconds": seconds})["message"]
         issues = r["issues"]
         return msg + (". Quality: " + "; ".join(issues) if issues else ". Quality: fine")

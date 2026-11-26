@@ -1,14 +1,14 @@
-# Auto show: the Ride page, autopilot, FX banks
+# Auto show: the Autopilot page (v3 "Ride"), Feel, FX banks
 
-The auto show builds looks from **FX banks** for whatever rig you have, with no programming: open the **Ride** page, turn the **autopilot** on, and ride it with a few big controls. Claude can try looks with `preview_look` and explain what the autopilot is doing.
+The auto show builds looks from **FX banks** for whatever rig you have, with no programming: open the **Autopilot** page, turn the **autopilot** on, and ride it with a few big controls. Claude can try looks with `preview_look` and explain what the autopilot is doing.
 
-## The Ride page
+## The Autopilot page
 
 - along the top: **Autopilot** on/off, mood **LOW / MID / HIGH** (or **Auto mood**: it follows the energy), **Hold**, **◀ Previous**, **Next look ▶**, and the energy bar
 - the layout strip shows what the lights are doing
 - **Move FX** on the left, **Flash FX** in the middle (held while your finger is on them), **Colour FX** on the right, **Drum FX** below; tap one to use it now
 - **Palette**, with **Lock palette** so the autopilot keeps it
-- **Ride controls**: speed, fade, fan, size, shift, for everything or per bank
+- **Feel controls**: speed, fade, fan, size, shift, for everything or per bank
 - the **Haze** controls are here too, but they're separate: the auto show never touches haze
 - **Why did it do that?** lists the autopilot's last decisions with the reason for each
 - **Lights in the auto show**: how each light is used; change one or leave it out
@@ -31,7 +31,7 @@ No `activity` hits for 4 seconds = the song has ended: the lights fade to a calm
 
 ### Control priority
 
-Highest first: **1** blackout, **2** MASTER off (drum flash), **3** Flash FX and Override buttons, **4** hold (the look stays, the autopilot stops changing), **5** the autopilot or the running show. Pedals: `autopilot`, `hold`, `look_next`, `look_prev`, `mood`, `walk_on`, `walk_off`, plus `ride_fx`, `ride_palette`, `palette_lock` and the faders `ride_speed`, `ride_fade`, `ride_fan`, `ride_size`, `ride_shift`.
+Highest first: **1** blackout, **2** MASTER off (drum flash), **3** Flash FX and Override buttons, **4** hold (the look stays, the autopilot stops changing), **5** the autopilot or the running show. Pedals: `autopilot`, `hold`, `look_next`, `look_prev`, `mood`, `walk_on`, `walk_off`, plus `autopilot_fx`, `autopilot_palette`, `palette_lock` and the faders `feel_speed`, `feel_fade`, `feel_fan`, `feel_size`, `feel_shift`.
 
 Set `release_fade_s` in the rig file (e.g. `0.5`) and letting go of a higher level fades back to the one below (MASTER back on, blackout off, a held Flash FX) instead of cutting.
 
@@ -45,7 +45,7 @@ autopilot:
   fade: {low: 4, mid: 2, high: 0.5}
   gap_s: 4
   count_in: 4
-  talking: {colour: static, palette: white, move: kit, ride: {speed: 0.5}}
+  talking: {colour: static, palette: white, move: kit, feel: {speed: 0.5}}
   palettes: [warm, cool, band]
 ```
 
@@ -53,17 +53,17 @@ Every decision (time, energy, mood, look, why) is saved per gig in `logs/decisio
 
 ## Presets
 
-A preset is a saved look (FX + palette + ride settings). On the Ride page, **Save as preset** keeps the look that's playing; the preset buttons play one. Six starter presets come with the app and work on any rig.
+A preset is a saved look (FX + palette + ride settings). On the Autopilot page, **Save as preset** keeps the look that's playing; the preset buttons play one. Six starter presets come with the app and work on any rig.
 
 - in a show, a step can be a preset: `{preset: verse_blues, hold_s: 30}`
 - in a setlist, a song can be a preset (`{name: Intro, preset: calm_warm}`), or the autopilot playing only some presets: `{name: Encore, presets: [band_groove, fire_wave], mood: high}` ("only these looks for this song")
 - MIDI action `preset` (preset: verse_blues) plays one from a pedal
 
-**Re-roll, keeping:** tick what you like about the look (move, colour, drum, palette, ride controls) and press **Re-roll** for a new look that keeps them. **More like this** offers four variations of the look (same FX, other palettes and settings). **Save this look as a scene** writes what's playing as a normal scene to edit in the scene builder.
+**Re-roll, keeping:** tick what you like about the look (move, colour, drum, palette, Feel controls) and press **Re-roll** for a new look that keeps them. **More like this** offers four variations of the look (same FX, other palettes and settings). **Save this look as a scene** writes what's playing as a normal scene to edit in the scene builder.
 
 ## The Review page
 
-At rehearsal, go through the looks the rig can do (filter by mood, moves or colours, palette): **👍**, **👎**, or **Ban**. Liked looks come up more, disliked less, and banned looks are never used again by the autopilot or the generator. **Auto-advance** steps through on its own every few seconds. On the Ride page, tap a line under "Why did it do that?" to open that look here. Ratings are kept in `ratings.yaml`.
+At rehearsal, go through the looks the rig can do (filter by mood, moves or colours, palette): **👍**, **👎**, or **Ban**. Liked looks come up more, disliked less, and banned looks are never used again by the autopilot or the generator. **Auto-advance** steps through on its own every few seconds. On the Autopilot page, tap a line under "Why did it do that?" to open that look here. Ratings are kept in `ratings.yaml`.
 
 ## The generator
 
@@ -114,7 +114,7 @@ All of these are also ordinary effects in the scene builder (`move`, `palette`, 
 
 Each item says what it needs (heads, colour lights, pixels). Only what the rig can do is offered: two pars get colour fades, pulses, splits and the drum effects; add heads and the Move FX appear; add pixel bars and the pixel effects appear. Switching rig re-checks straight away.
 
-## Ride controls
+## Feel controls
 
 - **Speed** (¼× to 4×), **fade** (how soft colour changes are), **fan** (spread across the lights), **size** (how big the movement, how wide the pixels, how dense the sparkle), **shift** (phase offset)
 - each can be set for everything and per bank (move, colour, drum) on top
