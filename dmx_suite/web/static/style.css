@@ -200,3 +200,8 @@ td.hit { color: var(--ok); }
 .login input { font-size: 20px; text-align: center; padding: 10px; }
 .login button { font-size: 18px; padding: 10px; }
 .login .err { color: var(--danger, #e5484d); min-height: 1.2em; }
+
+/* ---------------------------------------------------------------- history */
+.history { list-style: none; padding: 0; margin: 6px 0 16px; display: grid; gap: 3px; max-height: 320px; overflow: auto; }
+.history li { display: flex; gap: 8px; align-items: center; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; }
+.history li.undone { opacity: 0.55; text-decoration: line-through; }

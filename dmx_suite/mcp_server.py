@@ -127,6 +127,12 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.restore_backup(backup, file)
 
     @tool
+    def undo_last_change() -> str:
+        """Undo your own last change to the show files (changes made at the laptop are never touched).
+        Refused if the files have changed since; then use restore_backup."""
+        return t.undo_last_change()
+
+    @tool
     def now_playing() -> str:
         """What's running: show/set/song, MASTER, blackout, masters, haze, gig lock. Engine must be running."""
         return t.now_playing()

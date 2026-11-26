@@ -340,6 +340,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, {"rows": [asdict(r) for r in rows], "notes": notes})
             if path == "/api/backups":
                 return self._json(200, app.store.backups())
+            if path == "/api/undo":
+                return self._json(200, app.store.history())
             if path.startswith("/api/store/"):
                 parts = path.split("/")[3:]
                 if len(parts) == 1:
@@ -450,8 +452,18 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if who == "claude" and not path.startswith(CLAUDE_WRITES):
                 return self._error(403, "not available to Claude")
             body = self._body()
+            with app.store.acting(who):  # undo remembers who made each change
+                return self._dispatch(method, path, body)
+
+        def _dispatch(self, method: str, path: str, body: dict) -> None:
             if path == "/api/access" and method == "POST":
                 return self._json(200, self._access_change(body))
+            if path in ("/api/undo", "/api/redo", "/api/undo/claude") and method == "POST":
+                if path == "/api/redo":
+                    done = app.store.redo()
+                else:
+                    done = app.store.undo("claude" if path.endswith("/claude") else None)
+                return self._json(200, {"ok": True, "change": done, "notes": app.reload(), **app.store.history()})
             if path == "/api/control" and method == "POST":
                 return self._json(200, control(app, body.get("cmd", ""), body))
             if path == "/api/validate/scene" and method == "POST":  # read-only check, allowed under gig lock

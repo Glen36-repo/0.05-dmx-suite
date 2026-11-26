@@ -4,6 +4,11 @@ A change is staged in a scratch copy of the show folder and the whole folder is 
 (`check_all`: rules, references, auto shows on every rig). Only if that passes is the file
 written, after the previous version is copied to `.backups/<date-time>/` so any change can be undone.
 Saves keep the file's comments and layout (yamlio.update_text): only what changed is rewritten.
+
+Undo/redo (R6): every change made while the app runs is remembered with the files' text before
+and after, so it can be undone and redone, unlimited, until the app closes. An undo is refused if
+the files have changed since in some other way (use the backups then). Each change records who
+made it ("ui" or "claude"), so Claude can undo its own last change without touching yours.
 """
 
 from __future__ import annotations
@@ -13,7 +18,9 @@ import shutil
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -40,11 +47,41 @@ class LockedError(StoreError):
 _dump = plain_dump  # new files
 
 
+@dataclass
+class Change:
+    """One remembered change: each file's text before and after (None = no file)."""
+
+    id: int
+    note: str
+    who: str
+    at: float
+    before: dict[Path, str | None]
+    after: dict[Path, str | None]
+
+    def info(self, root: Path) -> dict[str, Any]:
+        return {"id": self.id, "note": self.note, "who": self.who, "at": self.at,
+                "files": sorted(str(p.relative_to(root)) for p in self.after)}
+
+
 class ShowStore:
     def __init__(self, root: str | Path, locked: Any = None) -> None:
         self.root = Path(root)
         self._lock = threading.Lock()
         self._locked = locked or (lambda: False)  # gig lock check (callable)
+        self.undo_stack: list[Change] = []
+        self.redo_stack: list[Change] = []
+        self._next_id = 1
+        self._actor = threading.local()
+
+    @contextmanager
+    def acting(self, who: str) -> Iterator[None]:
+        """Changes made inside are recorded as made by `who` (the web server sets it per request)."""
+        old = getattr(self._actor, "who", None)
+        self._actor.who = who
+        try:
+            yield
+        finally:
+            self._actor.who = old
 
     # ------------------------------------------------------------------ paths
 
@@ -169,7 +206,56 @@ class ShowStore:
         with self._lock:
             self._guard()
             self._validate(changes)
-            return self._commit(changes, note)
+            before = {p: self._text(p) for p in changes}
+            bid = self._commit(changes, note)
+            self.undo_stack.append(Change(self._next_id, note, getattr(self._actor, "who", None) or "ui",
+                                          time.time(), before, dict(changes)))
+            self._next_id += 1
+            self.redo_stack.clear()
+            return bid
+
+    # ------------------------------------------------------------------ undo / redo
+
+    @staticmethod
+    def _text(p: Path) -> str | None:
+        return p.read_text(encoding="utf-8") if p.exists() else None
+
+    def _unchanged(self, files: dict[Path, str | None]) -> None:
+        moved = [str(p.relative_to(self.root)) for p, text in files.items() if self._text(p) != text]
+        if moved:
+            raise StoreError(f"{', '.join(moved)} changed since (another edit); put it back from the backups instead")
+
+    def history(self) -> dict[str, list[dict[str, Any]]]:
+        return {"undo": [c.info(self.root) for c in reversed(self.undo_stack)],
+                "redo": [c.info(self.root) for c in reversed(self.redo_stack)]}
+
+    def undo(self, who: str | None = None) -> dict[str, Any]:
+        """Undo the last change (or `who`'s last change). Returns what was undone."""
+        with self._lock:
+            self._guard()
+            mine = [c for c in self.undo_stack if who is None or c.who == who]
+            if not mine:
+                raise StoreError("nothing to undo" if who is None else f"no change by {who} to undo")
+            c = mine[-1]
+            self._unchanged(c.after)
+            self._validate(c.before)
+            self._commit(c.before, f"undo: {c.note}")
+            self.undo_stack.remove(c)
+            self.redo_stack.append(c)
+            return c.info(self.root)
+
+    def redo(self) -> dict[str, Any]:
+        with self._lock:
+            self._guard()
+            if not self.redo_stack:
+                raise StoreError("nothing to redo")
+            c = self.redo_stack[-1]
+            self._unchanged(c.before)
+            self._validate(c.after)
+            self._commit(c.after, f"redo: {c.note}")
+            self.redo_stack.pop()
+            self.undo_stack.append(c)
+            return c.info(self.root)
 
     def put(self, kind: str, name: str, data: Any, note: str = "") -> str:
         if isinstance(data, str):

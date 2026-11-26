@@ -385,5 +385,13 @@
  "login.help": "Type the PIN set on the lighting laptop.",
  "login.pin": "PIN",
  "login.sign_in": "Sign in",
- "login.offline": "Can't reach the lighting laptop"
+ "login.offline": "Can't reach the lighting laptop",
+ "history.title": "Undo and redo",
+ "history.help": "Every change since the app started, newest first (Ctrl+Z / Ctrl+Y). Older changes: the backups below.",
+ "history.undo": "Undo",
+ "history.redo": "Redo",
+ "history.undone": "Undone: {note}",
+ "history.redone": "Redone: {note}",
+ "history.by_you": "you",
+ "history.by_claude": "Claude"
 }

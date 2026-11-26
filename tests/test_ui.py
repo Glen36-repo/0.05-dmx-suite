@@ -390,3 +390,19 @@ def test_sign_in_page(ui):
     page.wait_for_selector("#master")
     page.wait_for_selector("body.ready")
     errors[:] = [e for e in errors if "401" not in e]  # the wrong PIN, on purpose
+
+
+def test_undo_a_scene_edit(ui):
+    page, app, root, _ = ui
+    app.store.put("scene", "ui_undo", {"name": "UI undo", "layers": [{"fixtures": ["bars"], "colour": "red"}]})
+    app.reload()
+    go(page, "files")
+    page.wait_for_selector("#history li")
+    assert "put scene ui_undo" in page.inner_text("#history")
+    page.click("#undo")
+    page.wait_for_selector("#history li.undone")
+    assert not (root / "scenes" / "ui_undo.yaml").exists()
+    go(page, "live")
+    page.keyboard.press("Control+y")  # redo from any page
+    page.wait_for_function("document.querySelector('#toast').textContent.startsWith('Redone')")
+    assert (root / "scenes" / "ui_undo.yaml").exists()

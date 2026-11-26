@@ -275,6 +275,15 @@ class DmxTools:
 
     # ------------------------------------------------------------------ live (engine must be running)
 
+    def undo_last_change(self) -> str:
+        """Undo Claude's own last change (never one made at the laptop)."""
+        try:
+            r = self._call("POST", "/api/undo/claude", {})
+            c = r["change"]
+        except Offline:
+            c = self.local.undo()
+        return f"undone: {c['note']} ({', '.join(c['files'])})"
+
     def preview_scene(self, scene: str, seconds: float = 10) -> str:
         """`scene` is a scene name, or a whole scene in YAML (try it before saving)."""
         body: dict[str, Any] = {"seconds": seconds}
