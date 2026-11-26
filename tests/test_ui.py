@@ -194,3 +194,78 @@ def test_phone_layout_has_bottom_menu(ui):
     assert box["y"] > 700 and box["width"] >= 380  # a bar along the bottom
     go(page, "layout")
     assert page.is_visible("#layout-grid")
+
+
+# ------------------------------------------------------------------ scene builder (v2 R3)
+
+
+def effect_select(page):
+    return page.locator("#layer-form .field:has(> span:text-is('Effect')) select")
+
+
+def test_open_a_scene_shows_its_layers(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.select_option("#scene-pick", "blue_chase")
+    page.wait_for_function("document.querySelectorAll('#layers li').length === 5")
+    assert "Pixel chase" in page.inner_text("#layers li >> nth=0")
+    assert page.input_value("#scene-name") == "Blue chase"
+
+
+def test_build_save_and_preview_a_scene(ui):
+    page, app, root, _ = ui
+    go(page, "scenes")
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#layer-add")
+    effect_select(page).select_option("linear_wave")
+    page.locator("#layer-form .field:has(> span:text-is('angle')) input[type=number]").fill("90")
+    page.locator("#layer-form .field:has(> span:text-is('angle')) input[type=number]").dispatch_event("change")
+    page.check("#scene-preview")
+    page.wait_for_function("document.querySelector('#scene-preview-note').textContent.includes('one cycle')")
+    deadline = time.time() + 3
+    while app.snapshot()["preview_s"] is None and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.snapshot()["preview_s"] is not None  # playing on the rig, unsaved
+    page.fill("#scene-name", "Test wave")
+    page.click("#scene-save")
+    page.wait_for_function("document.querySelector('#scene-state').textContent.includes('test_wave')")
+    data = yaml.safe_load((root / "scenes" / "test_wave.yaml").read_text(encoding="utf-8"))
+    assert data["name"] == "Test wave"
+    assert data["layers"] == [{"fixtures": ["bars"], "colour": "white", "effect": "linear_wave", "angle": 90}]
+    assert "test_wave" in app.catalogue()["scenes"]
+    page.uncheck("#scene-preview")
+    deadline = time.time() + 3
+    while app.snapshot()["preview_s"] is not None and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.snapshot()["preview_s"] is None
+
+
+def test_rule_breaking_layer_is_marked(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.click("#scene-group-tabs [data-group=heads]")  # includes the colour-only U'Kings
+    page.click("#layer-add")
+    effect_select(page).select_option("circle")
+    page.locator("#layer-form .field:has(> span:text-is('centre')) select").select_option("drum_kit")
+    page.wait_for_selector("#layers li.error")
+    assert "rule 7" in page.inner_text("#scene-error")
+    page.click("#scene-group-tabs [data-group=movers]")
+    page.click("#layer-form button:text-is('Use selected lights')")
+    page.wait_for_selector("#scene-error.hidden", state="attached")
+    assert page.locator("#layers li.error").count() == 0
+
+
+def test_mute_and_reorder(ui):
+    page, _, root, _ = ui
+    go(page, "scenes")
+    page.select_option("#scene-pick", "red_movers")
+    page.wait_for_selector("#layers li")
+    n = page.locator("#layers li").count()
+    first = page.inner_text("#layers li >> nth=0 >> .name")
+    page.click("#layers li >> nth=0 >> button[title='Move down']")
+    assert page.inner_text("#layers li >> nth=1 >> .name") == first
+    page.click("#layers li >> nth=1 >> button[title^='Mute']")
+    page.click("#scene-save")
+    page.wait_for_function("!document.querySelector('#scene-state').textContent.includes('unsaved')")
+    data = yaml.safe_load((root / "scenes" / "red_movers.yaml").read_text(encoding="utf-8"))
+    assert len(data["layers"]) == n and data["layers"][1].get("mute") is True

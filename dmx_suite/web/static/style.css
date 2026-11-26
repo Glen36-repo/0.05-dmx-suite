@@ -135,3 +135,35 @@ td.hit { color: var(--ok); }
 
 .toast { position: fixed; left: 16px; right: 16px; bottom: 76px; max-width: 600px; margin: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; z-index: 10; }
 .toast.err { border-color: var(--bad); }
+
+/* ---------------------------------------------------------------- scene builder */
+.builder { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1000px) { .builder { grid-template-columns: minmax(0, 1fr); } }
+.builder .grid-host { max-height: 55vh; }
+.scene-bar input#scene-name { flex: 1; min-width: 160px; }
+.layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.layers li { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+.layers li.on { border-color: var(--accent); }
+.layers li.error { border-color: var(--bad); }
+.layers li.muted-layer .name { opacity: .45; text-decoration: line-through; }
+.layers li .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layers li .tools { display: inline-flex; gap: 2px; }
+.layers li .tools button { padding: 2px 8px; }
+.form { display: grid; gap: 8px; }
+.form h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 10px 0 0; font-weight: 600; }
+.field { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; align-items: center; font-size: 13px; }
+.field > span:first-child { color: var(--muted); }
+.slider { display: flex; gap: 8px; align-items: center; }
+.slider input[type=range] { min-width: 80px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.swatches { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.sw { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 2px solid var(--line); }
+.sw.sel { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
+.sw.none { background: var(--panel); color: var(--muted); font-size: 12px; }
+.swatches input[type=color] { width: 30px; height: 26px; padding: 0; border: none; background: none; }
+.colour-list { display: grid; gap: 4px; }
+.error { background: color-mix(in srgb, var(--bad) 18%, var(--panel)); border: 1px solid var(--bad); border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 13px; }
+.scene-more { margin-top: 14px; }
+.scene-more summary { color: var(--muted); cursor: pointer; font-size: 13px; }
+.lightgrid .arrow line { stroke: var(--accent); stroke-width: 5; opacity: .75; }
+.lightgrid .arrow path, .lightgrid marker path { fill: var(--accent); }

@@ -47,10 +47,12 @@ function inPolygon([x, y], poly) {
 }
 
 export class LightGrid {
-  /** host: element to draw in. opts.edit: editing allowed. opts.onChange(kind): "select" | "move". */
+  /** host: element to draw in. opts.edit: arranging allowed; opts.select: picking lights only
+   * (scene builder). opts.onChange(kind): "select" | "move". */
   constructor(host, opts = {}) {
     this.host = host;
     this.edit = !!opts.edit;
+    this.selectable = this.edit || !!opts.select;
     this.onChange = opts.onChange || (() => {});
     this.tool = "select"; // select | lasso | move
     this.selected = new Set();
@@ -69,18 +71,20 @@ export class LightGrid {
     this.layout = JSON.parse(JSON.stringify(layout || cat.layout));
     this.saved = JSON.stringify(this.layout);
     for (const id of [...this.selected]) if (!this.layout[id]) this.selected.delete(id);
-    this.root = svg("svg", { class: "lightgrid" + (this.edit ? " edit" : ""), role: "img" });
+    this.root = svg("svg", { class: "lightgrid" + (this.selectable ? " edit" : ""), role: "img" });
     this.gGrid = svg("g", { class: "gridlines" });
     this.gBeams = svg("g", { class: "beams" });
     this.gLights = svg("g");
     this.gMarquee = svg("g");
-    this.root.append(this.gGrid, this.gBeams, this.gLights, this.gMarquee);
+    this.gArrow = svg("g", { class: "arrow" });
+    this.root.append(this.gGrid, this.gBeams, this.gLights, this.gArrow, this.gMarquee);
     this.items = {};
     for (const f of cat.fixtures) if (this.layout[f.id]) this.drawLight(f.id);
     this.fit();
     this.applyView();
-    if (this.edit) this.bindPointer();
+    if (this.selectable) this.bindPointer();
     this.host.replaceChildren(this.root);
+    if (this.arrow) this.setArrow(this.arrow);
     this.markSelection();
     if (this.lastFixtures) this.update(this.lastFixtures);
   }
@@ -152,6 +156,34 @@ export class LightGrid {
   }
 
   setZoom(pct) { this.zoom = pct; this.applyView(); }
+
+  // which way an effect runs across the layout: {angle} (degrees, 0 = left to right) or
+  // {radial: "out" | "in"}; null hides it
+  setArrow(arrow) {
+    this.arrow = arrow;
+    this.gArrow.replaceChildren();
+    if (!arrow || !this.size) return;
+    const [w, h] = this.size;
+    const cx = (w / 2) * C, cy = (h / 2) * C, len = Math.min(w, h) * 0.38 * C;
+    if (arrow.radial) {
+      for (const a of [0, 90, 180, 270]) {
+        const r = (a * Math.PI) / 180;
+        const [x1, y1, x2, y2] = arrow.radial === "out"
+          ? [cx, cy, cx + Math.cos(r) * len, cy + Math.sin(r) * len]
+          : [cx + Math.cos(r) * len, cy + Math.sin(r) * len, cx + Math.cos(r) * len * 0.25, cy + Math.sin(r) * len * 0.25];
+        this.gArrow.append(svg("line", { x1, y1, x2, y2, "marker-end": "url(#arrowhead)" }));
+      }
+    } else {
+      const r = ((arrow.angle || 0) * Math.PI) / 180;
+      this.gArrow.append(svg("line", { x1: cx - Math.cos(r) * len, y1: cy - Math.sin(r) * len,
+                                       x2: cx + Math.cos(r) * len, y2: cy + Math.sin(r) * len, "marker-end": "url(#arrowhead)" }));
+    }
+    if (!this.root.querySelector("#arrowhead")) {
+      const defs = svg("defs", {}, svg("marker", { id: "arrowhead", viewBox: "0 0 10 10", refX: 7, refY: 5, markerWidth: 5,
+                                                   markerHeight: 5, orient: "auto-start-reverse" }, svg("path", { d: "M0 0 L10 5 L0 10 z" })));
+      this.root.prepend(defs);
+    }
+  }
   setNames(on) { this.showNames = on; this.applyView(); }
   setBeams(on) { this.showBeams = on; this.fit(); this.applyView(); }
 
@@ -230,7 +262,7 @@ export class LightGrid {
       this.root.setPointerCapture(ev.pointerId);
       if (hit) {
         const id = hit.dataset.id;
-        if (this.tool === "move") {
+        if (this.tool === "move" && this.edit) {
           if (!this.selected.has(id)) this.select([id], ev.shiftKey);
           drag = { at, from: Object.fromEntries([...this.selected].map((k) => [k, { ...this.layout[k] }])), moved: false,
                    before: JSON.stringify(this.layout) };

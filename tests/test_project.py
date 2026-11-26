@@ -112,6 +112,7 @@ def test_every_ui_text_key_exists():
         used |= {k for pair in re.findall(r'\?\s*"([a-z]+\.[a-z0-9_]+)"\s*:\s*"([a-z]+\.[a-z0-9_]+)"', text) for k in pair}
     used = {k for k in used if not k.endswith(("_", "."))}  # prefixes of keys built at run time:
     used |= {f"live.sub_{k}" for k in ("head", "bar", "wash", "kick")} | {f"haze.{m}" for m in ("off", "manual", "pulse")}
+    used |= {f"scenes.blend_{b}" for b in ("replace", "max", "add")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

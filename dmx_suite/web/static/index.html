@@ -27,6 +27,7 @@
     <button class="collapse" id="collapse" data-i18n-title="menu.collapse"><span class="ic">☰</span></button>
     <button data-page="live" class="on"><span class="ic">◉</span><span class="lbl" data-i18n="menu.live"></span></button>
     <button data-page="layout"><span class="ic">▦</span><span class="lbl" data-i18n="menu.layout"></span></button>
+    <button data-page="scenes"><span class="ic">◆</span><span class="lbl" data-i18n="menu.scenes"></span></button>
     <button data-page="heads"><span class="ic">✥</span><span class="lbl" data-i18n="menu.heads"></span></button>
     <button data-page="midi"><span class="ic">♪</span><span class="lbl" data-i18n="menu.midi"></span></button>
     <button data-page="setup"><span class="ic">⚙</span><span class="lbl" data-i18n="menu.setup"></span></button>
@@ -120,6 +121,49 @@
         <button id="group-delete" class="danger-text" data-i18n="groups.delete"></button>
       </div>
       <p class="muted" data-i18n="groups.help"></p>
+    </section>
+
+    <!-- SCENES -->
+    <section id="page-scenes" class="page">
+      <div class="row wrap scene-bar">
+        <select id="scene-pick" data-i18n-title="scenes.pick"></select>
+        <button id="scene-new" data-i18n="scenes.new"></button>
+        <button id="scene-dup" data-i18n="scenes.duplicate"></button>
+        <button id="scene-del" class="danger-text" data-i18n="scenes.delete"></button>
+        <input id="scene-name" maxlength="60" data-i18n-placeholder="scenes.name_placeholder">
+        <button id="scene-save" data-i18n="scenes.save"></button>
+        <span class="muted" id="scene-state"></span>
+      </div>
+      <div class="builder">
+        <div class="builder-left">
+          <div class="tabs" id="scene-group-tabs" role="tablist"></div>
+          <div class="grid-host" id="scene-grid"></div>
+          <div class="row wrap">
+            <span class="muted" id="scene-sel"></span>
+          </div>
+          <div class="row wrap">
+            <label class="check"><input type="checkbox" id="scene-preview"><span data-i18n="scenes.live_preview"></span></label>
+            <span class="muted" id="scene-preview-note"></span>
+          </div>
+        </div>
+        <div class="builder-right">
+          <h2 data-i18n="scenes.layers"></h2>
+          <ol class="layers" id="layers"></ol>
+          <div class="row wrap">
+            <button id="layer-add" data-i18n="scenes.add_layer"></button>
+          </div>
+          <div class="error hidden" id="scene-error" role="alert"></div>
+          <h2 id="layer-title" data-i18n="scenes.layer"></h2>
+          <div id="layer-form" class="form"></div>
+          <details class="scene-more">
+            <summary data-i18n="scenes.scene_settings"></summary>
+            <div class="form">
+              <label class="field"><span data-i18n="scenes.show_colour"></span><span id="scene-show-colour"></span></label>
+              <label class="field"><span data-i18n="scenes.length"></span><input id="scene-length" type="number" min="0" step="0.5" class="narrow"></label>
+            </div>
+          </details>
+        </div>
+      </div>
     </section>
 
     <!-- HEADS -->

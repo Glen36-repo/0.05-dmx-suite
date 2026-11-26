@@ -8,6 +8,7 @@ import * as heads from "./views/heads.js";
 import * as layout from "./views/layout.js";
 import * as liveView from "./views/live.js";
 import * as midi from "./views/midi.js";
+import * as scenes from "./views/scenes.js";
 import * as setup from "./views/setup.js";
 import * as top from "./views/top.js";
 
@@ -23,7 +24,7 @@ document.addEventListener("click", (ev) => {
 (async () => {
   await load("en");
   apply();
-  for (const view of [top, liveView, layout, heads, midi, setup, files]) view.init();
+  for (const view of [top, liveView, layout, scenes, heads, midi, setup, files]) view.init();
   nav.init();
   await start();
   document.body.classList.add("ready");
