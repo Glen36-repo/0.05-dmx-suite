@@ -38,7 +38,7 @@ Numbers are kept from v1 so tests and docs still match. From v2 R1, every rule i
 
 ## Conventions
 - Australian English in UI text and docs. Metric. Dates DD/MM/YYYY.
-- Show data in YAML under `shows/`: fixtures, rig configs, palettes, effects, scenes, shows, MIDI map. Every file carries `version:` from v2 R1.
+- Show data in YAML under `shows/`: fixtures, rig configs, palettes, effects, scenes, shows, MIDI map. Every file carries `version:` from v2 R1. Users keep it as one `.dms` show file (zip of those files, `dmx_suite/package.py`) from v2 R6; every loader still works on a folder (the app runs on an unpacked working copy).
 - Everything a user needs must be doable in the UI; Claude (MCP) is optional.
 - UI text lives in `web/static/i18n/en.json` from v2 R2; no hard-coded strings in views.
 - Output drivers are pluggable (`node_serial`, `enttec_open`, `enttec_pro`, `artnet`, `sacn`, `log`, `null`).

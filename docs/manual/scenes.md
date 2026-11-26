@@ -57,3 +57,11 @@ layers:
 ```
 
 Under the "generic" profile a layer can also set `intensity` (0-1).
+
+## Copy and paste a look
+
+On the Scenes page, **Copy look** (Ctrl+C) copies the layer you're editing, or, with no layer picked, the look of the first selected light. Select other lights and **Paste to selection** (Ctrl+V): the look is added as one layer per kind of light, keeping only what each can do. Position and movement only go to heads that move, gobo and colour wheel only to lights that have them, and colours go to everything.
+
+## Undo
+
+Every saved change can be undone and redone (Ctrl+Z / Ctrl+Y, or the Files page) for as long as the app is open. Older changes are in the backups on the Files page.

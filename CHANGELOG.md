@@ -2,6 +2,25 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v2, release R6)
+
+### Added
+- `.dms` show files: the whole show in one file, saved on every change, double-click to open; open, save as, new, download, upload and recent files on the Files page; `pack` and `unpack` commands.
+- PIN for phones and other computers, with a sign-in page; phone/LAN access turned on from the Setup page, with the address and a QR code; optional PIN on the laptop too.
+- Undo and redo for every change since the app started (Files page, Ctrl+Z / Ctrl+Y); Claude can undo its own last change.
+- Copy and paste a look between lights in the scene builder (Ctrl+C / Ctrl+V).
+- Lost-connection box; screens stay awake while the app is showing.
+
+### Changed
+- Claude has its own key and can no longer turn gig lock off or change settings; its edits respect gig lock even with the app closed.
+- MIDI learn and removing a mapping are blocked by gig lock.
+- Screens share one live feed and only get changes, with a heartbeat.
+- `--lan` turns phone access on (needs a PIN) instead of printing a token link.
+
+### Fixed
+- Faders stuck after a finger slid off them mid-drag.
+- Two "off" swatches in the scene builder; the group tab now follows the layer being edited.
+
 ## Unreleased (v2, release R5)
 
 ### Added

@@ -67,13 +67,17 @@ SCENE (scenes/<name>.yaml): layers applied in order; later layers override earli
   Scene `length_s` = one cycle (default: the longest effect period).
 EFFECTS (name: what it does. Settings):
 {effects}
-SHOW (shows/<name>.yaml): sets on fixed step timers; each set has `scenes` (order: sequence|random)
-  or `auto` {colours, energy: low|mid|high, head_mix: [matching, white, contrast],
-  patterns: [all, heads_only, bars_only, kit], movement: [random, sweep, static], flash, fades}.
+SHOW (shows/<name>.yaml): sets; each set has `steps` [{scene, repeats N | hold_s | hold_beats |
+  hold_bars, fade_s}] with set `fade_s`, `order` sequence|random, `loop`; or `auto` {colours,
+  energy: low|mid|high, head_mix: [matching, white, contrast], patterns: [all, heads_only,
+  bars_only, kit], movement: [random, sweep, static], flash, fades} with `step_s`.
+  (Old files with `scenes` + `step_s` still load.) Layers may time effects in `beats`.
+BUSK PANELS (panels.yaml): panels of widgets (colour, flash, solo, effect, go, fader, haze).
 SETLIST (setlists/<name>.yaml): songs: [{name, show, set} or {name, scene}, optional master: on/off].
 PALETTES: colours / positions (per head or {pan, tilt}) / gobos (DMX value, or per fixture type).
 
-Every save keeps the previous file in .backups/ (list_backups, restore_backup).
+Every save keeps the previous file in .backups/ (list_backups, restore_backup); undo_last_change
+undoes your own last change (never one made at the laptop).
 Gig lock (set by the band at the laptop): read only, no preview, no haze changes.
 """
 

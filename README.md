@@ -34,13 +34,13 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules. The 
 
 Run `0.05-DMX-Suite-Setup-<version>.exe`. No Python needed. It asks:
 
-- **Show files folder:** default `OneDrive\Music\0.05 DMX Suite\shows` (Documents if there's no OneDrive). An existing folder is used as is; a new one gets the starter shows. Upgrades and uninstall never touch it
+- **Show file:** default `OneDrive\Music\0.05 DMX Suite\0.05 shows.dms` (Documents if there's no OneDrive). One `.dms` file holds the whole show; a new one starts from the starter shows. An existing file, or a show folder from an older version, is used as is. Upgrades and uninstall never touch it. Double-clicking any `.dms` opens it in the app
 - **Add the 0.05 tools to Claude Desktop** (on by default): restart Claude Desktop afterwards
 - **Desktop shortcut** (on) and **start live at login** (off)
 
 **0.05 DMX Suite** opens as a desktop program in its own window (the same screens as the browser UI, so phones on the network still work). Closing the window hides it to the tray icon and the lights keep running; the tray menu has Open, Blackout and Quit. Opening it again while it's running brings the window back on the running engine. Show file problems at start-up are shown in the window; everything else is logged to `logs\desktop.log` next to the show folder.
 
-Start menu: **0.05 DMX Suite**, **0.05 DMX Suite (simulator)**, show files folder, and under Tools: MIDI monitor, check show files, simulator console. The chosen folder is saved as the `DMX_SUITE_SHOWS` user environment variable, so `dmx-suite.exe` from a command prompt uses it too.
+Start menu: **0.05 DMX Suite**, **0.05 DMX Suite (simulator)**, show files folder, and under Tools: MIDI monitor, check show files, simulator console. The chosen show file is saved as the `DMX_SUITE_SHOWS` user environment variable, so `dmx-suite.exe` from a command prompt uses it too.
 
 **Building the installer:** run the *Windows installer* workflow on GitHub (Actions tab → Run workflow, or push a `v*` tag) and download it from the run's artifacts. Or on a Windows PC with Python 3.12+ and Inno Setup 6: `powershell -ExecutionPolicy Bypass -File installer\build.ps1` → `dist\`. The build runs the tests and a check of the packaged app first. Bump `version` in `pyproject.toml` for each release.
 
@@ -157,7 +157,15 @@ A red banner and a beep appear when an output, MIDI interface or node drops out.
 
 **Gig lock** (top right): Claude can still read everything, but can't change files, preview or change haze, and the MIDI map can't be saved. The band's live controls keep working.
 
-**Phone:** start with `--lan`, then open the link it prints (it carries an access token) on a phone on the same network. Without `--lan` the UI is only reachable from the laptop.
+**Access (PIN and phones, Setup page):** the app only answers this computer until **phone/LAN access** is turned on, which needs a PIN first. The Setup page then shows the address and a QR code; a phone on the same Wi-Fi opens it and signs in with the PIN. A phone stays signed in until it's unused for the set number of hours (12 by default), the PIN changes, or LAN access goes off; five wrong PINs make it wait 30 s. Tick **Ask for the PIN on this computer too** to lock the laptop's own screen as well. Access settings can only be changed on the laptop, and the PIN is kept only as a salted hash in app data. `--lan` turns phone access on at start-up (once a PIN is set).
+
+**Claude's own key:** Claude (MCP) uses its own token from app data, only from this computer, and only for show edits, preview, haze and nodes: it can't turn gig lock off, change access or settings, or learn MIDI. With the app closed, Claude's edits still respect gig lock.
+
+**Undo and redo** (Files page, or Ctrl+Z / Ctrl+Y on any page but Layout, which has its own undo for unsaved moves): every change since the app started, by you or by Claude, without limit. An undo is refused if the file was changed some other way since; older changes are in the backups. Claude's `undo_last_change` only undoes its own.
+
+**Copy and paste a look** (Scenes page, or Ctrl+C / Ctrl+V there): copy the layer being edited, or the look of the first selected light, and paste it onto other lights. It becomes one layer per kind of light, keeping only what each can do: position and movement only on heads that move, gobo and colour wheel only where fitted.
+
+**Live feed:** screens get the state when it changes (worked out once for all of them), plus a heartbeat every 5 s; a screen that hears nothing for 12 s reconnects, and shows a "lost the connection" box meanwhile (the lights keep running). Screens ask to stay awake while the app is showing.
 
 ## Claude Desktop
 
@@ -201,6 +209,14 @@ USB outputs (node, Enttec Pro) write on their own thread, so a slow or unplugged
 **MIDI interfaces:** `midi_inputs` in the rig file lists parts of the port names to open (empty = every port). Ports are rescanned every 2 s, so an interface unplugged mid-gig reconnects by itself, even under a new Windows name. Each one shows connected/unplugged in the health strip, with the banner if it drops.
 
 ## Show files
+
+**The `.dms` show file:** one file holds the whole show (fixtures, palettes, rigs, looks, scenes, shows, setlists, busk panels, MIDI maps): a zip of the YAML files below plus `dms.json` (file version, app version, when saved). The app works on a copy in app data and saves every change straight back into the `.dms`, so OneDrive syncs one file. Backups stay on the laptop. If the app stopped before a change reached the file, the next open keeps it as `<name> (recovered DD-MM-YYYY).dms`. A `.dms` open in the app on another computer (`<name>.dms.lock` next to it) opens read-only. On the Files page: **Open…**, **Save as…**, **New from starter show…**, **Download**, **Upload and open…** (phones), and recent files; opening another file restarts the app on it (the lights go dark for a few seconds). A show folder still works everywhere a `.dms` does:
+
+```bash
+dmx-suite pack shows "My show.dms"
+dmx-suite unpack "My show.dms" my-show-folder
+dmx-suite --shows "My show.dms" run --sim
+```
 
 All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers and drum pad map (`shows/midi/default.yaml`), and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.
 
