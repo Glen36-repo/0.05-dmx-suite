@@ -628,7 +628,7 @@ def test_banners_overlay_without_moving_controls(ui):
 def test_colour_wheel_sets_a_layer_colour(ui):
     page, app, root, _ = ui
     go(page, "scenes")
-    page.wait_for_selector("#scene-show-colour .swatches")  # the builder has loaded
+    page.wait_for_selector("#scene-show-colour .swatches", state="attached")  # the builder has loaded
     page.click("#scene-group-tabs [data-group=bars]")
     page.click("#layer-add")
     page.click("#layer-form .wheel-btn >> nth=0")
