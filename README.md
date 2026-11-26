@@ -9,12 +9,26 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules.
 | Path | What |
 | --- | --- |
 | `docs/PROTOCOL.md` | USB serial and ESP-NOW protocol (node link) |
+| `shows/` | Show files: `fixtures.yaml`, `rigs/`, `looks/`, `midi/` |
+| `dmx_suite/engine.py` | Show engine: 40 Hz loop, MASTER, blackout, drum flash, masters, haze |
+| `dmx_suite/rules.py` | Rule layer: enforces the hard rules just before output |
+| `dmx_suite/output/` | Output drivers: `node_serial`, `enttec_open`, `enttec_pro`, `log`, `null` |
+| `dmx_suite/midi/` | MIDI map, router, monitor and learn |
+| `dmx_suite/cli.py` | `dmx-suite`: run, simulator, MIDI monitor, show file check |
 | `dmx_suite/node/` | Laptop side: protocol, link, health tracking, simulated node |
 | `dmx_suite/tools/node_test.py` | Node test script (`dmx-node-test`) |
 | `firmware/` | PlatformIO: `node` (CoreS3 SE) and `receiver` (AtomS3 Lite) |
 | `tests/` | pytest, including a byte-for-byte check of the firmware protocol code |
 
 ## Setup (laptop)
+
+On the gig laptop (real MIDI ports):
+
+```bash
+pip install -e .[hw,dev]
+```
+
+For development without MIDI hardware:
 
 ```bash
 pip install -e .[dev]
@@ -23,6 +37,36 @@ pip install -e .[dev]
 ```bash
 pytest
 ```
+
+## Running
+
+Simulator (fake MIDI, no hardware). Type `help` at the `dmx>` prompt:
+
+```bash
+dmx-suite run --sim
+```
+
+Live, using the rig's outputs and all MIDI inputs:
+
+```bash
+dmx-suite run --rig full
+```
+
+```bash
+dmx-suite midi-monitor
+```
+
+```bash
+dmx-suite check
+```
+
+Simulator console example: `master off`, then `hit 38 110` flashes the bars and shows the time from hit to frame sent. `learn flash fixtures=bars` then a pad hit maps that pad; `save` writes the MIDI map.
+
+## Show files
+
+All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers and drum pad map (`shows/midi/default.yaml`), and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.
+
+Levels in rig files are 0-100 %. Looks (`shows/looks/`) set colour, pixels, wheel, gobo and position only; a `dimmer` or `haze` key is rejected (hard rules 1 and 5). Looks are replaced by scenes in phase 3.
 
 ## Node test script
 
