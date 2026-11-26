@@ -83,6 +83,7 @@ export function init() {
     if (r) {
       grid.saved = JSON.stringify(grid.layout);
       grid.history = [];
+      updateSelection(); // Save greys out straight away
       await refreshCatalogue();
     }
   };

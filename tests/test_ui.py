@@ -144,7 +144,7 @@ def test_move_arrange_undo_and_save(ui):
     assert set(saved) >= {"wash_l", "wash_r"}
     assert (saved["wash_l"]["x"], saved["wash_l"]["y"]) != (moved["x"], moved["y"])
     assert app.engine.rig.layout["wash_l"].x == saved["wash_l"]["x"]  # live, no restart
-    assert page.is_disabled("#layout-save")
+    page.wait_for_selector("#layout-save:disabled")
 
 
 def test_pixel_shape_changes_the_drawing(ui):
