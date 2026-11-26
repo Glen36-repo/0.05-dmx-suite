@@ -560,5 +560,19 @@
  "wizard.starter_playing": "Starter show playing",
  "wizard.pin_title": "PIN for phones",
  "wizard.pin_help": "Set a PIN now if phones or other computers will connect (turn that on later in Setup). You can skip this.",
- "wizard.pin_already": "A PIN is set already."
+ "wizard.pin_already": "A PIN is set already.",
+ "setup.naming": "Naming… waiting for the node to confirm",
+ "setup.named_unconfirmed": "Sent the name {name}, but the node hasn't confirmed it: check it's in range and try again",
+ "setup.replace": "Replace with spare…",
+ "setup.replace_pick": "Which spare takes over? {macs}",
+ "setup.replace_confirm": "Give {mac} the name and universe of {name}, and use it in place of {name} in the rig?",
+ "setup.replaced": "{name} replaced: the spare is working",
+ "setup.replaced_unconfirmed": "{name} replaced in the rig, but the spare hasn't confirmed yet: check it's in range",
+ "setup.node_setup": "Node firmware {fw}; fallback looks stored for {n} universe(s)",
+ "setup.node_resend": "Send fallback looks again",
+ "setup.node_resend_tip": "Store what each universe shows if the laptop goes away (the static look) on the node",
+ "setup.radio_channel": "Radio channel",
+ "setup.radio_move": "Move radio",
+ "setup.radio_confirm": "Move the node and its receivers to channel {ch}? Receivers that are off now find it again by themselves.",
+ "setup.radio_moved": "Node and receivers moving to channel {ch}"
 }

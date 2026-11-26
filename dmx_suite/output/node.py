@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 from ..node.health import HealthTracker
@@ -19,10 +21,18 @@ class NodeSerialDriver(OutputDriver):
         transport = SimTransport(default_sim()) if port == "sim" else ReconnectingSerial(port)
         self.link = NodeLink(transport, health)
         self.errors = 0
+        self.on_connect: Callable[[NodeSerialDriver], Any] | None = None  # set by the app
+        self.link.on_node_announce.append(lambda hb: self._connected())
         # real node: a sender thread does the USB writes (and port reopening), never the engine
         self._sender = SenderThread(self._write, self.name) if port != "sim" else None
         if port != "sim":
             self.link.start()  # reader thread: status + heartbeats
+
+    def _connected(self) -> None:
+        """The node (re)announced itself: the app's set-up (fallback looks, channel) runs on its own
+        thread, because it waits for ACKs that this reader thread has to read."""
+        if self.on_connect is not None:
+            threading.Thread(target=self.on_connect, args=(self,), name="node-setup", daemon=True).start()
 
     def send(self, universe: int, frame: bytes) -> None:
         if self._sender is not None:

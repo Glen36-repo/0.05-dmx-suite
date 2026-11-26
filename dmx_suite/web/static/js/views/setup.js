@@ -1,5 +1,5 @@
 // Setup page: find a light, channel tester, devices, nodes, addresses, theme, update check.
-import { api, attempt, cmd, get } from "../api.js";
+import { api, attempt, cmd, get, toast } from "../api.js";
 import { $, $$, el } from "../dom.js";
 import { t } from "../i18n.js";
 import { onShow } from "../nav.js";
@@ -10,7 +10,18 @@ async function nodeAction(n) {
   const name = prompt(t("setup.node_name_prompt", { mac: n.mac }));
   if (!name) return;
   const universe = prompt(t("setup.node_universe_prompt"), "0");
-  attempt(() => api("POST", "/api/nodes/assign", { mac: n.mac, name, universe: +universe || 0 }), t("setup.named", { name }));
+  toast(t("setup.naming"));
+  attempt(() => api("POST", "/api/nodes/assign", { mac: n.mac, name, universe: +universe || 0 }),
+    (r) => t(r.confirmed ? "setup.named" : "setup.named_unconfirmed", { name }));
+}
+
+// a dead node or receiver, and a spare switched on: the spare takes its name and universe
+async function replaceNode(n, spares) {
+  const pick = spares.length === 1 ? spares[0].mac : prompt(t("setup.replace_pick", { macs: spares.map((s) => s.mac).join(", ") }), spares[0].mac);
+  if (!pick || !confirm(t("setup.replace_confirm", { name: n.name, mac: pick }))) return;
+  toast(t("setup.naming"));
+  attempt(() => api("POST", "/api/nodes/replace", { old: n.mac, new: pick }),
+    (r) => t(r.confirmed ? "setup.replaced" : "setup.replaced_unconfirmed", { name: r.name }));
 }
 
 function render(s) {
@@ -19,7 +30,8 @@ function render(s) {
     el("td", { text: d.name }), el("td", { text: d.kind }),
     el("td", {}, el("span", { class: "dot inline " + d.state }), d.state), el("td", { text: d.detail }))));
   // rebuilt only when something changed, so a button isn't swapped out under a finger
-  const key = JSON.stringify(s.nodes.map((n) => [n.mac, n.name, n.state, n.rssi, n.loss_pct, Math.round((n.last_data_age_ms || 0) / 500)]));
+  const spares = s.nodes.filter((n) => n.mac && n.state === "new");
+  const key = JSON.stringify([s.node_setup?.at, s.nodes.map((n) => [n.mac, n.name, n.state, n.rssi, n.loss_pct, Math.round((n.last_data_age_ms || 0) / 500)])]);
   const nodes = $("#nodes");
   if (nodes.dataset.key === key) return;
   nodes.dataset.key = key;
@@ -27,7 +39,10 @@ function render(s) {
     el("td", { text: n.name || t("setup.new_node") }), el("td", { text: n.mac || n.driver?.driver || "" }), el("td", { text: n.state }),
     el("td", { text: n.rssi != null ? n.rssi + " dBm" : "-" }), el("td", { text: n.loss_pct != null ? n.loss_pct + "%" : "-" }),
     el("td", { text: n.last_data_age_ms != null ? n.last_data_age_ms + " ms" : "-" }),
-    el("td", {}, n.mac ? el("button", { onclick: () => nodeAction(n) }, t(n.name ? "setup.identify" : "setup.name_node")) : ""))));
+    el("td", {}, n.mac ? el("button", { onclick: () => nodeAction(n) }, t(n.name ? "setup.identify" : "setup.name_node")) : "",
+      n.mac && n.name && n.state === "offline" && spares.length ? el("button", { onclick: () => replaceNode(n, spares) }, t("setup.replace")) : ""))));
+  const setup = s.node_setup || {};
+  $("#node-setup").textContent = setup.at ? t("setup.node_setup", { fw: setup.fw || "?", n: Object.keys(setup.fallbacks || {}).length }) : "";
 }
 
 // ---------------------------------------------------------------- access (PIN, phones)
@@ -116,6 +131,12 @@ export function init() {
     await fetch("/api/logout", { method: "POST" });
     location.replace("/login");
   };
+  $("#radio-move").onclick = async () => {
+    const ch = +$("#radio-channel").value;
+    if (!ch || !confirm(t("setup.radio_confirm", { ch }))) return;
+    attempt(() => api("POST", "/api/nodes/channel", { channel: ch }), t("setup.radio_moved", { ch }));
+  };
+  $("#node-resend").onclick = () => attempt(() => api("POST", "/api/nodes/setup", {}), (r) => t("setup.node_setup", { fw: r.fw || "?", n: Object.keys(r.fallbacks || {}).length }));
   onState(render);
   onShow("setup", () => { loadAddresses(); loadThemes(); loadAccess(); });
 }

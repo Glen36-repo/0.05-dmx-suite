@@ -680,11 +680,17 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
         def _nodes(self, action: str, b: dict) -> dict:
             from ..node.protocol import AckCode, parse_mac
 
+            if action == "assign":  # waits for the node's heartbeat to confirm it
+                return app.assign_node(str(b["mac"]), int(b.get("universe", 0)), str(b["name"]))
+            if action == "replace":
+                return app.replace_node(str(b["old"]), str(b["new"]))
+            if action == "channel":
+                return app.set_radio_channel(int(b["channel"]))
+            if action == "setup":  # push the fallback looks and channel again
+                app.require_unlocked("node set-up")
+                return {"ok": True, **app.setup_node(app.node_driver())}
             link = app.node_link()
-            if action == "assign":
-                app.require_unlocked("assigning nodes")
-                code = link.assign(parse_mac(b["mac"]), int(b.get("universe", 0)), b["name"])
-            elif action == "identify":
+            if action == "identify":
                 code = link.identify(parse_mac(b["mac"]), int(b.get("seconds", 5)))
             else:
                 raise ApiError(404, "unknown node action")

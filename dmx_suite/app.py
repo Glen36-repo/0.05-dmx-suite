@@ -60,10 +60,14 @@ class App:
         self._fps = (time.monotonic(), 0, 0.0)  # (window start, frames at start, last rate)
         self._lock = threading.RLock()
         self.started = time.time()
+        self.node_setup: dict[str, Any] = {}  # last node set-up: when, firmware, what was pushed, problems
         for d in drivers:
             if isinstance(d, NodeSerialDriver):
                 d.link.health.expect(files.rig.nodes)
                 d.link.health.listeners.append(self._health_event)
+                d.on_connect = self.setup_node
+                if d.link.node_fw is not None:  # it announced itself before the app was built
+                    d._connected()
         self._load_lock_state(state_path)
         self._loaded_sig = self._rig_sig()
 
@@ -137,6 +141,123 @@ class App:
                 out.append({"mac": None, "name": d.name, "state": "connected", "driver": d.status()})
         return out
 
+    # ------------------------------------------------------------------ 0.05 node set-up (R8)
+
+    MIN_NODE_FW = (0, 2, 0)
+
+    def fallback_frames(self) -> dict[int, bytes]:
+        """What each universe shows if the laptop goes away: the static look, MASTER on, full
+        masters, no haze, run through the rules like any frame."""
+        from .faders import Masters
+        from .rules import ControlState, RuleLayer
+
+        rig = self.engine.rig
+        frames = RuleLayer(rig).render(self.files.look, ControlState(True, False, {}, 0.0), Masters(1.0, {}, 1.0, 0.0))
+        return {u: bytes(f) for u, f in frames.items()}
+
+    def setup_node(self, driver: Any) -> dict[str, Any]:
+        """A node connected or restarted: store the fallback looks, move it to the rig's radio
+        channel, and note anything to fix (old firmware, development pairing key)."""
+        from .node import protocol as p
+
+        link = driver.link
+        out: dict[str, Any] = {"at": time.time(), "fw": ".".join(map(str, link.node_fw or ())), "fallbacks": {},
+                               "problems": []}
+        if link.node_fw is not None and tuple(link.node_fw) < self.MIN_NODE_FW:
+            out["problems"].append(f"node firmware {out['fw']} is older than this app expects "
+                                   f"({'.'.join(map(str, self.MIN_NODE_FW))}): update it (firmware/README.md)")
+        own = next((r.heartbeat.universe for r in link.health.records()
+                    if r.heartbeat and r.heartbeat.node_type == p.NodeType.DMX_TX), 0) or 0
+        frames = self.fallback_frames()
+        universes = sorted(frames, key=lambda u: (u != own, u))[:p.MAX_FALLBACKS if link.v11 else 1]
+        for u in universes:
+            if not link.v11 and u != own:
+                continue
+            look = p.FallbackLook(hold_ms=2000, period_s=0, level=0, rgb_addr=[], base=frames[u])
+            code = link.set_fallback(look, universe=u if link.v11 else None, timeout=2.0)
+            out["fallbacks"][u] = code.name.lower() if code is not None else "no answer"
+        skipped = [u for u in frames if u not in universes]
+        if skipped:
+            out["problems"].append(f"universes {skipped} have no fallback look (the node keeps {p.MAX_FALLBACKS})")
+        ch = self.engine.rig.radio_channel
+        if ch is not None and link.v11:
+            code = link.set_channel(ch, timeout=2.0)
+            out["channel"] = ch if code == p.AckCode.OK else f"not set ({code.name.lower() if code else 'no answer'})"
+        self.node_setup = out
+        return out
+
+    def node_problems(self) -> list[str]:
+        out = list(self.node_setup.get("problems", []))
+        for d in self.engine.drivers:
+            if isinstance(d, NodeSerialDriver):
+                st = d.link.stats.last_status
+                if st is not None and st.dev_key:
+                    out.append("node built with the development pairing key: set PAIRING_KEY for the gig")
+                if st is not None and st.dmx_failed:
+                    out.append("node's DMX output didn't start: check the Unit DMX wiring")
+        return out
+
+    def assign_node(self, mac: str, universe: int, name: str) -> dict[str, Any]:
+        from .node.protocol import AckCode, parse_mac
+
+        self.require_unlocked("naming nodes")
+        code, confirmed = self.node_link().assign_confirmed(parse_mac(mac), universe, name)
+        if code != AckCode.OK:
+            raise ValueError(f"node answered {code.name if code is not None else 'nothing'}")
+        return {"ok": True, "confirmed": confirmed}
+
+    def replace_node(self, old_mac: str, new_mac: str) -> dict[str, Any]:
+        """A node or receiver died and a spare is in: give the spare the dead one's name and
+        universe, and put its MAC in the rig in place of the old one."""
+        self.require_unlocked("replacing a node")
+        link = self.node_link()
+        recs = {r.mac: r for r in link.health.records()}
+        old, new = recs.get(old_mac.upper()), recs.get(new_mac.upper())
+        if old is None:
+            raise ValueError(f"no node {old_mac}")
+        if new is None or new.heartbeat is None:
+            raise ValueError(f"{new_mac} isn't heard: switch the spare on first")
+        if old.heartbeat and new.heartbeat.node_type != old.heartbeat.node_type:
+            raise ValueError("the spare is a different kind of board")
+        name = old.name
+        if not name:
+            raise ValueError("the old node has no name to pass on")
+        universe = old.heartbeat.universe if old.heartbeat and old.heartbeat.universe is not None else 0
+        result = self.assign_node(new_mac, universe, name)
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        nodes = [n for n in data.get("nodes") or [] if str(n.get("mac", "")).upper() != old_mac.upper()]
+        nodes.append({"mac": new_mac.upper(), "name": name})
+        data["nodes"] = nodes
+        self.store.put("rig", rig_name, data, f"replace node {name}: {old_mac} -> {new_mac}")
+        with link.health._lock:
+            link.health.nodes.pop(old_mac.upper(), None)
+        self.reload()
+        return {**result, "name": name, "universe": universe}
+
+    def set_radio_channel(self, channel: int) -> dict[str, Any]:
+        from .node.protocol import AckCode
+
+        self.require_unlocked("changing the radio channel")
+        link = self.node_link()
+        if not link.v11:
+            raise ValueError("the node's firmware can't change channel: update it to 0.2")
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        data["radio_channel"] = int(channel)
+        self.store.put("rig", rig_name, data, f"radio channel {channel}")  # checked (1-13) like any edit
+        self.reload()
+        code = link.set_channel(int(channel), timeout=2.0)
+        if code != AckCode.OK:
+            raise ValueError(f"node answered {code.name if code is not None else 'nothing'}")
+        return {"ok": True, "channel": int(channel)}
+
+    def node_driver(self) -> Any:
+        for d in self.engine.drivers:
+            if isinstance(d, NodeSerialDriver):
+                return d
+        raise ValueError("no 0.05 node output in this rig")
+
     def node_link(self) -> Any:
         for d in self.engine.drivers:
             if isinstance(d, NodeSerialDriver):
@@ -186,6 +307,8 @@ class App:
                                   f"{self.show_problem['problem']}"})
         for d in self.engine.drivers:
             out.append(d.state())
+        for msg in self.node_problems():
+            out.append({"kind": "node", "name": "0.05 node", "state": "warn", "detail": msg})
         if self.midi_inputs is not None:
             for m in self.midi_inputs.status():
                 out.append({"kind": "midi", "name": f"MIDI {m['name']}", "state": "ok" if m["connected"] else "bad",
@@ -521,6 +644,7 @@ class App:
                                                    for (u, c), v in e.channel_test.items()]},
             "fixtures": self.fixture_view(),
             "nodes": self.nodes(),
+            "node_setup": self.node_setup,
             "alerts": self.alerts[-5:],
             "learning": self.router.learning,
             "rig": e.rig.name,

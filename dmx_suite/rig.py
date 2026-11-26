@@ -89,6 +89,7 @@ class Rig:
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
     osc: OscConfig = field(default_factory=OscConfig)
     change_fade_s: float = 0.0  # crossfade when picking a scene, show or look (0 = cut, as v1)
+    radio_channel: int | None = None  # 0.05 node radio channel (1-13); None = leave it as it is
     tempo: TempoConfig = field(default_factory=TempoConfig)
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
@@ -202,8 +203,17 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         exempt=resolve_exempt(profile, patch, present),
         osc=_osc(data.get("osc")),
         change_fade_s=_secs(data.get("change_fade_s", 0), "change_fade_s"),
+        radio_channel=_channel(data.get("radio_channel")),
         tempo=_tempo(data.get("tempo")),
     )
+
+
+def _channel(v: Any) -> int | None:
+    if v is None:
+        return None
+    if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 13:
+        raise ConfigError("radio_channel must be 1-13 (the Wi-Fi channel the node and receivers use)")
+    return v
 
 
 def _tempo(d: Any) -> TempoConfig:

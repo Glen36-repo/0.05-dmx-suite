@@ -296,6 +296,13 @@
         <th data-i18n="setup.col_name"></th><th>MAC</th><th data-i18n="setup.col_state"></th><th data-i18n="setup.col_signal"></th>
         <th data-i18n="setup.col_loss"></th><th data-i18n="setup.col_last_data"></th><th></th>
       </tr></thead><tbody id="nodes"></tbody></table>
+      <div class="row wrap">
+        <span class="muted" id="node-setup"></span>
+        <button id="node-resend" data-i18n="setup.node_resend" data-i18n-title="setup.node_resend_tip"></button>
+        <label class="field-inline"><span data-i18n="setup.radio_channel"></span>
+          <input type="number" id="radio-channel" min="1" max="13" class="num"></label>
+        <button id="radio-move" data-i18n="setup.radio_move"></button>
+      </div>
       <h2 data-i18n="setup.addresses"></h2>
       <table class="addr"><thead><tr>
         <th data-i18n="setup.col_fixture"></th><th data-i18n="setup.col_type"></th><th data-i18n="setup.col_uni"></th>

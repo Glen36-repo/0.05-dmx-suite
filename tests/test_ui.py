@@ -467,6 +467,7 @@ def test_show_file_section_upload_and_download(ui, tmp_path):
 
 def test_lost_connection_overlay(ui):
     page, *_ = ui
+    page.wait_for_function("document.querySelector('#health .tile')")  # connected first
     assert not page.is_visible("#offline")
     page.evaluate("document.body.classList.add('offline')")  # what the page does when the stream drops
     assert page.is_visible("#offline") and "Lost the connection" in page.inner_text("#offline")
