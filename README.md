@@ -99,11 +99,13 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 
 `dmx-suite run` also starts the browser UI at http://localhost:8505/ (`--port` to change, `--no-web` to turn off).
 
-- **Live:** MASTER, blackout, rig preview, show/set/scene buttons, next step, tap tempo, setlist, grand master and sub-master faders, haze.
+- **Live:** MASTER, blackout, stage plan (top-down view of the rig with live colours and moving-head beam lines), show/set/scene buttons, next step, tap tempo, setlist, grand master and sub-master faders, haze.
 - **Heads:** drag on a pad to hold a head at a spot (head limits still apply); save held positions as a palette position.
 - **MIDI:** live monitor (what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
-- **Setup:** find fixture, channel tester, drum flash test, node health (name/identify nodes), address check.
+- **Setup:** stage plan arrange (drag lights into place, rotate, set the stage size, save), find fixture, channel tester, drum flash test, node health (name/identify nodes), address check.
 - **Files:** preview or play scenes, and restore any file from the backups.
+
+**Stage plan:** each rig file has `stage: {width, depth}` (metres) and `layout:` with `{x, y, rot}` per fixture: x from stage left as the audience sees it, y from the front edge, rot 0 = facing the audience. Lights not placed yet get a default spot. Arrange it on the Setup tab rather than by hand; saving rewrites the rig file (previous copy in the backups). Fixture types can set `pan_range` / `tilt_range` (degrees, default 540 / 270) so the beam lines match the heads.
 
 **Status bar** (always across the top; full table on the Setup tab):
 

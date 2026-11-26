@@ -22,6 +22,35 @@ let midiSeq = 0;
 let lastAlert = 0;
 let midiChannel = "";
 let lastBadDevices = null;
+let livePlan = null, arrangePlan = null, layoutDirty = false;
+
+function onArrange(what, id) {
+  if (what === "move") layoutDirty = true;
+  const sel = id && arrangePlan.layout[id];
+  $("#arrange-sel").textContent = sel
+    ? `${id}: ${sel.x.toFixed(2)} m from stage left, ${sel.y.toFixed(2)} m from the front, facing ${Math.round(sel.rot || 0)}°`
+    : "Tap a light to select it";
+  $("#layout-save").classList.toggle("sel", layoutDirty);
+}
+$("#rot-l").onclick = () => arrangePlan.rotate(-15);
+$("#rot-r").onclick = () => arrangePlan.rotate(15);
+const resize = () => {
+  const w = +$("#stage-w").value, d = +$("#stage-d").value;
+  if (w >= 1 && d >= 1) { arrangePlan.build(cat, arrangePlan.layout, { width: w, depth: d }); layoutDirty = true; onArrange("move", arrangePlan.selected); }
+};
+$("#stage-w").onchange = resize;
+$("#stage-d").onchange = resize;
+$("#layout-reset").onclick = () => { arrangePlan.build(cat); $("#stage-w").value = cat.stage.width; $("#stage-d").value = cat.stage.depth; layoutDirty = false; onArrange("select", null); };
+$("#layout-save").onclick = async () => {
+  try {
+    await api("PUT", "/api/layout", { stage: { width: arrangePlan.width, depth: arrangePlan.depth }, layout: arrangePlan.layout });
+    cat = await get("/api/catalogue");
+    buildCatalogue();
+    toast("Stage plan saved");
+  } catch (e) {
+    toast(e.message, true);
+  }
+};
 
 // ------------------------------------------------------------------ api
 
@@ -123,21 +152,14 @@ function buildCatalogue() {
   fader("Drum flash", "flash_level", (v) => cmd("flash_level", { level: v }));
   for (const k of ["head", "bar", "wash", "kick"]) fader(k[0].toUpperCase() + k.slice(1) + "s", "sub:" + k, (v) => cmd("sub", { kind: k, level: v }));
 
-  // stage lanes
-  const stage = $("#stage");
-  stage.replaceChildren();
-  const lanes = { head: el("div", { class: "lane" }), bar: el("div", { class: "lane" }), wash: el("div", { class: "lane" }), kick: el("div", { class: "lane" }) };
-  for (const fx of cat.fixtures) {
-    let vis;
-    if (fx.kind === "head") vis = el("div", { class: "head" }, el("div", { class: "beam" }));
-    else if (fx.kind === "bar") vis = el("div", { class: "bar" });
-    else if (fx.kind === "wash") vis = el("div", { class: "wash" });
-    else if (fx.kind === "kick") vis = el("div", { class: "kick" });
-    else vis = el("div", { class: "hazefx", text: "HAZE" });
-    const lane = lanes[fx.kind] || lanes.kick;
-    lane.append(el("div", { class: "fx", "data-fx": fx.id, title: fx.type }, vis, el("span", { text: fx.id })));
-  }
-  stage.append(lanes.head, lanes.bar, lanes.wash, lanes.kick);
+  // stage plan (live) and arrange view (setup)
+  livePlan = livePlan || new StagePlan($("#stage"), false);
+  livePlan.build(cat);
+  arrangePlan = arrangePlan || new StagePlan($("#arrange"), true, onArrange);
+  arrangePlan.build(cat);
+  $("#stage-w").value = cat.stage.width;
+  $("#stage-d").value = cat.stage.depth;
+  layoutDirty = false;
 
   // find buttons + head pads
   $("#find").replaceChildren(
@@ -239,21 +261,10 @@ function render() {
   $("#haze").textContent = bits.join(" · ");
   $$("[data-haze]").forEach((b) => b.classList.toggle("sel", h.mode === b.dataset.haze));
 
-  // stage
+  // stage plan + head pads
+  livePlan.update(s.fixtures);
+  arrangePlan.update(s.fixtures);
   for (const f of s.fixtures) {
-    const node = $(`[data-fx="${CSS.escape(f.id)}"]`);
-    if (!node) continue;
-    const vis = node.firstChild;
-    if (f.pixels) {
-      if (vis.childElementCount !== f.pixels.length) vis.replaceChildren(...f.pixels.map(() => el("i")));
-      f.pixels.forEach((c, i) => (vis.children[i].style.background = c));
-    } else if (f.haze !== undefined) {
-      vis.classList.toggle("on", f.haze > 0);
-    } else {
-      vis.style.background = f.colour;
-      vis.style.boxShadow = f.colour !== "#000000" ? `0 0 14px ${f.colour}` : "none";
-    }
-    if (f.pan !== undefined && vis.firstChild) vis.firstChild.style.transform = `rotate(${(f.pan - 0.5) * 540}deg) scaleY(${0.3 + f.tilt})`;
     const pad = $(`[data-pad="${CSS.escape(f.id)}"]`);
     if (pad && f.pan !== undefined) {
       const pt = $(".pt", pad);

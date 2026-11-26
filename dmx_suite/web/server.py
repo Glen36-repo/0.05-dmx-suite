@@ -343,6 +343,9 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             if path == "/api/giglock" and method == "POST":
                 app.set_gig_lock(bool(body.get("on")))
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
+            if path == "/api/layout" and method == "PUT":
+                bid = app.save_layout(body.get("stage"), body.get("layout") or {})
+                return self._json(200, {"ok": True, "backup": bid})
             if path == "/api/claude/haze" and method == "POST":
                 app.require_unlocked("changing haze")
                 return self._json(200, control(app, "haze", body))
