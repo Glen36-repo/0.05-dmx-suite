@@ -2,6 +2,18 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v2, release R3)
+
+### Added
+- Scene builder (Scenes page): pick lights on the layout, add layers, choose colours, positions, gobos and effects from forms, see it live on the rig, save.
+- 11 new effects: rainbow, sparkle, wave, strobe, circle, figure 8, and across the layout: linear wave, radial, gradient sweep, bars, noise.
+- Effects can run across the layout as one picture (`mapping: spatial`) and take direction, angle, groups and waveform settings.
+- Layers mix with the layers under them (`level`, `blend`); layers can be muted; scenes have a length.
+- Claude's guide lists every effect and its settings.
+
+### Changed
+- Effects are now a registry (`dmx_suite/effects/`); existing scenes look exactly the same.
+
 ## Unreleased (v2, release R2)
 
 ### Added

@@ -119,6 +119,7 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 
 - **Live:** the light layout with live colours, show/set/scene buttons, next step, tap tempo, setlist (tap a song to jump to it), grand master and sub-master faders, haze.
 - **Layout:** arrange the lights and make groups (below).
+- **Scenes:** build scenes on screen (below).
 - **Heads:** drag on a pad to hold a head at a spot (head limits still apply); save held positions as a palette position.
 - **MIDI:** live monitor (what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
 - **Setup:** find a light, channel tester, drum flash test, devices, node health (name/identify nodes), address check, theme, check for updates.
@@ -183,7 +184,20 @@ With `dmx-suite run` going, Claude's changes go through the engine: gig lock app
 
 All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers and drum pad map (`shows/midi/default.yaml`), and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.
 
-Scenes (`shows/scenes/*.yaml`) are layers applied in order to fixtures or groups: static colour/position/gobo, or an effect (`colour_chase`, `pixel_chase`, `flash`, `sweep`, `random_move`). Colours, positions and gobos come from `shows/palettes.yaml`. Like looks, scenes can't set dimmers or haze or move the U'King heads. See the top of `dmx_suite/scenes.py` for every option.
+Scenes (`shows/scenes/*.yaml`) are layers applied in order to lights or groups: a colour, position or gobo, an effect, or both. Colours, positions and gobos come from `shows/palettes.yaml`. Like looks, scenes can't set dimmers or haze or move the U'King heads. See the top of `dmx_suite/scenes.py` for every option.
+
+**Effects** (each a class in `dmx_suite/effects/`, so the scene builder, auto shows and Claude all see the same list):
+
+| Kind | Effects |
+| --- | --- |
+| v1 | `colour_chase`, `pixel_chase`, `flash`, `sweep`, `random_move` |
+| Colour | `rainbow`, `sparkle`, `wave`, `strobe` (done with colour, so MASTER still owns on/off) |
+| Movement (inside head limits) | `circle`, `figure8` |
+| Matrix (across the layout) | `linear_wave` (any angle), `radial` (out or in), `gradient`, `bars`, `noise` |
+
+Every effect that runs across several lights takes `mapping`: `order` (as listed) or `spatial` (by where each light, and each pixel, is on the layout, so a wave crosses the whole rig as one picture). It also takes `direction` (forward, reverse, centre out, out to centre, random, or an `angle`), `groups_of` (move in blocks), and on the wave effects `waveform` (sine, square, saw, triangle, pulse) and `width`. A layer's `level` (0-1) and `blend` (replace, max, add) mix it with the layers under it; `mute: true` skips it. A scene's `length_s` is one cycle (default: its longest effect period).
+
+**Scene builder** (Scenes page): pick lights on the layout and add a layer. Then choose a colour, position or gobo and/or an effect; its settings form comes from the effect itself. For a spatial effect, an arrow on the layout shows which way it runs. Tick **Live preview** to play the unsaved scene on the rig. A layer that breaks a rule is marked in red with the reason. Save, duplicate or delete scene files.
 
 Shows (`shows/shows/*.yaml`) have sets on fixed step timers. A set is either a list of scenes (in order, or random without repeats) or an `auto` style that generates a fresh scene every step from the palette colours, energy (low/mid/high), head colour mix (matching/white/contrast), patterns (all, heads only, bars only, static on the kit) and movement (random/sweep/static), using only the fixtures in the active rig. `band` has LOW / MID / HIGH (60 / 40 / 20 s) plus a `cues` set; `opera` and `acoustic` are single-set shows. Setlists (`shows/setlists/`) list songs, each with a show/set or a scene, optionally forcing MASTER. A scene layer can name a `fallback` group to use when its fixtures aren't in the rig.
 
