@@ -23,12 +23,14 @@ OutputBaseFilename=0.05-DMX-Suite-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayIcon={app}\dmx-suite.exe
+UninstallDisplayIcon={app}\0.05 DMX Suite.exe
+SetupIconFile=icon.ico
+CloseApplications=yes
 ; the show folder is never removed by uninstall or upgrade
 
 [Tasks]
 Name: "claude"; Description: "Add the 0.05 tools to Claude Desktop"; GroupDescription: "Claude:"
-Name: "desktopicon"; Description: "Desktop shortcut (live)"; GroupDescription: "Shortcuts:"
+Name: "desktopicon"; Description: "Desktop shortcut"; GroupDescription: "Shortcuts:"
 Name: "startup"; Description: "Start live at login (resumes the show after a reboot)"; GroupDescription: "Gig laptop:"; Flags: unchecked
 
 [Files]
@@ -39,21 +41,21 @@ Source: "..\dist\dmx-suite\*"; DestDir: "{app}"; Flags: ignoreversion recursesub
 Root: HKCU; Subkey: "Environment"; ValueType: string; ValueName: "DMX_SUITE_SHOWS"; ValueData: "{code:ShowsDir}"; Flags: uninsdeletevalue
 
 [Icons]
-Name: "{group}\0.05 DMX Suite (live)"; Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" run --rig full"; WorkingDir: "{app}"
-Name: "{group}\0.05 DMX Suite (simulator)"; Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" run --sim"; WorkingDir: "{app}"
-Name: "{group}\MIDI monitor"; Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" midi-monitor"; WorkingDir: "{app}"
-Name: "{group}\Check show files"; Filename: "{cmd}"; Parameters: "/k """"{app}\dmx-suite.exe"" --shows ""{code:ShowsDir}"" check"""; WorkingDir: "{app}"
-Name: "{group}\Open lighting UI"; Filename: "http://localhost:8505/"
+Name: "{group}\0.05 DMX Suite"; Filename: "{app}\0.05 DMX Suite.exe"; Parameters: "--shows ""{code:ShowsDir}"""; WorkingDir: "{app}"
+Name: "{group}\0.05 DMX Suite (simulator)"; Filename: "{app}\0.05 DMX Suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" --sim"; WorkingDir: "{app}"
+Name: "{group}\Tools\MIDI monitor"; Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" midi-monitor"; WorkingDir: "{app}"
+Name: "{group}\Tools\Check show files"; Filename: "{cmd}"; Parameters: "/k """"{app}\dmx-suite.exe"" --shows ""{code:ShowsDir}"" check"""; WorkingDir: "{app}"
+Name: "{group}\Tools\Simulator console"; Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" run --sim"; WorkingDir: "{app}"
 Name: "{group}\Show files folder"; Filename: "{code:ShowsDir}"
 Name: "{group}\Uninstall 0.05 DMX Suite"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\0.05 DMX Suite"; Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" run --rig full"; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{userstartup}\0.05 DMX Suite"; Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" run --rig full"; WorkingDir: "{app}"; Tasks: startup
+Name: "{autodesktop}\0.05 DMX Suite"; Filename: "{app}\0.05 DMX Suite.exe"; Parameters: "--shows ""{code:ShowsDir}"""; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userstartup}\0.05 DMX Suite"; Filename: "{app}\0.05 DMX Suite.exe"; Parameters: "--shows ""{code:ShowsDir}"""; WorkingDir: "{app}"; Tasks: startup
 
 [Run]
 ; creates the show folder from the starter shows (left alone if it already exists)
 Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" check"; Flags: runhidden; StatusMsg: "Setting up show files..."
 Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" claude-setup"; Flags: runhidden; StatusMsg: "Adding the 0.05 tools to Claude Desktop..."; Tasks: claude
-Filename: "{app}\dmx-suite.exe"; Parameters: "--shows ""{code:ShowsDir}"" run --sim"; Description: "Open the simulator now"; Flags: postinstall nowait skipifsilent unchecked
+Filename: "{app}\0.05 DMX Suite.exe"; Parameters: "--shows ""{code:ShowsDir}"""; Description: "Open 0.05 DMX Suite now"; Flags: postinstall nowait skipifsilent
 
 [Code]
 var

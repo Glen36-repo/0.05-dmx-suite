@@ -2,16 +2,17 @@
 # Needs Python 3.12+ and Inno Setup 6 (winget install JRSoftware.InnoSetup).
 # Run from the repo root:  powershell -ExecutionPolicy Bypass -File installer\build.ps1
 $ErrorActionPreference = "Stop"
+function Check($what) { if ($LASTEXITCODE -ne 0) { throw "$what failed (exit $LASTEXITCODE)" } }
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
 $version = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
 Write-Host "Building 0.05 DMX Suite $version"
 
-python -m venv .build-venv
-& .build-venv\Scripts\python.exe -m pip install --upgrade pip
-& .build-venv\Scripts\python.exe -m pip install ".[hw,claude,dev]" "pyinstaller>=6.10"
-& .build-venv\Scripts\python.exe -m pytest -q
-& .build-venv\Scripts\pyinstaller.exe installer\dmx-suite.spec --noconfirm --distpath dist --workpath build
+python -m venv .build-venv; Check "venv"
+& .build-venv\Scripts\python.exe -m pip install --upgrade pip; Check "pip upgrade"
+& .build-venv\Scripts\python.exe -m pip install ".[hw,claude,desktop,dev]" "pyinstaller>=6.10"; Check "pip install"
+& .build-venv\Scripts\python.exe -m pytest -q; Check "tests"
+& .build-venv\Scripts\pyinstaller.exe installer\dmx-suite.spec --noconfirm --distpath dist --workpath build; Check "PyInstaller"
 
 # smoke test the packaged app against a throwaway show folder
 $env:DMX_SUITE_SHOWS = Join-Path $env:TEMP "dmx-suite-smoke\shows"
@@ -21,7 +22,14 @@ Copy-Item -Recurse shows $env:DMX_SUITE_SHOWS
 if ($LASTEXITCODE -ne 0) { throw "packaged app failed its show file check" }
 Remove-Item Env:DMX_SUITE_SHOWS
 
+# smoke test the desktop app: opens the window on the simulator, checks the page loaded, quits
+$smokeShows = Join-Path $env:TEMP "dmx-suite-smoke\shows"
+$p = Start-Process -FilePath "dist\dmx-suite\0.05 DMX Suite.exe" -PassThru -Wait `
+    -ArgumentList "--shows", "`"$smokeShows`"", "app", "--sim", "--fresh", "--port", "8599", "--smoke-test", "10"
+Get-Content (Join-Path $env:TEMP "dmx-suite-smoke\logs\desktop.log") -ErrorAction SilentlyContinue
+if ($p.ExitCode -ne 0) { throw "desktop app smoke test failed (exit $($p.ExitCode))" }
+
 $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
 if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-& $iscc "/DAppVersion=$version" installer\dmx-suite.iss
+& $iscc "/DAppVersion=$version" installer\dmx-suite.iss; Check "Inno Setup"
 Write-Host "Installer: dist\0.05-DMX-Suite-Setup-$version.exe"

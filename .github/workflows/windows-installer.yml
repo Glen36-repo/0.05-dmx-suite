@@ -7,8 +7,8 @@ on:
     tags: ["v*"]  # path filters are not applied to tag pushes
     paths:
       - "installer/**"
-      - "dmx_suite/paths.py"
-      - "dmx_suite/claude_setup.py"
+      - "dmx_suite/**"
+      - "pyproject.toml"
       - ".github/workflows/windows-installer.yml"
 
 jobs:
