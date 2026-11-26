@@ -43,7 +43,7 @@ EFFECTS = {
 }
 MOVEMENT = {"sweep", "random_move"}
 STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe"}
-COMMON = {"fixtures", "effect", "name"}
+COMMON = {"fixtures", "effect", "name", "fallback"}
 
 
 # --------------------------------------------------------------------------- model
@@ -55,6 +55,7 @@ class Layer:
     effect: str | None
     params: dict[str, Any]
     name: str = ""
+    fallback: list[str] = field(default_factory=list)  # used when none of `fixtures` is in the rig
 
 
 @dataclass
@@ -93,6 +94,8 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
         raise LookError(f"{what}: needs fixtures")
     names = d["fixtures"] if isinstance(d["fixtures"], list) else [d["fixtures"]]
     fids = patch.resolve(names)
+    fb = patch.resolve(d["fallback"] if isinstance(d.get("fallback"), list) else [d["fallback"]]) if "fallback" in d else []
+    targets = fids + [f for f in fb if f not in fids]  # params cover both, checks apply to both
     eff = d.get("effect")
     allowed = COMMON | (EFFECTS[eff] if eff in EFFECTS else STATIC_KEYS)
     if eff is not None and eff not in EFFECTS:
@@ -103,10 +106,10 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
 
     moves = eff in MOVEMENT or "position" in d
     if moves:
-        stuck = [f for f in fids if patch.fixtures[f].type.colour_only]
+        stuck = [f for f in targets if patch.fixtures[f].type.colour_only]
         if stuck:
             raise LookError(f"{what}: {', '.join(stuck)} colour only, can't move (rule 7); use a group without them")
-        no_pt = [f for f in fids if not patch.fixtures[f].type.has("pan")]
+        no_pt = [f for f in targets if not patch.fixtures[f].type.has("pan")]
         if no_pt:
             raise LookError(f"{what}: {', '.join(no_pt)} have no pan/tilt")
 
@@ -117,9 +120,9 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     if "pixels" in d:
         p["pixels"] = [pal.colour(c, f"{what} pixel {i + 1}") for i, c in enumerate(d["pixels"])]
     if "position" in d and eff is None:
-        p["position"] = {f: pal.position(d["position"], f, what) for f in fids}
+        p["position"] = {f: pal.position(d["position"], f, what) for f in targets}
     if "gobo" in d:
-        p["gobo"] = {f: pal.gobo(d["gobo"], patch.fixtures[f].type.key, what) for f in fids}
+        p["gobo"] = {f: pal.gobo(d["gobo"], patch.fixtures[f].type.key, what) for f in targets}
     if "colour_wheel" in d:
         p["colour_wheel"] = int(_num(d["colour_wheel"], f"{what} colour_wheel", 0, 255))
     if "strobe" in d:
@@ -152,8 +155,8 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     elif eff == "sweep":
         if "from" not in d or "to" not in d:
             raise LookError(f"{what}: sweep needs from and to positions")
-        p["from"] = {f: pal.position(d["from"], f, what) for f in fids}
-        p["to"] = {f: pal.position(d["to"], f, what) for f in fids}
+        p["from"] = {f: pal.position(d["from"], f, what) for f in targets}
+        p["to"] = {f: pal.position(d["to"], f, what) for f in targets}
         p["period_s"] = _num(d.get("period_s", 8), f"{what} period_s", 0.2)
         p["spread"] = _num(d.get("spread", 0), f"{what} spread", 0, 1)
     elif eff == "random_move":
@@ -165,7 +168,7 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
             raise LookError(f"{what}: dark_move_s must be shorter than period_s")
         p["stagger"] = bool(d.get("stagger", True))  # independent timing per head
         p["seed"] = str(d.get("seed", what))
-    return Layer(fids, eff, p, d.get("name", ""))
+    return Layer(fids, eff, p, d.get("name", ""), fb)
 
 
 def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") -> Scene:
@@ -209,15 +212,23 @@ def _seed(*parts: Any) -> int:
 class ScenePlayer:
     """Callable(now) -> Look. Starts its clock when created."""
 
-    def __init__(self, scene: Scene, rig: Rig, start: float) -> None:
+    def __init__(
+        self, scene: Scene, rig: Rig, start: float, timebase: Callable[[float], float] | None = None
+    ) -> None:
         self.scene = scene
         self.rig = rig
-        self.start = start
+        self.timebase = timebase or (lambda now: now)  # tap tempo: effect time vs real time
+        self.start = self.timebase(start)
         present = set(rig.present)
-        self._layers = [(ly, [f for f in ly.fixtures if f in present]) for ly in scene.layers]
+        self._layers = []
+        for ly in scene.layers:
+            fids = [f for f in ly.fixtures if f in present]
+            if not fids:  # shows adapt: move the layer to what's there
+                fids = [f for f in ly.fallback if f in present]
+            self._layers.append((ly, fids))
 
     def __call__(self, now: float) -> Look:
-        t = now - self.start
+        t = self.timebase(now) - self.start
         look = Look(show_colour=self.scene.show_colour)
         dark: set[str] = set()
         for layer, fids in self._layers:

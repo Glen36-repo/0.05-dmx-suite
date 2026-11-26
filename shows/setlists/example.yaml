@@ -1,0 +1,11 @@
+# Example setlist: a pedal (next_song) steps through. Each song plays a show/set or a single scene.
+# master: on/off forces MASTER when the song starts (off = drum-flash song).
+name: Example setlist
+songs:
+  - {name: Intro, scene: blue_chase}
+  - {name: Opener, show: band, set: high}
+  - {name: Mid-tempo song, show: band, set: mid}
+  - {name: Ballad, show: band, set: low}
+  - {name: Drum feature, show: band, set: high, master: off}
+  - {name: Aria, show: opera}
+  - {name: Unplugged, show: acoustic, master: on}
