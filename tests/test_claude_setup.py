@@ -42,9 +42,13 @@ def test_updates_store_install_and_keeps_other_settings(monkeypatch, tmp_path):
 
 
 def test_frozen_app_points_at_its_exe(monkeypatch, tmp_path):
+    exe = tmp_path / "app" / "0.05 DMX Suite.exe"  # no console exe beside it
+    exe.parent.mkdir()
+    exe.write_text("")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
     entry = claude_setup.server_entry(tmp_path)
-    assert entry == {"command": sys.executable, "args": ["--shows", str(tmp_path), "mcp"]}
+    assert entry == {"command": str(exe), "args": ["--shows", str(tmp_path), "mcp"]}
 
 
 def test_bad_config_is_left_alone(tmp_path):
