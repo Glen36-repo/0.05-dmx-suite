@@ -1,6 +1,6 @@
 # Static look used until scenes arrive in phase 3. No dimmer and no haze here: MASTER and the
 # Haze controls own those (rules 1 and 5), and the loader rejects them.
-version: 3
+version: 4
 show_colour: "#2050ff"
 fixtures:
   heads: {colour: {blue: 1.0, white: 0.2}}

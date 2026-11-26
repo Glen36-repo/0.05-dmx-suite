@@ -5,7 +5,7 @@ accept (rule 1, see profile.py); under "0.05 band" MASTER owns on/off and scenes
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,10 @@ class FixtureLook:
     speed: float | None = None  # 0..1, 1 = fastest
     strobe: int | None = None
     intensity: float | None = None  # 0..1; only under profiles without MASTER on/off (rule 1)
+    zoom: float | None = None  # 0..1 (R7 beam controls)
+    focus: float | None = None
+    frost: float | None = None
+    prism: int | None = None  # DMX value
 
     def is_on(self) -> bool:
         if any(v > 0 for v in self.colour.values()):
@@ -94,21 +98,31 @@ def parse_fixture_look(d: dict, what: str) -> FixtureLook:
     for k in d:
         if k in FORBIDDEN:
             raise LookError(f"{what}: {FORBIDDEN[k]}")
-    allowed = {"colour", "pixels", "colour_wheel", "gobo", "pan", "tilt", "speed", "strobe", "intensity"}
+    allowed = {"colour", "pixels", "colour_wheel", "gobo", "pan", "tilt", "speed", "strobe", "intensity",
+               "zoom", "focus", "frost", "prism"}
     bad = set(d) - allowed
     if bad:
         raise LookError(f"{what}: unknown keys {sorted(bad)}")
     return FixtureLook(
         colour=parse_colour(d["colour"], what) if "colour" in d else {},
         pixels=[parse_colour(p, f"{what} pixel {i + 1}") for i, p in enumerate(d["pixels"])] if "pixels" in d else None,
-        colour_wheel=dmx_value(d["colour_wheel"], f"{what} colour_wheel") if "colour_wheel" in d else None,
-        gobo=dmx_value(d["gobo"], f"{what} gobo") if "gobo" in d else None,
+        colour_wheel=_slot(d["colour_wheel"], f"{what} colour_wheel") if "colour_wheel" in d else None,
+        gobo=_slot(d["gobo"], f"{what} gobo") if "gobo" in d else None,
         pan=_unit(d["pan"], f"{what} pan") if "pan" in d else None,
         tilt=_unit(d["tilt"], f"{what} tilt") if "tilt" in d else None,
         speed=_unit(d["speed"], f"{what} speed") if "speed" in d else None,
         strobe=dmx_value(d["strobe"], f"{what} strobe") if "strobe" in d else None,
         intensity=_unit(d["intensity"], f"{what} intensity") if "intensity" in d else None,
+        zoom=_unit(d["zoom"], f"{what} zoom") if "zoom" in d else None,
+        focus=_unit(d["focus"], f"{what} focus") if "focus" in d else None,
+        frost=_unit(d["frost"], f"{what} frost") if "frost" in d else None,
+        prism=dmx_value(d["prism"], f"{what} prism") if "prism" in d else None,
     )
+
+
+def _slot(v: Any, what: str) -> Any:
+    """A wheel or gobo slot: DMX value, or a name the fixture type gives (resolved per fixture)."""
+    return v if isinstance(v, str) and v else dmx_value(v, what)
 
 
 def parse_look(data: dict, patch: Patch) -> Look:
@@ -126,11 +140,23 @@ def parse_look(data: dict, patch: Patch) -> Look:
         if d is not None and not isinstance(d, dict):
             raise LookError(f"{key}: needs settings like {{colour: blue}}, not {d!r}")
         fl = parse_fixture_look(d or {}, key)
+        named = {r: getattr(fl, r) for r in ("colour_wheel", "gobo") if isinstance(getattr(fl, r), str)}
+        found = dict.fromkeys(named, False)
         for fid in patch.resolve([key]):
             fx = patch.fixtures[fid]
             if fx.type.colour_only and (fl.pan is not None or fl.tilt is not None):
                 raise LookError(f"{key}: {fx.type.name} is colour only, no pan/tilt (rule 7)")
-            look.fixtures[fid] = fl
+            mine = fl
+            if named:  # slot names become each fixture's own DMX value
+                mine = replace(fl)
+                for role, name in named.items():
+                    v = fx.type.wheel_value(name) if role == "colour_wheel" else fx.type.gobo_value(name)
+                    setattr(mine, role, v)
+                    found[role] = found[role] or v is not None
+            look.fixtures[fid] = mine
+        for role, ok in found.items():
+            if not ok:
+                raise LookError(f"{key}: no fixture there has a {role.replace('_', ' ')} slot named {named[role]!r}")
     return look
 
 

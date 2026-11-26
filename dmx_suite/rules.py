@@ -16,12 +16,16 @@ Profile rules, per the rig's profile:
 
 Fixture definition:
 7. Colour-only heads stay at home position; pan/tilt speed: 1.0 = fastest = DMX 0 when inverted.
+
+Colours are mixed for each fixture's emitters (colourmix.py) when its type says `colour_mix: auto`;
+16-bit `<role>_fine` channels and `invert` are handled for every role that has them.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .colourmix import brightness, mix, nearest_slot
 from .faders import Masters
 from .fixtures import DMX_CHANNELS, EMITTERS, Fixture, Kind
 from .look import Colour, FixtureLook, Look
@@ -48,6 +52,20 @@ def _byte(v: float) -> int:
     return max(0, min(255, round(v * 255)))
 
 
+def _write(fx: Fixture, frame: bytearray, role: str, v: float) -> None:
+    """A continuous value 0-1 on `role` (and its `_fine` channel for 16 bits), inverted if set."""
+    t = fx.type
+    if t.invert(role):
+        v = 1.0 - v
+    fine = t.has(f"{role}_fine")
+    v16 = max(0, min(65535, round(v * 65535)))
+    for ch in t.channels:
+        if ch.role == role:
+            frame[fx.slot(ch)] = (v16 >> 8) if fine else _byte(v)
+        elif fine and ch.role == f"{role}_fine":
+            frame[fx.slot(ch)] = v16 & 0xFF
+
+
 class RuleLayer:
     def __init__(self, rig: Rig) -> None:
         self.rig = rig
@@ -67,7 +85,7 @@ class RuleLayer:
     def _fixture(self, fx: Fixture, fl: FixtureLook | None, st: ControlState, masters: Masters, frame: bytearray) -> None:
         t = fx.type
         for ch in t.channels:  # defaults for non-light channels; emitters/dimmer stay 0 (rule 4)
-            if ch.role not in EMITTERS and ch.role not in ("dimmer", "haze"):
+            if ch.role not in EMITTERS and ch.role not in ("dimmer", "dimmer_fine", "haze"):
                 frame[fx.slot(ch)] = ch.default
 
         if t.kind == Kind.HAZE:  # rule 5: only the haze controller
@@ -80,7 +98,7 @@ class RuleLayer:
 
         # decide what (if anything) lights this fixture
         prof = self.rig.profile
-        scale = masters.level(t.kind)  # rule 6
+        scale = masters.level(fx.sub)  # rule 6
         colour: Colour | None = None
         pixels: list[Colour] | None = None
         use_look = False
@@ -105,17 +123,29 @@ class RuleLayer:
         if colour is None and pixels is None:
             return  # dark: emitters and dimmer stay 0 (rule 4)
 
+        auto = t.colour_mix == "auto"
+        wheel: int | None = None
+        if auto and not t.emitters and colour:  # dimmer-only or colour wheel: the colour's brightness
+            scale *= brightness(colour)
+            if t.has("colour_wheel") and not (use_look and fl is not None and fl.colour_wheel is not None):
+                slot_ = nearest_slot(colour, t)
+                wheel = slot_.value if slot_ else None
+        if auto:
+            colour = mix(colour, t) if colour else colour
+            pixels = [mix(p, t) for p in pixels] if pixels else pixels
         has_dimmer = t.has_dimmer
         emit_scale = 1.0 if has_dimmer else scale
+        if has_dimmer:
+            _write(fx, frame, "dimmer", scale)
         for ch in t.channels:
             slot = fx.slot(ch)
-            if ch.role == "dimmer":
-                frame[slot] = _byte(scale)
-            elif ch.role in EMITTERS:
+            if ch.role in EMITTERS:
                 src = colour or {}
                 if ch.pixel is not None and pixels:
                     src = pixels[ch.pixel] if ch.pixel < len(pixels) else {}
                 frame[slot] = _byte(src.get(ch.role, 0.0) * emit_scale)
+            elif ch.role == "colour_wheel" and wheel is not None:
+                frame[slot] = wheel
             elif use_look and fl is not None:
                 if ch.role == "colour_wheel" and fl.colour_wheel is not None:
                     frame[slot] = fl.colour_wheel
@@ -123,6 +153,13 @@ class RuleLayer:
                     frame[slot] = fl.gobo
                 elif ch.role == "strobe" and fl.strobe is not None:
                     frame[slot] = fl.strobe
+                elif ch.role == "prism" and fl.prism is not None:
+                    frame[slot] = fl.prism
+        if use_look and fl is not None:  # beam: zoom, focus, frost (0-1)
+            for role in ("zoom", "focus", "frost"):
+                v = getattr(fl, role)
+                if v is not None and t.has(role):
+                    _write(fx, frame, role, v)
 
     def _position(self, fx: Fixture, fl: FixtureLook | None, frame: bytearray) -> None:
         t = fx.type
@@ -139,14 +176,6 @@ class RuleLayer:
             pan, tilt = lim.clamp("pan", pan), lim.clamp("tilt", tilt)
             self.position[fx.id] = (pan, tilt)
         speed = fl.speed if (fl is not None and fl.speed is not None and not t.colour_only) else 1.0
-        fine = {"pan": t.has("pan_fine"), "tilt": t.has("tilt_fine")}
-        for ch in t.channels:
-            slot = fx.slot(ch)
-            if ch.role in ("pan", "tilt"):
-                v = pan if ch.role == "pan" else tilt
-                frame[slot] = (round(v * 65535) >> 8) if fine[ch.role] else _byte(v)
-            elif ch.role in ("pan_fine", "tilt_fine"):
-                v = pan if ch.role == "pan_fine" else tilt
-                frame[slot] = round(v * 65535) & 0xFF
-            elif ch.role == "pt_speed":  # rule 7: MHL36 0 = fastest (invert: true)
-                frame[slot] = _byte(1.0 - speed) if ch.invert else _byte(speed)
+        _write(fx, frame, "pan", pan)
+        _write(fx, frame, "tilt", tilt)
+        _write(fx, frame, "pt_speed", speed)  # rule 7: MHL36 0 = fastest (invert: true)

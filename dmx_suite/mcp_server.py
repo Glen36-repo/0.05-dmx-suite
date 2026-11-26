@@ -107,9 +107,12 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     @tool
     def save_fixture_type(key: str, yaml_text: str) -> str:
         """Add or change a fixture type (channel map), e.g. from a fixture manual. Channel roles: dimmer, red,
-        green, blue, white, amber, uv, pan, pan_fine, tilt, tilt_fine, pt_speed (invert: true if 0 = fastest),
-        colour_wheel, gobo, strobe (default = shutter open value), haze, fixed (default value). Set
-        verified: false until it's checked on the real fixture. Patch changes need an engine restart."""
+        green, blue, white, amber, uv, pan, tilt, pt_speed (invert: true if 0 = fastest), colour_wheel, gobo,
+        strobe (default = shutter open value), zoom, focus, frost, prism, haze, fixed (default value); add
+        `<role>_fine` after dimmer/pan/tilt/zoom/focus for 16-bit; `invert: true` on pan/tilt/zoom/focus/frost.
+        Optional: colour_mix: auto (mix colours for the fixture's emitters; the default for new types),
+        wheel: {name: {value, colour: "#rrggbb"}}, gobos: {name: value}, sub: head|bar|wash|kick.
+        Set verified: false until it's checked on the real fixture."""
         return t.save_entry("fixtures", "types", key, yaml_text)
 
     @tool

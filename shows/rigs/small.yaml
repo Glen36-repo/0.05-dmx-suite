@@ -1,5 +1,5 @@
 # Small rig: bars and kick light only. Shows skip the missing fixtures automatically.
-version: 3
+version: 4
 name: Small rig
 fixtures: [bars, kick, smoke]
 

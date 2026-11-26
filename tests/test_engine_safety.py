@@ -174,10 +174,16 @@ def test_status_bar_shows_the_fault():
 
 
 @pytest.mark.parametrize("key, value", [("gobo", 300), ("gobo", -1), ("colour_wheel", 1.5), ("strobe", True),
-                                        ("gobo", "dots"), ("colour_wheel", None)])
+                                        ("colour_wheel", None), ("prism", 256)])
 def test_raw_dmx_values_checked_in_looks(key, value):
     with pytest.raises(LookError, match="DMX value"):
         parse_look({"fixtures": {"mh_a": {"colour": [1, 0, 0], key: value}}}, parse_patch(PATCH))
+
+
+def test_slot_names_must_exist_on_the_fixture():
+    # a name is a slot of the fixture's type (R7); this test rig's head has none
+    with pytest.raises(LookError, match="no fixture there has a gobo slot named 'dots'"):
+        parse_look({"fixtures": {"mh_a": {"colour": [1, 0, 0], "gobo": "dots"}}}, parse_patch(PATCH))
 
 
 def test_good_raw_dmx_values_load():

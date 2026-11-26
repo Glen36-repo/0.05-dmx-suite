@@ -44,7 +44,7 @@ from .versions import read_doc
 # effect name -> its setting keys, and the effects that move heads (for older callers)
 EFFECTS = {name: e.keys() for name, e in effects.REGISTRY.items()}
 MOVEMENT = {name for name, e in effects.REGISTRY.items() if e.movement}
-STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe"}
+STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe", "zoom", "focus", "frost", "prism"}
 COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats"}
 
 
@@ -100,6 +100,27 @@ def _num(v: Any, what: str, lo: float, hi: float | None = None) -> float:
     return _num_any(v, what, lo, hi)
 
 
+def _gobos(v: Any, patch: Patch, pal: Palettes, targets: list[str], what: str) -> dict[str, int | None]:
+    """Per fixture: a palette gobo, else the fixture type's own named gobo slot, else a DMX value."""
+    if isinstance(v, str) and v not in pal.gobos:
+        out = {f: patch.fixtures[f].type.gobo_value(v) for f in targets}
+        if not any(x is not None for x in out.values()):
+            raise LookError(f"{what}: unknown gobo {v!r} (not in the palette or any of these fixtures' gobos)")
+        return out
+    return {f: pal.gobo(v, patch.fixtures[f].type.key, what) for f in targets}
+
+
+def _wheel(v: Any, patch: Patch, targets: list[str], what: str) -> dict[str, int | None]:
+    """Per fixture: a named colour wheel slot of its type, or a DMX value."""
+    if isinstance(v, str):
+        out = {f: patch.fixtures[f].type.wheel_value(v) for f in targets}
+        if not any(x is not None for x in out.values()):
+            raise LookError(f"{what}: none of these fixtures has a colour wheel slot named {v!r}")
+        return out
+    n = int(_num(v, f"{what} colour_wheel", 0, 255))
+    return dict.fromkeys(targets, n)
+
+
 def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     _forbid(d, what)
     if "fixtures" not in d:
@@ -137,9 +158,14 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     if "position" in d:
         p["position"] = {f: pal.position(d["position"], f, what) for f in targets}
     if "gobo" in d:
-        p["gobo"] = {f: pal.gobo(d["gobo"], patch.fixtures[f].type.key, what) for f in targets}
+        p["gobo"] = _gobos(d["gobo"], patch, pal, targets, what)
     if "colour_wheel" in d:
-        p["colour_wheel"] = int(_num(d["colour_wheel"], f"{what} colour_wheel", 0, 255))
+        p["colour_wheel"] = _wheel(d["colour_wheel"], patch, targets, what)
+    for k in ("zoom", "focus", "frost"):
+        if k in d:
+            p[k] = _num(d[k], f"{what} {k}", 0, 1)
+    if "prism" in d:
+        p["prism"] = int(_num(d["prism"], f"{what} prism", 0, 255))
     if "strobe" in d:
         p["strobe"] = int(_num(d["strobe"], f"{what} strobe", 0, 255))
     if "intensity" in d:
@@ -286,12 +312,15 @@ class ScenePlayer:
                     run.set_pixels(f, [dict(c) for c in p["pixels"]])
             if "position" in p:
                 fl.pan, fl.tilt = p["position"][f]
-            if "gobo" in p:
+            if "gobo" in p and p["gobo"].get(f) is not None:
                 fl.gobo = p["gobo"][f]
-            if "colour_wheel" in p:
-                fl.colour_wheel = p["colour_wheel"]
+            if "colour_wheel" in p and p["colour_wheel"].get(f) is not None:
+                fl.colour_wheel = p["colour_wheel"][f]
             if "strobe" in p:
                 fl.strobe = p["strobe"]
+            for k in ("zoom", "focus", "frost", "prism"):
+                if k in p:
+                    setattr(fl, k, p[k])
             if "speed" in p:
                 fl.speed = p["speed"]
             if "intensity" in p:

@@ -22,7 +22,7 @@ import yaml
 
 from .fixtures import ConfigError
 
-FORMAT = 3
+FORMAT = 4
 
 # show folder layout: single files, then one folder per kind
 FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes", "panels.yaml": "panels"}
@@ -64,8 +64,17 @@ def _rig_2_to_3(d: dict[str, Any]) -> dict[str, Any]:
     return d
 
 
+def _fixtures_3_to_4(d: dict[str, Any]) -> dict[str, Any]:
+    # colour mixing (R7): types written before it keep sending colours exactly as given
+    for t in (d.get("types") or {}).values():
+        if isinstance(t, dict):
+            t.setdefault("colour_mix", "off")
+    return d
+
+
 STEPS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
     "rig": {1: _rig_1_to_2, 2: _rig_2_to_3},
+    "fixtures": {3: _fixtures_3_to_4},
 }
 
 
