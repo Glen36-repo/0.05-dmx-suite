@@ -92,8 +92,9 @@ def test_node_driver_against_sim():
 
 def test_make_driver():
     assert isinstance(make_driver({"driver": "log"}), LogDriver)
-    with pytest.raises(ValueError, match="later"):
-        make_driver({"driver": "artnet"})
+    art = make_driver({"driver": "artnet"})  # built since v2 R4
+    assert art.name == "artnet"
+    art.close()
     with pytest.raises(ValueError, match="unknown"):
         make_driver({"driver": "nope"})
 
