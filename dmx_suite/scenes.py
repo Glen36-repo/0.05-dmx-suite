@@ -65,6 +65,7 @@ class Layer:
     blend: str = "replace"  # replace | max | add
     mute: bool = False
     shift: float = 0.0  # phase offset, part of a cycle (Ride "shift", v3.3)
+    pixel_mask: dict[str, frozenset[int]] = field(default_factory=dict)  # v4: fid -> only these pixels (0-based)
 
     def period(self) -> float | None:
         e = effects.get(self.effect) if self.effect else None
@@ -136,7 +137,9 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     if "fixtures" not in d:
         raise LookError(f"{what}: needs fixtures")
     names = d["fixtures"] if isinstance(d["fixtures"], list) else [d["fixtures"]]
-    fids = patch.resolve(names)
+    sel = patch.resolve_targets(names)  # v4: `bar_1:px1-4`, `bars:odd`, pixel groups
+    fids = list(sel)
+    mask = {f: px for f, px in sel.items() if px is not None}
     fb = patch.resolve(d["fallback"] if isinstance(d.get("fallback"), list) else [d["fallback"]]) if "fallback" in d else []
     targets = fids + [f for f in fb if f not in fids]  # params cover both, checks apply to both
     name = d.get("effect")
@@ -151,6 +154,9 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
         raise LookError(f"{what}: a position can't go with the {name} movement effect; use a separate layer")
 
     moves = (eff is not None and eff.movement) or "position" in d
+    if mask and (moves or "intensity" in d):
+        raise LookError(f"{what}: a pixel selection ({', '.join(sorted(mask))}) is colour only (rule 1: MASTER owns "
+                        "each segment's dimmer and strobe)")
     if moves:
         stuck = [f for f in targets if patch.fixtures[f].type.colour_only]
         if stuck:
@@ -197,7 +203,7 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
         raise LookError(f"{what}: blend must be one of {', '.join(BLENDS)}")
     level = _num(d.get("level", 1.0), f"{what} level", 0, 1)
     shift = _num(d.get("shift", 0.0), f"{what} shift", 0, 1)
-    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)), shift)
+    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)), shift, mask)
 
 
 def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") -> Scene:
@@ -330,7 +336,12 @@ class ScenePlayer:
             for f in fids:
                 where = cells.get(f) or [(0.0, 0.0)]
                 n = self._pixels(f)
-                if per_pixel and n:
+                only = layer.pixel_mask.get(f)
+                if only is not None:  # a pixel selection: the effect runs over just those pixels
+                    for px in sorted(only):
+                        units.append(Unit(f, px, len(units)))
+                        raw.append(where[px] if px < len(where) else where[0])
+                elif per_pixel and n:
                     for px in range(n):
                         units.append(Unit(f, px, len(units)))
                         raw.append(where[px] if px < len(where) else where[0])
@@ -351,18 +362,18 @@ class ScenePlayer:
         if ly.shift:
             t += ly.shift * (ly.period() or 0.0)
         run = Run(t, fids, look, dark, self._pixels, lambda per_pixel: self._units_for(i, per_pixel),
-                  ly.blend, ly.level, f"{self.scene.name}|{i}", now)
+                  ly.blend, ly.level, f"{self.scene.name}|{i}", now, mask=ly.pixel_mask)
         plain = ly.blend == "replace" and ly.level >= 1
         # static attributes (also allowed alongside an effect's own settings)
         for f in fids:
             fl = self._fl(look, f)
             if "colour" in p and (ly.effect is None or "colour" not in EFFECTS[ly.effect]):
-                if plain:
+                if plain and f not in ly.pixel_mask:
                     fl.colour, fl.pixels = dict(p["colour"]), None
                 else:
-                    run.set_colour(f, p["colour"])
+                    run.set_colour(f, p["colour"])  # also a pixel selection: only those pixels
             if "pixels" in p:
-                if plain:
+                if plain and f not in ly.pixel_mask:
                     fl.pixels = [dict(c) for c in p["pixels"]]
                 else:
                     run.set_pixels(f, [dict(c) for c in p["pixels"]])

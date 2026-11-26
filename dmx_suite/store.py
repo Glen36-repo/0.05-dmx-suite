@@ -880,10 +880,16 @@ class ShowStore:
     def _rename_refs(self, old: str, new: str) -> dict[Path, str | None]:
         """Files whose fixture lists name group `old`, rewritten to name `new`."""
 
+        def one(n: Any) -> Any:  # `old`, or a pixel selection on it (`old:px1-4`, v4)
+            if not isinstance(n, str):
+                return n
+            name, sep, spec = n.partition(":")
+            return f"{new}{sep}{spec}" if name == old else n
+
         def swap(names: Any) -> Any:
             if isinstance(names, list):
-                return [new if n == old else n for n in names]
-            return new if names == old else names
+                return [one(n) for n in names]
+            return one(names)
 
         out: dict[Path, str | None] = {}
         for kind, folder in FOLDERS.items():
@@ -895,6 +901,9 @@ class ShowStore:
                         for k in ("fixtures", "fallback"):
                             if isinstance(ly, dict) and k in ly:
                                 ly[k] = swap(ly[k])
+                    for st in data.get("steps") or []:  # step scenes: `set:` is keyed by fixture / group
+                        if isinstance(st, dict) and isinstance(st.get("set"), dict):
+                            st["set"] = {one(k): v for k, v in st["set"].items()}
                 elif kind == "rig":
                     if "fixtures" in data:
                         data["fixtures"] = swap(data["fixtures"])

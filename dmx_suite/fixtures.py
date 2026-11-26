@@ -15,6 +15,7 @@ A type lists its channels in order, each with a role. From v2 R7 a type can also
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -152,10 +153,79 @@ class Fixture:
         return self.address - 1 + ch.offset
 
 
+
+
+def parse_pixels(spec: str, n: int, where: str) -> frozenset[int]:
+    """`px3`, `px1-4`, `px1,8`, `px1-2,7-8`, `odd`, `even`, `first3`, `last3` -> 0-based pixel indexes
+    of a light with n pixels (numbers on screen and in files start at 1)."""
+    s = spec.strip().lower()
+    if s in ("odd", "even"):
+        return frozenset(range(0 if s == "odd" else 1, n, 2))
+    m = re.fullmatch(r"(first|last)(\d+)", s)
+    if m:
+        k = int(m.group(2))
+        if not 1 <= k <= n:
+            raise ConfigError(f"{where}: {s} - the light has {n} pixels")
+        return frozenset(range(k)) if m.group(1) == "first" else frozenset(range(n - k, n))
+    if not s.startswith("px"):
+        raise ConfigError(f"{where}: pixels are px3, px1-4, px1,8, odd, even, first3 or last3 (not {spec!r})")
+    out: set[int] = set()
+    for part in s[2:].split(","):
+        a, _, b = part.partition("-")
+        try:
+            lo, hi = int(a), int(b or a)
+        except ValueError as e:
+            raise ConfigError(f"{where}: pixels are numbers, e.g. px1-4 or px1,8 (not {spec!r})") from e
+        if lo > hi or lo < 1 or hi > n:
+            raise ConfigError(f"{where}: pixel {hi if hi > n else lo} - the light has pixels 1-{n}")
+        out |= set(range(lo - 1, hi))
+    return frozenset(out)
+
+
 @dataclass
 class Patch:
     types: dict[str, FixtureType]
     fixtures: dict[str, Fixture]
+    pixel_groups: dict[str, dict[str, frozenset[int]]] = field(default_factory=dict)  # v4: name -> {fid: pixels}
+
+    def resolve_targets(self, names: list[str]) -> dict[str, frozenset[int] | None]:
+        """Fixture ids, each with the pixels selected (None = the whole light), from ids, groups, `all`,
+        saved pixel groups and pixel selectors: `bar_1:px3`, `bar_1:px1-4`, `bars:px1,8`, `bars:odd`.
+        A light named both whole and by pixels is whole; two pixel selections on one light add up."""
+        groups = self.groups()
+        out: dict[str, frozenset[int] | None] = {}
+
+        def add(fid: str, px: frozenset[int] | None) -> None:
+            if fid not in out:
+                out[fid] = px
+                return
+            had = out[fid]
+            out[fid] = None if had is None or px is None else had | px
+
+        for raw in names:
+            name, _, spec = str(raw).partition(":")
+            if name in self.pixel_groups and not spec:
+                for fid, px in self.pixel_groups[name].items():
+                    add(fid, px)
+                continue
+            if name == "all":
+                ids = list(self.fixtures)
+            elif name in self.fixtures:
+                ids = [name]
+            elif name in groups:
+                ids = groups[name]
+            else:
+                raise ConfigError(f"unknown fixture or group {name!r}")
+            if not spec:
+                for fid in ids:
+                    add(fid, None)
+                continue
+            pixel_ids = [f for f in ids if self.fixtures[f].type.pixels > 1]
+            if not pixel_ids:
+                raise ConfigError(f"{raw}: {name} has no pixel lights; pixel selections are for bars")
+            for fid in pixel_ids:
+                add(fid, parse_pixels(spec, self.fixtures[fid].type.pixels, str(raw)))
+        return out
 
     def groups(self) -> dict[str, list[str]]:
         out: dict[str, list[str]] = {}
@@ -165,20 +235,9 @@ class Patch:
         return out
 
     def resolve(self, names: list[str]) -> list[str]:
-        """Fixture ids from a list of ids and/or group names (and 'all')."""
-        groups = self.groups()
-        out: list[str] = []
-        for n in names:
-            if n == "all":
-                ids = list(self.fixtures)
-            elif n in self.fixtures:
-                ids = [n]
-            elif n in groups:
-                ids = groups[n]
-            else:
-                raise ConfigError(f"unknown fixture or group {n!r}")
-            out += [i for i in ids if i not in out]
-        return out
+        """Fixture ids from a list of ids and/or group names (and 'all'). Pixel selectors and pixel
+        groups name their lights whole here; layers keep the pixels (resolve_targets)."""
+        return list(self.resolve_targets(names))
 
 
 # --------------------------------------------------------------------------- loading
@@ -315,4 +374,16 @@ def parse_patch(data: dict) -> Patch:
                 raise ConfigError(f"{fid}: channel {s} overlaps {used[(uni, s)]}")
             used[(uni, s)] = fid
         fixtures[fid] = Fixture(fid, t, uni, addr, list(d.get("groups", [])), _sub(d.get("sub"), fid))
-    return Patch(types, fixtures)
+    patch = Patch(types, fixtures)
+    pg = data.get("pixel_groups") or {}
+    if not isinstance(pg, dict):
+        raise ConfigError("pixel_groups: {name: selector or [selectors]}, e.g. bar_tips: bars:px1,8")
+    for name, sel in pg.items():
+        if name in fixtures or name in patch.groups() or name == "all":
+            raise ConfigError(f"pixel group {name!r}: that name is already a fixture or group")
+        sels = sel if isinstance(sel, list) else [sel]
+        if not sels or not all(isinstance(x, str) and ":" in x for x in sels):
+            raise ConfigError(f"pixel group {name}: selectors like bars:px1,8 or bar_1:px1-4")
+        got = patch.resolve_targets(sels)
+        patch.pixel_groups[name] = {f: px for f, px in got.items() if px is not None}
+    return patch
