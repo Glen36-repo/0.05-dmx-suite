@@ -5,8 +5,9 @@ from __future__ import annotations
 import itertools
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Callable, Protocol
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Protocol
 
 from . import protocol as p
 from .health import HealthTracker

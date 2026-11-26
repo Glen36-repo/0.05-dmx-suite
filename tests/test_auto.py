@@ -6,7 +6,7 @@ import pytest
 
 from dmx_suite.auto import AutoStyle, RigGroups, contrast_of, generate, parse_style
 from dmx_suite.engine import Engine
-from dmx_suite.fixtures import ConfigError, EMITTERS, Kind
+from dmx_suite.fixtures import EMITTERS, ConfigError, Kind
 from dmx_suite.output import LogDriver
 from dmx_suite.rig import load_rig
 from dmx_suite.showfiles import load_show

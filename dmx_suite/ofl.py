@@ -94,7 +94,7 @@ def ofl_to_type(
         if m is None:
             raise ConfigError(f"no mode {mode!r}; have: " + ", ".join(x["name"] for x in modes))
     fine_of = {}
-    for name, ch in chans.items():
+    for ch in chans.values():
         role = _caps(ch)[0].get("type") if len(_caps(ch)) == 1 else None
         for alias in ch.get("fineChannelAliases") or []:
             if role in ("Pan", "Tilt"):

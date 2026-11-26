@@ -221,7 +221,7 @@ class FallbackLook:
         )
 
     @classmethod
-    def unpack(cls, payload: bytes) -> "FallbackLook":
+    def unpack(cls, payload: bytes) -> FallbackLook:
         if len(payload) < 6:
             raise ProtocolError("short fallback")
         hold, period, level, n = struct.unpack_from("<HHBB", payload)
@@ -265,7 +265,7 @@ class Status:
         )
 
     @classmethod
-    def unpack(cls, payload: bytes) -> "Status":
+    def unpack(cls, payload: bytes) -> Status:
         if len(payload) != _STATUS.size:
             raise ProtocolError("bad STATUS length")
         up, frames, rate, crc, other, mode, rx = _STATUS.unpack(payload)
@@ -306,7 +306,7 @@ class Heartbeat:
         )
 
     @classmethod
-    def unpack(cls, payload: bytes) -> "Heartbeat":
+    def unpack(cls, payload: bytes) -> Heartbeat:
         if len(payload) != _HEARTBEAT.size:
             raise ProtocolError("bad HEARTBEAT length")
         mac, typ, fw, up, rssi, loss, age, uni, name = _HEARTBEAT.unpack(payload)

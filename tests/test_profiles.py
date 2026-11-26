@@ -8,8 +8,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from conftest import LOOK, PATCH, RIG, Clock, View
-from golden import GOLDEN, SHOWS, capture
 
 from dmx_suite.auto import RigGroups
 from dmx_suite.engine import Engine
@@ -25,6 +23,9 @@ from dmx_suite.profile import (
 )
 from dmx_suite.rig import parse_rig
 from dmx_suite.showfiles import check_all, load_show
+
+from conftest import LOOK, PATCH, RIG, Clock, View
+from golden import GOLDEN, SHOWS, capture
 
 PROFILES = ["0.05_band", "generic"]
 

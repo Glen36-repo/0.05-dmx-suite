@@ -7,10 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 from .fixtures import EMITTERS, ConfigError, Kind, Patch
-from .versions import read_doc
 from .profile import V1_DEFAULT, Profile, parse_profile, resolve_exempt
+from .versions import read_doc
 
 STROBE_DEFAULT_HZ = 3.0  # common photosensitive-epilepsy guidance: no more than 3 flashes a second
 STROBE_MAX_HZ = 25.0
@@ -68,7 +67,7 @@ class Rig:
     outputs: list[dict[str, Any]] = field(default_factory=list)
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
     stage: tuple[float, float] = (6.0, 4.0)  # width, depth in metres (stage plan)
-    layout: dict[str, "Placement"] = field(default_factory=dict)  # fixture id -> where it is
+    layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
     strobe_limit_hz: float | None = STROBE_DEFAULT_HZ  # safety rule; None only in tests

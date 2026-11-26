@@ -10,11 +10,10 @@ from dmx_suite.midi.inputs import FakeMidiIn
 from dmx_suite.midi.map import parse_map
 from dmx_suite.midi.router import MidiRouter
 from dmx_suite.output import LogDriver
-from dmx_suite.palettes import parse_palettes
 from dmx_suite.scenes import ScenePlayer, parse_scene
 from dmx_suite.showctl import ShowController
-from dmx_suite.shows import ShowPlayer, parse_setlist, parse_show
 from dmx_suite.showfiles import load_show
+from dmx_suite.shows import ShowPlayer, parse_setlist, parse_show
 from dmx_suite.tempo import TempoClock
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"

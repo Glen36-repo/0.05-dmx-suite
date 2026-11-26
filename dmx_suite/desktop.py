@@ -14,8 +14,9 @@ import logging
 import sys
 import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 
@@ -72,6 +73,7 @@ def make_tray(on_open: Callable[[], None], on_blackout: Callable[[], None], is_b
         from PIL import Image
     except Exception:  # noqa: BLE001 - tray is optional (e.g. Linux without an indicator)
         return None
+    image: Any
     try:
         image = Image.open(ICON)
     except OSError:

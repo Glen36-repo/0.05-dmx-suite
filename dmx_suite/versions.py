@@ -14,8 +14,9 @@ into the new shape. Steps get a copy and return the new data; they never see `ve
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 

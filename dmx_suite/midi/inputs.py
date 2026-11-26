@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,12 @@ class MidiInputs:
     def _matches(self, name: str) -> bool:
         return not self.wanted or any(w.lower() in name.lower() for w in self.wanted)
 
+    def _handler_for(self, name: str) -> Callable[[Any], None]:
+        def handle(msg: Any) -> None:
+            self.handler(msg, name)
+
+        return handle
+
     def rescan(self) -> None:
         try:
             names = set(self.lister())
@@ -77,7 +84,7 @@ class MidiInputs:
                 if name in self.open or not self._matches(name):
                     continue
                 try:
-                    self.open[name] = self.opener(name, lambda msg, n=name: self.handler(msg, n))
+                    self.open[name] = self.opener(name, self._handler_for(name))
                     log.info("MIDI input %s connected", name)
                 except Exception:
                     self.errors += 1

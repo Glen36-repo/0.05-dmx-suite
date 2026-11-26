@@ -154,7 +154,7 @@ class ShowController:
         parts = [n.label]
         if n.mode == "show":
             parts.append(f"step {n.step}: {n.scene} ({n.time_left_s:.0f}s left)")
-        if n.setlist and self.setlist:
+        if n.setlist and self.setlist and n.song is not None:
             parts.append(f"song {n.song + 1}/{len(self.setlist.songs)}: {n.song_name}")
         parts.append(f"tempo {n.bpm:.0f} BPM" if n.bpm else "fixed timers")
         return "  |  ".join(parts)

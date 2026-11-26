@@ -6,8 +6,8 @@ Used by tests and `dmx-node-test --sim` so the laptop side can be built with no 
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from . import protocol as p
 

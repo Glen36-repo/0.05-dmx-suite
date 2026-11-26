@@ -126,7 +126,8 @@ def test_address_report_per_universe(two):
 def router(engine):
     m = parse_map({"mappings": [
         {"type": "note", "channel": 10, "number": 38, "action": "flash", "fixtures": ["bar_1"]},
-        {"type": "note", "channel": 10, "number": 38, "port": "H2MIDI", "action": "flash", "fixtures": ["wash"], "colour": "white"},
+        {"type": "note", "channel": 10, "number": 38, "port": "H2MIDI", "action": "flash", "fixtures": ["wash"],
+         "colour": "white"},
     ]})
     return MidiRouter(engine, m)
 

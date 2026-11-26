@@ -24,10 +24,10 @@ from __future__ import annotations
 import math
 import random
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
-
+from typing import Any
 
 from .fixtures import EMITTERS, ConfigError, Patch
 from .look import FORBIDDEN, Colour, FixtureLook, Look, LookError
@@ -303,7 +303,7 @@ class ScenePlayer:
                 fl.pan, fl.tilt = p0 + (p1 - p0) * x, t0 + (t1 - t0) * x
         elif eff == "random_move":
             period = p["period_s"]
-            for i, f in enumerate(fids):
+            for f in fids:
                 offset = (_seed(p["seed"], f, "offset") % 1000) / 1000 * period if p["stagger"] else 0.0
                 slot = math.floor((t + offset) / period)
                 first = math.floor(offset / period)

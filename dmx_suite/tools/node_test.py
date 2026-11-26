@@ -16,7 +16,7 @@ import sys
 import time
 
 from ..node import protocol as p
-from ..node.health import HealthTracker, State
+from ..node.health import HealthTracker
 from ..node.link import NodeLink, SerialTransport
 from ..node.sim import SimTransport, default_sim
 

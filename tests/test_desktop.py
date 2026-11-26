@@ -7,6 +7,7 @@ import pytest
 from dmx_suite import desktop
 from dmx_suite.cli import build_parser, resolve_shows, start_session
 
+
 def running(session):
     return session.engine._thread is not None and not session.engine._stop.is_set()
 

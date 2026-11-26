@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 from .fixtures import ConfigError, Patch
 from .look import Colour, LookError, parse_colour
 

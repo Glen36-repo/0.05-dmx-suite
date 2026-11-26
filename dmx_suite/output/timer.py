@@ -8,7 +8,7 @@ asks for 1 ms while the engine runs and gives it back when it stops. Elsewhere i
 from __future__ import annotations
 
 import sys
-from typing import Callable
+from collections.abc import Callable
 
 
 def high_res() -> Callable[[], None]:

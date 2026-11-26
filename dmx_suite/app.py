@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from .engine import Engine
+from .fixtures import EMITTERS, Kind
 from .layout import full_layout
 from .look import INTENSITY_RULE1
-from .fixtures import EMITTERS, Kind
 from .midi.map import ACTIONS
 from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
@@ -90,7 +90,7 @@ class App:
                 log.exception("health log write failed")
 
     def nodes(self) -> list[dict[str, Any]]:
-        out = []
+        out: list[dict[str, Any]] = []
         for d in self.engine.drivers:
             if isinstance(d, NodeSerialDriver):
                 for r in d.link.health.nodes.values():
@@ -137,10 +137,10 @@ class App:
         fps = self.engine_fps()
         running = self.engine._thread is not None
         e = self.engine
-        recent_fault = e.fault is not None and e.fault_at is not None and e.clock() - e.fault_at < 300
-        if recent_fault:
+        fault_age = e.clock() - e.fault_at if e.fault is not None and e.fault_at is not None else None
+        if fault_age is not None and fault_age < 300:
             out.append({"kind": "engine", "name": "Engine", "state": "bad",
-                        "detail": f"fault {_ago(e.clock() - e.fault_at)} ago, back to the static look: {e.fault}"})
+                        "detail": f"fault {_ago(fault_age)} ago, back to the static look: {e.fault}"})
         else:
             out.append({"kind": "engine", "name": "Engine", "state": ("ok" if fps >= 35 else "warn") if running else "warn",
                         "detail": f"{fps:.0f} fps" if running else "not running"})

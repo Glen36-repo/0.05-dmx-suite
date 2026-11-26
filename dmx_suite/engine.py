@@ -11,7 +11,7 @@ import logging
 import math
 import threading
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from .faders import Masters
 from .fixtures import DMX_CHANNELS, Kind
@@ -289,7 +289,7 @@ class Engine:
     def _render_find(self, now: float) -> dict[int, bytearray]:
         full = Masters(1.0, {}, 1.0, 0.0)
         white = {e: 1.0 for e in ("red", "green", "blue", "white")}
-        look = Look(fixtures={self.find: FixtureLook(colour=white)})
+        look = Look(fixtures={self.find: FixtureLook(colour=white)} if self.find else {})
         state = ControlState(True, False, {}, self.haze.tick(now), now)
         frames = self.rules.render(look, state, full)
         for fx in self.rig.fixtures:  # exempt fixtures (kick light) ignore MASTER: dark them explicitly
@@ -410,7 +410,11 @@ class Engine:
     def haze_boost(self, pressed: bool) -> bool:
         with self.lock:
             now = self.clock()
-            ok = self.haze.boost_press(now) if pressed else (self.haze.boost_release(now) or True)
+            if pressed:
+                ok = self.haze.boost_press(now)
+            else:
+                self.haze.boost_release(now)
+                ok = True
         self._changed()
         return ok
 

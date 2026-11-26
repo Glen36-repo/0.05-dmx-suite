@@ -103,7 +103,8 @@ def test_control_commands(running):
 
 def test_store_via_api_reloads_live(running):
     app, url, root = running
-    status, r = call(url + "/api/store/scene/teal", "PUT", {"data": {"name": "Teal", "layers": [{"fixtures": ["bars"], "colour": "#00a090"}]}})
+    teal = {"name": "Teal", "layers": [{"fixtures": ["bars"], "colour": "#00a090"}]}
+    status, r = call(url + "/api/store/scene/teal", "PUT", {"data": teal})
     assert status == 200 and r["backup"]
     assert "teal" in app.files.scenes  # live reload
     call(url + "/api/control", "POST", {"cmd": "scene", "scene": "teal"})
@@ -211,7 +212,6 @@ def test_node_drop_alert_and_health_log(tmp_path):
     clock = [1000.0]
     health = node.link.health
     health._clock = lambda: clock[0]
-    rx = node.link.t.node.receivers[0]
     for _ in range(2):
         node.link.t.node._next_hb_ms = 0
         node.link.poll()

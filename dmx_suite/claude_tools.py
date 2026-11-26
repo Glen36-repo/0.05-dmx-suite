@@ -18,11 +18,11 @@ import yaml
 from .fixtures import ConfigError, load_patch
 from .look import INTENSITY_RULE1
 from .palettes import load_palettes
-from .rig import load_rig
-from .versions import upgrade
-from .scenes import EFFECTS, parse_scene
 from .paths import default_shows
+from .rig import load_rig
+from .scenes import EFFECTS, parse_scene
 from .store import ShowStore, StoreError
+from .versions import upgrade
 
 DEFAULT_URL = "http://127.0.0.1:8505"
 
@@ -178,9 +178,10 @@ class DmxTools:
     def list_fixtures(self) -> str:
         patch = load_patch(self.shows / "fixtures.yaml")
         out = {
-            "fixtures": [{"id": f.id, "type": f.type.key, "kind": f.kind.value, "address": f.address, "universe": f.universe,
-                          "groups": f.groups, "colour_only": f.type.colour_only, "moves": f.type.has("pan") and not f.type.colour_only,
-                          "pixels": f.type.pixels} for f in patch.fixtures.values()],
+            "fixtures": [{"id": f.id, "type": f.type.key, "kind": f.kind.value, "address": f.address,
+                          "universe": f.universe, "groups": f.groups, "colour_only": f.type.colour_only,
+                          "moves": f.type.has("pan") and not f.type.colour_only, "pixels": f.type.pixels}
+                         for f in patch.fixtures.values()],
             "groups": patch.groups(),
             "types": {k: {"name": t.name, "kind": t.kind.value, "verified": t.verified,
                           "channels": [c.role + (f"[px{c.pixel + 1}]" if c.pixel is not None else "") for c in t.channels]}

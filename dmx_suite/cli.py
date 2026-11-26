@@ -19,22 +19,21 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+from .app import App
 from .engine import Engine
 from .fixtures import EMITTERS, ConfigError, Kind
 from .midi.inputs import FakeMidiIn, MidiInputs, port_names
 from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
-from .output import LogDriver, NodeSerialDriver, make_driver
 from .ofl import import_ofl
+from .output import LogDriver, NodeSerialDriver, OutputDriver, make_driver
 from .paths import data_dir, default_shows, log_dir, move_old_state, prepare
 from .setup import format_report, patch_report
-from .app import App
 from .showctl import ShowController
-from .store import ShowStore
 from .showfiles import ShowFiles, check_all, load_show
-
-
+from .store import ShowStore
 
 # --------------------------------------------------------------------------- on-screen rig (text)
 
@@ -233,8 +232,8 @@ def console(engine: Engine, router: MidiRouter, fake: FakeMidiIn, map_path: Path
                 nodes = [d for d in engine.drivers if isinstance(d, NodeSerialDriver)]
                 if not nodes:
                     print("no node output in use (third-party interfaces show as connected/disconnected only)")
-                for d in nodes:
-                    for r in d.link.health.nodes.values():
+                for node in nodes:
+                    for r in node.link.health.nodes.values():
                         hb = r.heartbeat
                         sig = f"rssi {hb.rssi} loss {hb.loss_pct}%" if hb and hb.rssi is not None else ""
                         print(f"  {r.mac}  {r.state.value:7}  {r.name or '(new node)':16}  {sig}")
@@ -274,10 +273,10 @@ class Session:
     """A running engine with its MIDI inputs and web server (shared by the console and the desktop app)."""
 
     app: App
-    show: object
+    show: ShowFiles
     router: MidiRouter
     fake: FakeMidiIn
-    web: object | None = None
+    web: Any = None  # web.server.WebServer (imported lazily)
     real: MidiInputs | None = None
 
     @property
@@ -311,7 +310,9 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
         out(f"running the last good version (from before backup {bid}); fix it (dmx-suite check) or restore it, "
             "and the show reloads")
     if args.sim:
-        drivers = [LogDriver()] + ([make_driver({"driver": "node_serial", "port": "sim"})] if args.sim_node else [])
+        drivers: list[OutputDriver] = [LogDriver()]
+        if args.sim_node:
+            drivers.append(make_driver({"driver": "node_serial", "port": "sim"}))
     else:
         drivers = [make_driver(o) for o in show.rig.outputs]
     for d in drivers:  # rig config lists the nodes expected, so a missing one shows at setup

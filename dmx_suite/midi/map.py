@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 from ..fixtures import ConfigError, Kind
 
 TYPES = ("note", "program_change", "control_change")

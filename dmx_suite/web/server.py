@@ -14,7 +14,6 @@ import secrets
 import threading
 import time
 from dataclasses import asdict
-from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -170,7 +169,8 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 return False
 
         def _query_token(self) -> str | None:
-            return (parse_qs(urlparse(self.path).query).get("t") or [None])[0]
+            vals = parse_qs(urlparse(self.path).query).get("t")
+            return vals[0] if vals else None
 
         def _cookie_token(self) -> str | None:
             c = SimpleCookie(self.headers.get("Cookie") or "")
@@ -349,7 +349,10 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 app.require_unlocked("changing haze")
                 return self._json(200, control(app, "haze", body))
             if path == "/api/preview" and method == "POST":
-                msg = app.preview_scene(body.get("scene") or body.get("scene_data"), float(body.get("seconds", 10)))
+                scene = body.get("scene") or body.get("scene_data")
+                if not isinstance(scene, (str, dict)):
+                    raise ApiError(400, "preview needs a scene name or scene data")
+                msg = app.preview_scene(scene, float(body.get("seconds", 10)))
                 return self._json(200, {"ok": True, "message": msg})
             if path.startswith("/api/midi/") and method == "POST":
                 return self._json(200, self._midi(path.rsplit("/", 1)[1], body))

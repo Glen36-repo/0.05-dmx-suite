@@ -1,6 +1,5 @@
 """One section per hard rule in CLAUDE.md."""
 
-import threading
 import time
 
 import pytest
@@ -86,7 +85,6 @@ def test_rule2_master_on_clears_running_flash(engine, view):
 def test_rule2_loop_cuts_flash_on_time(rig, look):
     """Real clock and loop thread: the cut happens at the flash end, not a tick later."""
     seen = []
-    done = threading.Event()
 
     def on_frame(_, frame):
         seen.append((time.perf_counter(), frame[19]))  # bar_1 red pixel 0

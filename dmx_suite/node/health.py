@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Iterable
 
 from .protocol import Heartbeat, mac_str
 

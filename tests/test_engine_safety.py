@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from conftest import LOOK, PATCH, RIG, Clock, View
 from dmx_suite.cli import build_parser, resolve_shows, start_session
 from dmx_suite.engine import FRAME_HZ, Engine
 from dmx_suite.fixtures import ConfigError, parse_patch
@@ -16,6 +15,8 @@ from dmx_suite.output import LogDriver
 from dmx_suite.rig import parse_rig
 from dmx_suite.showfiles import check_all, load_show
 from dmx_suite.store import ShowStore
+
+from conftest import LOOK, PATCH, RIG, Clock, View
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"
 PERIOD = 1 / FRAME_HZ

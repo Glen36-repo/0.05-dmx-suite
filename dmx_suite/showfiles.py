@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-
 from .auto import generate
 from .fixtures import ConfigError, Patch, load_patch
 from .look import INTENSITY_RULE1, Look, load_look
@@ -13,9 +12,8 @@ from .midi.map import MidiMap, load_map
 from .palettes import Palettes, load_palettes
 from .rig import STROBE_DEFAULT_HZ, Rig, load_rig
 from .scenes import Scene, load_scenes
-from .versions import read_doc
 from .shows import Setlist, Show, load_setlists, load_shows, parse_setlist, parse_show
-
+from .versions import read_doc
 
 # what a broken show file can raise while loading; all reported as show file problems
 FILE_ERRORS = (ConfigError, OSError, KeyError, TypeError, ValueError, AttributeError, IndexError)

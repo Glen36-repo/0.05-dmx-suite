@@ -83,7 +83,11 @@ class RuleLayer:
             f.id: (f.type.home["pan"], f.type.home["tilt"]) for f in rig.fixtures
         }
         # strobe limit: where each light is, what it sent last frame, and the flash history
-        self._lights = {f.id: self._light(f) for f in rig.fixtures if self._light(f) is not None}
+        self._lights: dict[str, _Light] = {}
+        for f in rig.fixtures:
+            lt = self._light(f)
+            if lt is not None:
+                self._lights[f.id] = lt
         self._last: dict[str, tuple[float, list[int]]] = {}  # fixture -> (level, intensity bytes)
         self._low = 0.0  # darkest rig output since the last flash
         self._last_flash = -math.inf

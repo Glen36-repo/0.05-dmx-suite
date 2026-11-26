@@ -105,7 +105,7 @@ class RigGroups:
     kick: list[str]
 
     @classmethod
-    def of(cls, rig: Rig) -> "RigGroups":
+    def of(cls, rig: Rig) -> RigGroups:
         # fixtures MASTER doesn't affect (rule 3, e.g. the 0.05 kick light) get the kick treatment;
         # a kick-kind light that isn't exempt (Generic profile) is used like a wash
         ex = rig.exempt
@@ -125,7 +125,9 @@ class RigGroups:
 
 def _kit_ok(pal: Palettes, movers: list[str]) -> bool:
     p = pal.positions.get("drum_kit")
-    return bool(p) and bool(movers) and ("*" in p or all(m in p for m in movers))
+    if not p or not movers:
+        return False
+    return "*" in p or all(m in p for m in movers)
 
 
 def _seed(*parts: Any) -> int:
@@ -178,14 +180,16 @@ def generate(style: AutoStyle, rig: Rig, pal: Palettes, step: int, seed: str = "
             if kind == "static":
                 layers.append({"fixtures": g.bars, "colour": a})
             elif kind == "fade_chase":
-                bar_chase = {"effect": "colour_chase", "colours": [a, b], "period_s": round(rng.uniform(8, 16), 1), "spread": 1, "fade": True}
+                bar_chase = {"effect": "colour_chase", "colours": [a, b], "period_s": round(rng.uniform(8, 16), 1),
+                             "spread": 1, "fade": True}
             elif kind == "chase":
                 period = round(rng.uniform(2, 4) if e == "mid" else rng.uniform(0.5, 1.2), 2)
                 bar_chase = {"effect": "colour_chase", "colours": [a, b], "period_s": period, "spread": 1, "fade": fades}
             elif kind == "pixel":
                 period = round(rng.uniform(2, 4) if e == "mid" else rng.uniform(0.6, 1.5), 2)
-                layers.append({"fixtures": g.bars, "effect": "pixel_chase", "colour": a, "background": b if e == "high" else "off",
-                               "width": rng.choice([2, 3, 4]), "tail": 2, "period_s": period, "bounce": rng.random() < 0.3})
+                layers.append({"fixtures": g.bars, "effect": "pixel_chase", "colour": a,
+                               "background": b if e == "high" else "off", "width": rng.choice([2, 3, 4]), "tail": 2,
+                               "period_s": period, "bounce": rng.random() < 0.3})
             else:  # flash
                 layers.append({"fixtures": g.bars, "effect": "flash", "colour": "white", "rate_hz": rng.choice([4, 6, 8]),
                                "duty": 0.3, "spread": rng.choice([0, 0.25, 1])})

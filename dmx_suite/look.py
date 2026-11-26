@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 from .fixtures import EMITTERS, ConfigError, Patch
 
 Colour = dict[str, float]  # emitter role -> 0..1

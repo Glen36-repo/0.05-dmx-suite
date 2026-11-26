@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from ..engine import Engine
 from .map import ACTIONS, Mapping, MidiMap, validate
@@ -26,7 +27,7 @@ class Incoming:
     raw_type: str
 
     @classmethod
-    def from_mido(cls, msg: Any) -> "Incoming":
+    def from_mido(cls, msg: Any) -> Incoming:
         t = msg.type
         ch = getattr(msg, "channel", 0) + 1
         if t == "note_on":
@@ -46,12 +47,14 @@ class MidiRouter:
         self.shows = shows  # ShowController
         self.map = midimap
         self.monitor = monitor or MidiMonitor()
-        self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None] | None = None
+        # (action, params, callback, port fragment the mapping is tied to)
+        self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None, str | None] | None = None
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ learn
 
-    def learn(self, action: str, params: dict[str, Any] | None = None, on_learned: Callable[[Mapping], None] | None = None) -> None:
+    def learn(self, action: str, params: dict[str, Any] | None = None,
+              on_learned: Callable[[Mapping], None] | None = None) -> None:
         """Arm learn: the next note-on / PC / CC becomes the input for `action`.
         params may include port: "this" (tie the mapping to whichever port the message comes from)
         or a port-name fragment such as "H2MIDI"."""

@@ -28,7 +28,6 @@ import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 from .auto import AutoStyle, generate, parse_style
 from .fixtures import ConfigError
 from .look import Look

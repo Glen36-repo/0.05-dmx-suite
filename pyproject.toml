@@ -15,7 +15,7 @@ hw = ["python-rtmidi>=1.5"]
 claude = ["mcp>=2.3"]
 # desktop app window and tray icon (WebView2 on Windows)
 desktop = ["pywebview>=5", "pystray>=0.19", "Pillow>=10"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "types-PyYAML"]
 
 [project.scripts]
 dmx-suite = "dmx_suite.cli:main"
@@ -26,3 +26,21 @@ include = ["dmx_suite*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# B023: inner helpers here are called inside the same loop pass; B905/UP042: style only
+ignore = ["B023", "B905", "UP042"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dmx_suite"]
+known-local-folder = ["conftest", "golden"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true

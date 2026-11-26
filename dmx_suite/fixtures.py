@@ -7,7 +7,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-
 DMX_CHANNELS = 512
 MAX_UNIVERSE = 15
 

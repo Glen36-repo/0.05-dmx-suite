@@ -11,8 +11,7 @@ import pytest
 from dmx_suite.app import App
 from dmx_suite.claude_tools import DmxTools
 from dmx_suite.node.link import ReconnectingSerial
-from dmx_suite.output import LogDriver, NodeSerialDriver
-from dmx_suite.output import enttec
+from dmx_suite.output import LogDriver, NodeSerialDriver, enttec
 from dmx_suite.output.enttec import EnttecOpenDriver, EnttecProDriver
 from dmx_suite.showfiles import load_show
 from dmx_suite.web.server import WebServer
