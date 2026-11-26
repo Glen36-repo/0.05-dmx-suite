@@ -12,7 +12,7 @@ from .fixtures import ConfigError, Patch, load_patch
 from .look import INTENSITY_RULE1, Look, load_look
 from .midi.map import MidiMap, load_map
 from .palettes import Palettes, load_palettes
-from .rig import Rig, load_rig
+from .rig import STROBE_DEFAULT_HZ, Rig, load_rig
 from .scenes import Scene, load_scenes
 from .shows import Setlist, Show, load_setlists, load_shows, parse_setlist, parse_show
 
@@ -91,6 +91,11 @@ def check_all(root: str | Path) -> list[str]:
             rigs[p.stem] = load_rig(p, patch)
         except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
             problems.append(f"rigs/{p.name}: {e}")
+            continue
+        hz = rigs[p.stem].strobe_limit_hz
+        if hz is not None and hz > STROBE_DEFAULT_HZ:
+            problems.append(f"warning: rigs/{p.name}: strobe limit raised to {hz:g} flashes a second; "
+                            f"above {STROBE_DEFAULT_HZ:g} can trigger photosensitive epilepsy")
     for p in sorted((root / "looks").glob("*.yaml")):
         try:
             looks[p.stem] = load_look(p, patch)

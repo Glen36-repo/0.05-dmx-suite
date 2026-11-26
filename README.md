@@ -177,6 +177,8 @@ Shows (`shows/shows/*.yaml`) have sets on fixed step timers. A set is either a l
 
 **Rule profiles:** each rig file picks which rig rules apply with `profile:`. `0.05_band` (the shipped rigs) is MASTER on/off with colour-only scenes, drum flash with MASTER off, and the kick light ignoring MASTER. `generic` is standard dimmer behaviour: lights follow the scene, a layer or look can set `intensity: 0-1`, and there's no drum flash. A block (`profile: {base: 0.05_band, master_exempt: [wash]}`) changes single settings. A rig file with no `profile:` runs as `0.05_band`. Safety rules (no glow, haze only from the Haze controls, grand master intensity only, head limits) apply under every profile. `dmx-suite check` refuses a scene or look that sets `intensity` while any rig uses a MASTER on/off profile.
 
+**Strobe limit (safety):** the whole rig can flash at most 3 times a second, whatever causes it (drum hits, flash effects). A flash is the rig's light output jumping by a quarter or more; one that comes too soon is held back until the limit allows it. Chases that move light around the rig aren't flashes and aren't touched. `strobe_limit_hz` in a rig file raises it (up to 25; `dmx-suite check` warns above 3, the common photosensitive-epilepsy guidance). It can't be turned off. Hardware strobe channels on a fixture aren't covered yet: their speed isn't known until fixture definitions get capability ranges (v2 R7).
+
 Levels in rig files are 0-100 %. Looks (`shows/looks/`) set colour, pixels, wheel, gobo and position only; a `dimmer` or `haze` key is rejected (hard rules 1 and 5). The static look is the fallback when no scene is playing.
 
 ## Node test script

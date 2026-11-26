@@ -38,9 +38,12 @@ def _hash(frames: dict[int, bytearray]) -> str:
     return h.hexdigest()[:16]
 
 
-def capture(rig_transform=None) -> dict[str, str]:
-    """rig_transform(rig) lets the test apply a profile before rendering."""
+def capture(rig_transform=None, forward_time: bool = False) -> dict[str, str]:
+    """rig_transform(rig) lets the test apply a profile before rendering. The v1 capture restarts
+    the clock at the same time for every scenario; `forward_time` moves it on 100 s per scenario
+    instead, as a real clock would (needed for anything that measures time between frames)."""
     out: dict[str, str] = {}
+    base = [1000.0]
     for rig_name in ("full", "small"):
         sf = load_show(SHOWS, rig=rig_name)
         rig = sf.rig if rig_transform is None else rig_transform(sf.rig)
@@ -49,11 +52,13 @@ def capture(rig_transform=None) -> dict[str, str]:
 
         def run(tag: str, source_at) -> None:
             for master in (True, False):
+                if forward_time:
+                    base[0] += 100.0
+                clock.t = base[0]
                 e.set_master(master)
-                clock.t = 1000.0
                 e.set_source(source_at(clock.t))
                 for t in TIMES:
-                    clock.t = 1000.0 + t
+                    clock.t = base[0] + t
                     e.tick()
                     out[f"{rig_name}|{tag}|master={master}|t={t}"] = _hash(e.frames)
 
@@ -68,7 +73,7 @@ def capture(rig_transform=None) -> dict[str, str]:
         # drum flash (MASTER off), blackout, grand master
         e.set_source(lambda _n: sf.look)
         e.set_master(False)
-        clock.t = 2000.0
+        clock.t = base[0] + 1000.0
         e.flash([f.id for f in rig.fixtures], velocity=90, colour="white", length_ms=200)
         out[f"{rig_name}|flash"] = _hash(e.frames)
         e.set_master(True)
@@ -76,7 +81,7 @@ def capture(rig_transform=None) -> dict[str, str]:
         out[f"{rig_name}|blackout"] = _hash(e.frames)
         e.set_blackout(False)
         e.set_grand(0.5)
-        clock.t = 2010.0
+        clock.t = base[0] + 1010.0
         e.tick()
         out[f"{rig_name}|grand50"] = _hash(e.frames)
     return out

@@ -350,6 +350,7 @@ Decided 26/11/2026 (v2):
 | Set steps (v2) | Fixed timers stay the default; a step can instead follow the tempo (`hold_beats` / `hold_bars`) |
 | Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
 | Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
+| Strobe limit: what counts | A flash is a rise of a quarter (or more) of the rig's light output from the darkest point since the last flash, measured on the final frame, so drum hits, flash effects and busking are all covered; a flash too soon is held (lights that got brighter keep last frame's light) rather than dropped; chases that move light without a rig-wide jump pass untouched. `strobe_limit_hz` 0.5-25, can't be turned off. Fixture hardware strobe channels aren't rate-checked until capability ranges arrive (R7) |
 | MASTER-exempt fixtures | Fixture ids, groups or a kind name (`kick` = every kick-kind fixture, as v1); they ignore MASTER and drum flashes and use the rig's `kick_colour` when the scene leaves them off. Under "generic" nothing is exempt and a kick-kind light is an ordinary light (auto shows use it like a wash) |
 
 Open:

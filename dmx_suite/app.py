@@ -258,6 +258,7 @@ class App:
             "time": time.time(),
             "master": e.master,
             "profile": e.rig.profile.summary(),
+            "strobe_limit": {"hz": e.rig.strobe_limit_hz, "held": e.rules.held},
             "blackout": e.blackout,
             "gig_lock": self.gig_lock,
             "grand": e.masters.grand.target,

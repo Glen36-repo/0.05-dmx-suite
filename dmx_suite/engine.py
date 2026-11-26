@@ -63,7 +63,7 @@ class Engine:
     # ------------------------------------------------------------------ output
 
     def _state(self, now: float) -> ControlState:
-        return ControlState(self.master, self.blackout, self.flashes, self.haze.tick(now))
+        return ControlState(self.master, self.blackout, self.flashes, self.haze.tick(now), now)
 
     def output(self) -> dict[int, bytearray]:
         """Render and send now. Called by the loop and directly by anything that must not wait."""
@@ -221,7 +221,7 @@ class Engine:
         full = Masters(1.0, {}, 1.0, 0.0)
         white = {e: 1.0 for e in ("red", "green", "blue", "white")}
         look = Look(fixtures={self.find: FixtureLook(colour=white)})
-        state = ControlState(True, False, {}, self.haze.tick(now))
+        state = ControlState(True, False, {}, self.haze.tick(now), now)
         frames = self.rules.render(look, state, full)
         for fx in self.rig.fixtures:  # exempt fixtures (kick light) ignore MASTER: dark them explicitly
             if fx.id in self.rig.exempt and fx.id != self.find:
