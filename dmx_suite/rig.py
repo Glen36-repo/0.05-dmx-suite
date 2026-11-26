@@ -64,6 +64,12 @@ class HazeConfig:
 
 
 @dataclass
+class OscConfig:
+    port: int | None = None  # None = OSC input off
+    allow: list[str] = field(default_factory=list)  # networks allowed to send; empty = this computer + private
+
+
+@dataclass
 class Rig:
     name: str
     patch: Patch
@@ -80,6 +86,7 @@ class Rig:
     outputs: list[dict[str, Any]] = field(default_factory=list)
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
+    osc: OscConfig = field(default_factory=OscConfig)
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
 
@@ -190,7 +197,32 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         layout=_layout(data.get("layout"), patch),
         profile=profile,
         exempt=resolve_exempt(profile, patch, present),
+        osc=_osc(data.get("osc")),
     )
+
+
+def _osc(d: Any) -> OscConfig:
+    if d is None or d is False:
+        return OscConfig()
+    if not isinstance(d, dict):
+        raise ConfigError("osc: needs port (and optionally allow: [networks])")
+    try:
+        port = int(d["port"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise ConfigError("osc: needs a port number, e.g. port: 9000") from e
+    if not 1024 <= port <= 65535:
+        raise ConfigError("osc port must be 1024-65535")
+    allow = d.get("allow") or []
+    if not isinstance(allow, list):
+        raise ConfigError("osc allow: a list of addresses or networks, e.g. [192.168.1.0/24]")
+    import ipaddress
+
+    for a in allow:
+        try:
+            ipaddress.ip_network(str(a), strict=False)
+        except ValueError as e:
+            raise ConfigError(f"osc allow: {a!r} isn't an address or network") from e
+    return OscConfig(port, [str(a) for a in allow])
 
 
 def parse_placement(fid: str, v: Any) -> Placement:

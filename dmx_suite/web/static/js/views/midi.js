@@ -25,12 +25,13 @@ function addRows(rows) {
 async function loadMap() {
   const m = await get("/api/midi/map");
   $("#map").replaceChildren(...m.mappings.map((x) => {
-    const { type, channel: ch, number, action, port, ...p } = x;
+    const { type, channel: ch, number, action, port, address, ...p } = x;
     const extra = Object.entries(p).map(([k, v]) => `${k}=${v}`).join(" ");
-    return el("tr", {}, el("td", { text: type + (port ? ` [${port}]` : "") }), el("td", { text: ch }), el("td", { text: number }),
+    const input = type === "osc" ? `OSC ${address}` : type + (port ? ` [${port}]` : "");
+    return el("tr", {}, el("td", { text: input }), el("td", { text: ch ?? "" }), el("td", { text: number ?? "" }),
       el("td", { text: `${action} ${extra}` }),
       el("td", {}, el("button", { onclick: async () => {
-        if (await attempt(() => api("POST", "/api/midi/remove", { type, channel: ch, number, port }))) loadMap();
+        if (await attempt(() => api("POST", "/api/midi/remove", { type, channel: ch, number, port, address }))) loadMap();
       } }, t("midi.remove"))));
   }));
 }

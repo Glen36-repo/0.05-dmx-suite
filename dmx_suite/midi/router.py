@@ -19,12 +19,22 @@ SHOW_ACTIONS = {"select_show", "select_set", "select_scene", "next_step", "next_
 class Incoming:
     """A MIDI message, normalised. `pressed` is False for note-off / velocity 0 / CC < 64."""
 
-    type: str  # note / program_change / control_change / other
-    channel: int  # 1-16
+    type: str  # note / program_change / control_change / osc / other
+    channel: int  # 1-16 (0 for OSC)
     number: int
     value: int
     pressed: bool
     raw_type: str
+    address: str = ""  # OSC
+    level: float | None = None  # OSC fader value 0-1 (MIDI: value / 127)
+
+    @classmethod
+    def from_osc(cls, address: str, args: list[Any]) -> Incoming:
+        from ..osc import level_of
+
+        lv = level_of(args)
+        pressed = True if lv is None else lv >= 0.5
+        return cls("osc", 0, 0, round((1.0 if lv is None else lv) * 127), pressed, "osc", address, lv)
 
     @classmethod
     def from_mido(cls, msg: Any) -> Incoming:
@@ -81,26 +91,33 @@ class MidiRouter:
     def handle_mido(self, msg: Any, port: str = "") -> str:
         return self.handle(Incoming.from_mido(msg), port)
 
+    def handle_osc(self, address: str, args: list[Any], source: str = "") -> str:
+        return self.handle(Incoming.from_osc(address, args), f"OSC {source}".strip())
+
     def handle(self, m: Incoming, port: str = "") -> str:
         result = self._route(m, port)
+        kind = f"osc {m.address}" if m.type == "osc" else m.raw_type
         self.monitor.add(
-            MonitorEntry(time.time(), port, m.channel, m.raw_type, m.number, m.value, result)
+            MonitorEntry(time.time(), port, m.channel, kind, m.number, m.value, result)
         )
         return result
 
     def _route(self, m: Incoming, port: str = "") -> str:
         if m.type == "other":
             return "ignored"
-        # learn takes any CC value (a pedal may start low), note-ons and program changes
-        learnable = m.pressed or m.type == "control_change"
+        # learn takes any CC or OSC value (a pedal or fader may start low), note-ons and program changes
+        learnable = m.pressed or m.type in ("control_change", "osc")
         with self._lock:
             learn = self._learn
             if learn and learnable:
                 action, params, cb, want_port = learn
-                if action in ("grand_master", "sub_master", "flash_level") and m.type != "control_change":
-                    return "learn: needs a CC (move a pedal or knob)"
-                bind = port if want_port == "this" else want_port
-                mapping = Mapping(m.type, m.channel, m.number, action, params, port=bind or None)
+                if action in ("grand_master", "sub_master", "flash_level") and m.type not in ("control_change", "osc"):
+                    return "learn: needs a CC or OSC fader (move a pedal, knob or fader)"
+                if m.type == "osc":
+                    mapping = Mapping("osc", 0, 0, action, params, address=m.address)
+                else:
+                    bind = port if want_port == "this" else want_port
+                    mapping = Mapping(m.type, m.channel, m.number, action, params, port=bind or None)
                 self.map.add(mapping)
                 self._learn = None
         if learn and learnable:
@@ -108,7 +125,7 @@ class MidiRouter:
                 cb(mapping)
             return f"learned: {mapping.describe()}"
 
-        mp = self.map.get(m.type, m.channel, m.number, port)
+        mp = self.map.get_osc(m.address) if m.type == "osc" else self.map.get(m.type, m.channel, m.number, port)
         if mp is None:
             return "unmapped"
         return self._act(mp, m)
@@ -121,7 +138,7 @@ class MidiRouter:
                 return "haze boost refused (disabled or cooling down)"
             return "haze boost on" if m.pressed else "haze boost release"
         if a in ("grand_master", "sub_master", "flash_level"):
-            level = m.value / 127
+            level = m.level if m.level is not None else m.value / 127
             if a == "grand_master":
                 e.set_grand(level)
             elif a == "sub_master":

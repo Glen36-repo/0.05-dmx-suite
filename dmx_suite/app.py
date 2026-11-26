@@ -47,6 +47,8 @@ class App:
         self.log_dir = log_dir
         self.alerts: list[dict[str, Any]] = []  # node dropped / weak, newest last
         self.show_problem: dict[str, str] | None = None  # running the last good show files (cli start-up)
+        self.osc: Any = None  # osc.OscServer, when the rig turns OSC on
+        self.osc_error: str | None = None
         self.midi_inputs: Any = None  # MidiInputs when running live
         self.clients: dict[str, dict[str, Any]] = {}  # e.g. "claude": {first, last, calls, last_call}
         self.screens: dict[int, dict[str, Any]] = {}  # open browser streams: id -> {ip, local, since}
@@ -160,6 +162,10 @@ class App:
                             "detail": m.get("port") or ("connected" if m["connected"] else "unplugged")})
         else:
             out.append({"kind": "midi", "name": "MIDI", "state": "sim", "detail": "simulated input"})
+        if self.osc is not None:
+            out.append(self.osc.state())
+        elif self.osc_error:
+            out.append({"kind": "osc", "name": "OSC", "state": "bad", "detail": self.osc_error})
         c = self.clients.get("claude")
         now = time.time()
         if c is None or now - c["last"] > 75:

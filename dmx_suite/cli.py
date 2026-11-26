@@ -278,6 +278,7 @@ class Session:
     fake: FakeMidiIn
     web: Any = None  # web.server.WebServer (imported lazily)
     real: MidiInputs | None = None
+    osc: Any = None  # osc.OscServer when the rig turns OSC on
 
     @property
     def engine(self) -> Engine:
@@ -286,6 +287,8 @@ class Session:
     def stop(self) -> None:
         if self.real:
             self.real.close()
+        if self.osc:
+            self.osc.stop()
         if self.web:
             self.web.stop()
         self.engine.stop()
@@ -345,6 +348,16 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
             session.real = MidiInputs(args.midi_port or show.rig.midi_inputs or None, router.handle_mido)
             app.midi_inputs = session.real
             out("MIDI in:", ", ".join(session.real.open) or "none yet (plug in and it connects by itself)")
+        if show.rig.osc.port:
+            from .osc import OscServer
+
+            try:
+                session.osc = OscServer(router.handle_osc, show.rig.osc.port, show.rig.osc.allow or None).start()
+                app.osc = session.osc
+                out(f"OSC in: port {session.osc.port}")
+            except OSError as e:  # port taken: say so, the show runs without OSC
+                app.osc_error = f"port {show.rig.osc.port}: {e}"
+                out(f"OSC in: couldn't listen on port {show.rig.osc.port} ({e})")
         session.engine.start()
     except BaseException:
         session.stop()
