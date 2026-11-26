@@ -122,6 +122,7 @@ class Rig:
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
     points: dict[str, Point] = field(default_factory=dict)  # head position points (v3)
+    auto: Any = None  # classify.AutoConfig: class overrides and lights left out of the auto show (v3.3)
 
     def point_problems(self) -> list[str]:
         """Points with a head outside this rig's head limits (they still clamp at output, rule 8)."""
@@ -246,7 +247,14 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         radio_channel=_channel(data.get("radio_channel")),
         tempo=_tempo(data.get("tempo")),
         points=parse_points(data.get("positions"), patch),
+        auto=_auto(data.get("auto"), patch),
     )
+
+
+def _auto(d: Any, patch: Patch) -> Any:
+    from .classify import parse_auto
+
+    return parse_auto(d, patch)
 
 
 def _unit(v: Any, what: str) -> float:

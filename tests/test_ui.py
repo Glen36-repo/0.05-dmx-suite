@@ -679,6 +679,7 @@ def test_store_a_head_point(ui):
     page.wait_for_selector("[data-point=drum_kit]")
     area = page.locator("[data-pad=mh_b] .area").bounding_box()
     page.mouse.click(area["x"] + area["width"] * 0.25, area["y"] + area["height"] * 0.5)
+    page.wait_for_function("document.querySelector('[data-pad=mh_b] .muted').textContent.startsWith('held')")
     page.fill("#point-name", "singer")
     page.fill("#point-desc", "Lead vocal, centre front")
     page.fill("#point-tags", "band, safe")

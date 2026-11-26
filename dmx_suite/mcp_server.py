@@ -72,6 +72,30 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.get_midi_map()
 
     @tool
+    def list_fx() -> str:
+        """The FX banks (Move, Colour, Flash, drum-reactive) for the running rig: each item's busy score, speed,
+        moods and whether this rig can run it (rig size scaling); how the lights are classified; the palettes."""
+        return t.list_fx()
+
+    @tool
+    def preview_look(pick_yaml: str, seconds: float = 10) -> str:
+        """Try an auto-show look on the rig: '{move: pan_sweep, colour: colour_chase, drum: kick_pump,
+        palette: cool, ride: {speed: 1, fan: 0.5, size: 0.5}, mood: mid}'. Says what the look quality rules
+        think. Not during gig lock. Haze is never part of a look."""
+        return t.preview_look(pick_yaml, seconds)
+
+    @tool
+    def get_quality_rules() -> str:
+        """The look quality rules (busy scores, mood speeds, contrast, palette rules, autopilot weights)."""
+        return t.quality_rules()
+
+    @tool
+    def save_quality_rules(yaml_text: str) -> str:
+        """Tune the look quality rules (quality.yaml: only the parts you change), e.g. 'max_busy: 1.1' or
+        'busy: {ballyhoo: 1.0}' or 'mood_speeds: {low: [slow]}'."""
+        return t.save_quality_rules(yaml_text)
+
+    @tool
     def get_alerts() -> str:
         """Alerts: what's offline or failing now and recently (time, device, message, state: active,
         dismissed, muted, snoozed, cleared), and which devices are muted for this rig. Read only."""

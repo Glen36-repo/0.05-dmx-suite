@@ -1,0 +1,356 @@
+{
+ "ref|audience": [
+  "d2e17cdcbed9",
+  "f015e4c8242b",
+  "ef70a6e6f824",
+  "b718ef4192de"
+ ],
+ "ref|ballyhoo": [
+  "b0f651aafcac",
+  "88a49570797e",
+  "6d4ec55bb49c",
+  "dbc999564905"
+ ],
+ "ref|bars": [
+  "48623bc076bd",
+  "e8ed52254eb0",
+  "2bd6191688d2",
+  "64a14afd58fd"
+ ],
+ "ref|bounce": [
+  "40c53673af64",
+  "5bb9ff55a4b2",
+  "27d58b468c22",
+  "8ae885fb6f26"
+ ],
+ "ref|carousel": [
+  "f15d85fcf6ad",
+  "bcb52997f038",
+  "65cb2061ed6d",
+  "206ea872b591"
+ ],
+ "ref|chase_in": [
+  "8aff4e40bd2b",
+  "ba5949d7c30f",
+  "0aeca7d6aaa3",
+  "f5fc74b4af39"
+ ],
+ "ref|chase_out": [
+  "43db02e02087",
+  "5ed26952e705",
+  "dfa031964833",
+  "ab8b8c4c68fd"
+ ],
+ "ref|circle": [
+  "7fe78d50f5a2",
+  "e284400c07e0",
+  "830eccafd6ce",
+  "83acb1c8fc70"
+ ],
+ "ref|colour_chase": [
+  "f15d85fcf6ad",
+  "4fca41280973",
+  "33b982d3faca",
+  "e208ba075edc"
+ ],
+ "ref|colour_fade": [
+  "d5c4e117f2b3",
+  "7e579cabc45b",
+  "e83f7efd754c",
+  "bedb7a3d4f9e"
+ ],
+ "ref|comet": [
+  "02dbeb7e3f7b",
+  "71a00a702993",
+  "63bab2eb206c",
+  "63bab2eb206c"
+ ],
+ "ref|crossfire": [
+  "166f21afa3f2",
+  "151cbc5669e0",
+  "6c30c4a80a82",
+  "abd5552e833e"
+ ],
+ "ref|cymbal_shimmer": [
+  "d78037d676d3",
+  "b2999a57a698",
+  "1253c3eaa212",
+  "3d5d98f37b14"
+ ],
+ "ref|fan": [
+  "dd3208335853",
+  "044415609ab6",
+  "1bd95055a7f2",
+  "6663a9c8762a"
+ ],
+ "ref|figure8": [
+  "23ab2dcea180",
+  "16d2eb721015",
+  "4811ef4a9023",
+  "4fa42d9fe7ab"
+ ],
+ "ref|fill": [
+  "a28542051962",
+  "e7c1d0757bc5",
+  "bdc29b174595",
+  "2dcaa4032329"
+ ],
+ "ref|fill_build": [
+  "8f1eccb0830b",
+  "85a9c7b3ce65",
+  "9fcbb194f411",
+  "e1cd9155dc29"
+ ],
+ "ref|fire": [
+  "2e67fee9e7aa",
+  "0a0cab8a8baa",
+  "45343f9cfbec",
+  "7bdbe8e6634a"
+ ],
+ "ref|float": [
+  "70c7ae3325d9",
+  "f19a73555bc3",
+  "71a93ff4f74d",
+  "2f31d308e6f8"
+ ],
+ "ref|gradient": [
+  "3250ebe28237",
+  "6419fdb94f30",
+  "fcfac03bd90f",
+  "7d6a0ea93cb8"
+ ],
+ "ref|kick_pump": [
+  "5b6c08647916",
+  "b99d3abd2b13",
+  "b99d3abd2b13",
+  "42361dbac337"
+ ],
+ "ref|kit": [
+  "3d5d98f37b14",
+  "3d5d98f37b14",
+  "3d5d98f37b14",
+  "3d5d98f37b14"
+ ],
+ "ref|lightning": [
+  "959778415b0b",
+  "cc5d29a33ed8",
+  "959778415b0b",
+  "cc5d29a33ed8"
+ ],
+ "ref|mirror": [
+  "166f21afa3f2",
+  "5f0fe75c7ee6",
+  "551f3928a1bd",
+  "b1c3a2e5ffd6"
+ ],
+ "ref|pan_sweep": [
+  "0fc2e814ee6a",
+  "1dfb287855dd",
+  "2e390e6683d8",
+  "d0609e88f6c0"
+ ],
+ "ref|plasma": [
+  "3bb9c7e51c09",
+  "fd433cc7f5c5",
+  "b74761de5afd",
+  "01b7ca5cdae0"
+ ],
+ "ref|police": [
+  "5d71aaa78bf6",
+  "5d71aaa78bf6",
+  "5d71aaa78bf6",
+  "9d4d461fc96b"
+ ],
+ "ref|pulse": [
+  "195c85e46126",
+  "3f0633290ebf",
+  "9be8b0493442",
+  "63be1bb3f917"
+ ],
+ "ref|radial": [
+  "eb563ad86fad",
+  "a3bec194daec",
+  "a41b0739cfb2",
+  "21653a1fda86"
+ ],
+ "ref|rainbow": [
+  "3b3c5a765d56",
+  "0f3a0d7a007d",
+  "95c4a28cb475",
+  "c22cc86eab46"
+ ],
+ "ref|random_points": [
+  "2343b7bee724",
+  "2343b7bee724",
+  "2343b7bee724",
+  "2343b7bee724"
+ ],
+ "ref|snare_hit": [
+  "d70bba52548f",
+  "7c8564f339b4",
+  "7c8564f339b4",
+  "3d5d98f37b14"
+ ],
+ "ref|sparkle": [
+  "2036da3a8fa0",
+  "302c71e71ebd",
+  "d0c936c58c97",
+  "a602ca3845c0"
+ ],
+ "ref|split": [
+  "cc29d3eca7ac",
+  "cc29d3eca7ac",
+  "cc29d3eca7ac",
+  "cc29d3eca7ac"
+ ],
+ "ref|static": [
+  "3d5d98f37b14",
+  "3d5d98f37b14",
+  "3d5d98f37b14",
+  "3d5d98f37b14"
+ ],
+ "ref|swim": [
+  "0214f2a61b68",
+  "617db343ec7f",
+  "01ab022f97e3",
+  "e9ebc72822a0"
+ ],
+ "ref|tilt_sweep": [
+  "8867779a7101",
+  "4dd22dc7f1d7",
+  "73ec41de9638",
+  "e9ced3ae9ff1"
+ ],
+ "ref|tom_roll": [
+  "3d5d98f37b14",
+  "4c472a5f4854",
+  "5a88fd5da3df",
+  "ad40ac58fb6b"
+ ],
+ "ref|twinkle": [
+  "c8b66c4264f9",
+  "b9085a972cfc",
+  "b69496f1948c",
+  "c76170993989"
+ ],
+ "ref|velocity_colour": [
+  "8686fe79540e",
+  "f938fefa2f06",
+  "f938fefa2f06",
+  "4a32af2d0997"
+ ],
+ "ref|wave": [
+  "78ad5d2863dd",
+  "0db4183a3e4d",
+  "ba3ab6565b3b",
+  "74aaebd0e114"
+ ],
+ "small|carousel": [
+  "bd23f814f7c8",
+  "45600e1884aa",
+  "dfad0ae3fe0d",
+  "f6741fdfffb8"
+ ],
+ "small|colour_chase": [
+  "bd23f814f7c8",
+  "116edd312b23",
+  "9e8edeccc86c",
+  "4aec3d9ecf71"
+ ],
+ "small|colour_fade": [
+  "bd23f814f7c8",
+  "d70a5376bd44",
+  "ee5be85fcd84",
+  "5749cac1a8e0"
+ ],
+ "small|cymbal_shimmer": [
+  "bd23f814f7c8",
+  "fc2e9c0eef7c",
+  "85b1bcf36599",
+  "bd23f814f7c8"
+ ],
+ "small|fill_build": [
+  "bd23f814f7c8",
+  "bd23f814f7c8",
+  "f23b206bed60",
+  "bd23f814f7c8"
+ ],
+ "small|fire": [
+  "633b179ed720",
+  "8eca1557e113",
+  "7a03dacb140e",
+  "1cabc62f8e2e"
+ ],
+ "small|kick_pump": [
+  "1aa7c08cc468",
+  "15dc20bd256a",
+  "15dc20bd256a",
+  "0dfdc78eed10"
+ ],
+ "small|lightning": [
+  "ca189f76fa77",
+  "8ae7498b01f4",
+  "ca189f76fa77",
+  "8ae7498b01f4"
+ ],
+ "small|police": [
+  "e3ea7da30d9e",
+  "e3ea7da30d9e",
+  "e3ea7da30d9e",
+  "9411fd1f0926"
+ ],
+ "small|pulse": [
+  "563d6cddd7f1",
+  "2d4b05d9090d",
+  "2a9697540b2c",
+  "16e5a9914071"
+ ],
+ "small|rainbow": [
+  "b33958978230",
+  "4ef8dfa800ea",
+  "f17cb59be029",
+  "cbb5f3e43ca3"
+ ],
+ "small|snare_hit": [
+  "afccfbe74f32",
+  "2d76c7493409",
+  "2d76c7493409",
+  "bd23f814f7c8"
+ ],
+ "small|sparkle": [
+  "55a4ede8dd69",
+  "661ecc772c41",
+  "55a4ede8dd69",
+  "661ecc772c41"
+ ],
+ "small|split": [
+  "bd23f814f7c8",
+  "bd23f814f7c8",
+  "bd23f814f7c8",
+  "bd23f814f7c8"
+ ],
+ "small|static": [
+  "bd23f814f7c8",
+  "bd23f814f7c8",
+  "bd23f814f7c8",
+  "bd23f814f7c8"
+ ],
+ "small|twinkle": [
+  "e0b5e6079a8e",
+  "b4b1a8d56b89",
+  "661ecc772c41",
+  "661ecc772c41"
+ ],
+ "small|velocity_colour": [
+  "e1d18762f955",
+  "e1d127e71409",
+  "e1d127e71409",
+  "4e049d60c3d0"
+ ],
+ "small|wave": [
+  "661ecc772c41",
+  "0a266a5e8ebe",
+  "ee826c38743f",
+  "d71f3f6d659b"
+ ]
+}

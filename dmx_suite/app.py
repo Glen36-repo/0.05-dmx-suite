@@ -47,6 +47,12 @@ class App:
         self.router = MidiRouter(self.engine, files.midimap, self.monitor, self.ctl, files.inputs)
         self.router.busk = self.busk  # MIDI / OSC action `busk`
         self.router.input_listeners.append(self._input_hit)  # step scenes waiting on an input (v3.2)
+        self.router.flash_fx = self.flash_fx_input  # MIDI / OSC action flash_fx (v3.3)
+        from .drums import BUS
+        from .fxbanks import Pick
+
+        self.bus = BUS  # named input hits by role: drum-reactive effects, autopilot energy
+        self.ride_pick = Pick()  # what the Ride page shows / last played (v3.3)
         self.gig_lock = False
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
@@ -455,7 +461,87 @@ class App:
 
     def _input_hit(self, inp: Any, m: Any, now: float) -> None:
         if m.pressed:
+            if m.type == "note" and inp.roles:
+                self.bus.add(inp.id, inp.roles, inp.strength(m.value), now)
             self.ctl.step_input(inp.id)
+
+    # ------------------------------------------------------------------ FX banks, ride, Flash FX (v3.3)
+
+    def quality(self) -> Any:
+        from .quality import Quality, load_rules
+
+        return Quality(load_rules(self.files.root))
+
+    def fx_catalogue(self) -> dict[str, Any]:
+        """The FX banks for this rig: every item, whether this rig can run it (rig size scaling),
+        how the lights are classified, the palettes and the quality rules."""
+        from .classify import auto_rig
+        from .fxbanks import FLASH_ITEMS, ITEMS, can_run
+
+        ar = auto_rig(self.engine.rig)
+        return {"rig": ar.summary(), "items": [{**i.to_json(), "available": can_run(i, ar)} for i in [*ITEMS, *FLASH_ITEMS]],
+                "palettes": {k: {"name": v["name"], "tags": v["tags"]} for k, v in self.files.palettes.sets.items()},
+                "pick": self.ride_pick.to_dict(), "quality": self.quality().r}
+
+    def compose(self, pick: Any, name: str = "Ride") -> Any:
+        """A pick as a checked scene for the running rig (rules, rig scaling)."""
+        from .classify import auto_rig
+        from .fxbanks import compose
+
+        pal = self.files.palettes
+        sets = pal.sets
+        key = pick.palette if pick.palette in sets else next(iter(sets))
+        data = compose(pick, auto_rig(self.engine.rig), list(sets[key]["colours"]), name)
+        return parse_scene(data, self.files.patch, pal, name), data
+
+    def ride_play(self, pick_data: dict[str, Any], fade_s: float | None = None) -> dict[str, Any]:
+        """Play a Ride look now: FX + palette + ride settings (the Ride page; the autopilot uses it too)."""
+        from .fxbanks import Pick
+
+        pick = Pick.from_dict(pick_data)
+        sc, data = self.compose(pick)
+        if sc.uses_intensity and self.engine.rig.profile.master_gate:
+            raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
+        fade = (pick.ride.fade * 4.0) if fade_s is None else fade_s
+        issues = self.quality().combo_issues(pick, "mid")
+        self.ride_pick = pick
+        label = " + ".join(x for x in (pick.move, pick.colour, pick.drum) if x) + f" · {pick.palette}"
+        self.ctl.select_ride(f"Ride: {label}", ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff),
+                             sc, fade)
+        return {"ok": True, "playing": label, "issues": issues, "scene": data}
+
+    def flash_fx(self, kind: str, down: bool = True, colour: Any = None, side: str = "left",
+                 length_ms: int | None = None) -> str:
+        """Flash FX: held while down (length_ms None), or a timed hit."""
+        from . import flashfx
+
+        key = f"flashfx/{kind}"
+        if not down:
+            if length_ms is None:
+                self.engine.release(key, 0.0)
+            return f"{kind} off"
+        lights, left = flashfx.lights_for(self)
+        col = None
+        if colour not in (None, "show"):
+            col = self.files.palettes.colour(colour, "flash_fx colour") if isinstance(colour, str) else colour
+        elif colour == "show":
+            col = dict(self.engine.look.show_colour)
+        now = self.engine.clock()
+        length = None if length_ms is None else max(0.02, length_ms / 1000)
+        fn = flashfx.make(kind, lights, now, col, length or 0.4, side=side, left=left,
+                          frozen=self.engine.look if kind == "freeze" else None)
+        self.engine.hold(flashfx.override(key, fn, now, length, 0.0))
+        return f"{kind} on"
+
+    def flash_fx_input(self, p: dict[str, Any], pressed: bool, one_shot: bool) -> str:
+        """MIDI / OSC flash_fx: a pad or pedal holds it; a program change (no release) is timed."""
+        length = p.get("length_ms")
+        if one_shot and length is None:
+            length = 400
+        if not pressed and length is not None:
+            return "release"
+        return self.flash_fx(str(p["fx"]), pressed, p.get("colour"), str(p.get("side", "left")),
+                             None if length is None else int(length))
 
     # ------------------------------------------------------------------ named inputs (v3)
 

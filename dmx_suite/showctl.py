@@ -135,6 +135,17 @@ class ShowController:
             self.player.go(index, self.e.clock())
         self.e.set_source(self.player, self.player.scene)
 
+    @_locked
+    def select_ride(self, label: str, player: Any, scene: Any, fade_s: float = 0.0) -> None:
+        """The Ride page or the autopilot is playing a look (v3.3)."""
+        from . import steps
+
+        steps.set_active(None)
+        self.mode, self.show, self.set_name, self.scene_key, self.player = "ride", None, None, None, None
+        self.ride_label = label
+        self.e.set_source(player, scene, fade_s)
+        self._save()
+
     # ------------------------------------------------------------------ step scenes (v3.2)
 
     def step_runner(self) -> Any:
@@ -233,6 +244,8 @@ class ShowController:
     @_locked
     def now(self) -> Now:
         n = Now(self.mode, "static look", bpm=self.tempo.bpm)
+        if self.mode == "ride":
+            n.label = getattr(self, "ride_label", "Ride")
         if self.mode == "scene" and self.scene_key:
             n.scene, n.label = self.scene_key, self.files.scenes[self.scene_key].name
         elif self.mode == "show" and self.player and self.show:

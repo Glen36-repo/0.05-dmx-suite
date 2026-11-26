@@ -60,6 +60,8 @@ ACTIONS: dict[str, set[str]] = {
     "step_back": set(),
     "step_speed": set(),  # fader: 0.25x - 4x
     "step_fade": set(),  # fader: fades 0x - 2x
+    # Flash FX (v3.3): held while pressed, or for length_ms
+    "flash_fx": {"fx", "colour", "side", "length_ms"},
 }
 CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade"}  # need a CC or OSC
 
@@ -142,6 +144,13 @@ def validate(m: Mapping, input_type: str | None = None) -> None:
     for action, key in (("select_show", "show"), ("select_set", "set"), ("select_scene", "scene")):
         if m.action == action and not m.params.get(key):
             raise ConfigError(f"{where}: {action} needs {key}")
+    if m.action == "flash_fx":
+        from ..flashfx import KINDS
+
+        if m.params.get("fx") not in KINDS:
+            raise ConfigError(f"{where}: flash_fx needs fx: one of {', '.join(KINDS)}")
+        if m.params.get("side", "left") not in ("left", "right"):
+            raise ConfigError(f"{where}: flash_fx side is left or right")
     if m.action == "busk" and (not m.params.get("panel") or not m.params.get("widget")):
         raise ConfigError(f"{where}: busk needs panel and widget")
     if m.action == "sub_master":

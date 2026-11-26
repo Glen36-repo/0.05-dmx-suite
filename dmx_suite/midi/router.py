@@ -66,6 +66,7 @@ class MidiRouter:
         self.inputs = inputs if inputs is not None else Inputs()
         self.monitor = monitor or MidiMonitor()
         self.busk: Callable[[str, str, bool, float | None], str] | None = None  # App.busk
+        self.flash_fx: Callable[[dict[str, Any], bool, bool], str] | None = None  # App.flash_fx_input
         # (action, params, callback, port fragment the mapping is tied to)
         self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None, str | None] | None = None
         # learn an input's message: (input id, callback with the learned message)
@@ -253,6 +254,13 @@ class MidiRouter:
             except Exception as err:
                 return f"{a}: {err}"
             return f"{a} x{value:.2f}"
+        if a == "flash_fx":
+            if self.flash_fx is None:
+                return "flash_fx: not running"
+            try:
+                return self.flash_fx(p, m.pressed, m.type == "program_change")
+            except Exception as err:  # a bad press must never stop the show
+                return f"flash_fx failed: {err}"
         if a in ("step_next", "step_back"):
             if not m.pressed:
                 return "release"

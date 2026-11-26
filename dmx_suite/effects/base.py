@@ -252,6 +252,7 @@ class Run:
     blend_mode: str = "replace"
     level: float = 1.0
     seed_text: str = ""
+    now: float = 0.0  # the engine's clock (drum-reactive effects read hits by it, v3.3)
     _pending: dict[str, list[Colour | None]] = field(default_factory=dict)
 
     def fl(self, fid: str) -> FixtureLook:

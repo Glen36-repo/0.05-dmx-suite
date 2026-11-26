@@ -47,7 +47,7 @@ DEFAULT_PORT = 8505
 # what Claude's token may change (everything else is the people at the laptop's call)
 MAX_UPLOAD = 20 * 1024 * 1024
 CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/claude/haze", "/api/nodes/assign", "/api/validate/scene",
-                 "/api/undo/claude")
+                 "/api/undo/claude", "/api/ride/check")
 SESSION_COOKIE = "dmx_session"
 
 
@@ -377,6 +377,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     "problems": rig.point_problems()})
             if path == "/api/alerts":
                 return self._json(200, app.alerts_view())
+            if path == "/api/fx":  # FX banks for this rig (v3.3)
+                return self._json(200, app.fx_catalogue())
             if path == "/api/kelvin":
                 from ..colourtheory import KELVIN_PRESETS, hex_of, kelvin
 
@@ -698,6 +700,29 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
                 return self._json(200, {"ok": True, **app.alerts_view()})
+            if path == "/api/ride" and method == "POST":  # play a Ride look: FX + palette + ride settings (v3.3)
+                try:
+                    return self._json(200, app.ride_play(body.get("pick") or {}, body.get("fade_s")))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/flashfx" and method == "POST":
+                try:
+                    lm = body.get("length_ms")
+                    msg = app.flash_fx(str(body.get("fx", "")), bool(body.get("down", True)), body.get("colour"),
+                                       str(body.get("side", "left")), None if lm is None else int(lm))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+                return self._json(200, {"ok": True, "result": msg})
+            if path == "/api/ride/check" and method == "POST":  # a pick as a scene + quality notes, nothing played
+                from ..fxbanks import BY_ID, Pick
+
+                pick = Pick.from_dict(body.get("pick") or {})
+                bad = [x for x in (pick.move, pick.colour, pick.drum) if x and x not in BY_ID]
+                if bad:
+                    raise ApiError(400, f"unknown FX item(s): {', '.join(bad)}")
+                _, scene = app.compose(pick)
+                return self._json(200, {"issues": app.quality().combo_issues(pick, str(body.get("mood", "mid"))),
+                                        "scene": scene})
             if path == "/api/steps/capture" and method == "POST":  # read only: the lights as a step's `set`
                 try:
                     return self._json(200, {"set": app.capture_step(list(body.get("fixtures") or []))})
@@ -816,6 +841,15 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     bid = s.delete_point(rig, str(b["name"]))
                 else:
                     raise ApiError(400, "point action: put, store, rename or delete")
+            elif parts == ["auto"] and method == "POST":  # classification overrides for the running rig (v3.3)
+                rig_name = str(b.get("rig") or app.names[0])
+                data = s.read("rig", rig_name)
+                auto = {k: v for k, v in (("classes", b.get("classes") or {}), ("exclude", b.get("exclude") or [])) if v}
+                if auto:
+                    data["auto"] = auto
+                else:
+                    data.pop("auto", None)
+                bid = s.put("rig", rig_name, data, f"auto show lights on rig {rig_name}")
             elif parts == ["device"] and method == "POST":
                 a = str(b.get("action", "put"))
                 if a == "put":

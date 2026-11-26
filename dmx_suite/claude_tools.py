@@ -85,6 +85,10 @@ HEAD POINTS (v3, per rig file `positions:`): named aim points, e.g. drum_kit, au
   description, tags (band, audience, safe, floor, ceiling...), a rough stage place {x, y, z} and
   per-head pan/tilt 0-1. Scenes name them (`position: drum_kit`, sweep from/to). list_points shows
   them with descriptions: use them to work out where to aim. A head a point doesn't cover stays put.
+AUTO SHOW (v3.3): list_fx shows the FX banks for this rig (Move, Colour, Flash, drum-reactive), how the
+  lights are classified, and the palettes. preview_look tries a pick {move, colour, drum, palette, ride:
+  {speed, fade, fan, size, shift}, mood} and says what the look quality rules think (get_quality_rules,
+  save_quality_rules tune them: busy scores, one lead at a time, mood speeds, contrast, palettes).
 NAMED INPUTS (v3, inputs.yaml): MIDI/OSC inputs defined once in devices (e.g. td25: kick, snare,
   crash; fcb1010: pedals) with roles (kick, snare, tom, cymbal, count_in, activity). MIDI maps
   name them: `{input: snare, action: flash, fixtures: [bars]}`. To change a note, change the input.
@@ -262,6 +266,28 @@ class DmxTools:
     def get_midi_map(self) -> str:
         names = self.local.names("midi")
         return "\n---\n".join(f"# midi/{n}.yaml\n" + self.local.read_text("midi", n) for n in names)
+
+    def list_fx(self) -> str:
+        r = self._live("GET", "/api/fx")
+        items = [{k: i[k] for k in ("id", "bank", "label", "busy", "speed", "moods", "available")} for i in r["items"]]
+        return _dump({"rig": r["rig"], "items": items, "palettes": r["palettes"]})
+
+    def quality_rules(self) -> str:
+        from .quality import load_rules
+
+        return _dump(load_rules(self.shows))
+
+    def save_quality_rules(self, yaml_text: str) -> str:
+        data = _yaml(yaml_text, "quality rules")
+        return self._write("PUT", "/api/store/quality/", {"data": data}, lambda: self.local.put("quality", "", data))
+
+    def preview_look(self, pick_yaml: str, seconds: float = 10) -> str:
+        """Compose an FX pick for this rig, say what the quality rules think, and play it for a while."""
+        pick = _yaml(pick_yaml, "pick")
+        r = self._live("POST", "/api/ride/check", {"pick": pick, "mood": pick.get("mood", "mid")})
+        msg = self._live("POST", "/api/preview", {"scene_data": r["scene"], "seconds": seconds})["message"]
+        issues = r["issues"]
+        return msg + (". Quality: " + "; ".join(issues) if issues else ". Quality: fine")
 
     def get_alerts(self) -> str:
         return _dump(self._live("GET", "/api/alerts"))

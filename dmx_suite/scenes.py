@@ -48,7 +48,7 @@ from .versions import read_doc
 EFFECTS = {name: e.keys() for name, e in effects.REGISTRY.items()}
 MOVEMENT = {name for name, e in effects.REGISTRY.items() if e.movement}
 STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe", "zoom", "focus", "frost", "prism"}
-COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats"}
+COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats", "shift"}
 
 
 # --------------------------------------------------------------------------- model
@@ -64,6 +64,7 @@ class Layer:
     level: float = 1.0  # how strongly this layer's colour counts (0-1)
     blend: str = "replace"  # replace | max | add
     mute: bool = False
+    shift: float = 0.0  # phase offset, part of a cycle (Ride "shift", v3.3)
 
     def period(self) -> float | None:
         e = effects.get(self.effect) if self.effect else None
@@ -194,7 +195,8 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     if blend not in BLENDS:
         raise LookError(f"{what}: blend must be one of {', '.join(BLENDS)}")
     level = _num(d.get("level", 1.0), f"{what} level", 0, 1)
-    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)))
+    shift = _num(d.get("shift", 0.0), f"{what} shift", 0, 1)
+    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)), shift)
 
 
 def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") -> Scene:
@@ -286,7 +288,7 @@ class ScenePlayer:
             top_dark: set[str] = set()
             for i, (layer, fids) in enumerate(self._layers):
                 if fids and not layer.mute:
-                    self._apply(i, layer, fids, t, look, top_dark)
+                    self._apply(i, layer, fids, t, look, top_dark, now)
             for f in top_dark:
                 fl = look.fixtures.get(f)
                 if fl:
@@ -296,7 +298,7 @@ class ScenePlayer:
         dark: set[str] = set()
         for i, (layer, fids) in enumerate(self._layers):
             if fids and not layer.mute:
-                self._apply(i, layer, fids, t, look, dark)
+                self._apply(i, layer, fids, t, look, dark, now)
         for f in dark:  # heads move between positions dark
             fl = look.fixtures.get(f)
             if fl:
@@ -342,10 +344,12 @@ class ScenePlayer:
             self._units[key] = units
         return self._units[key]
 
-    def _apply(self, i: int, ly: Layer, fids: list[str], t: float, look: Look, dark: set[str]) -> None:
+    def _apply(self, i: int, ly: Layer, fids: list[str], t: float, look: Look, dark: set[str], now: float = 0.0) -> None:
         p = ly.params
+        if ly.shift:
+            t += ly.shift * (ly.period() or 0.0)
         run = Run(t, fids, look, dark, self._pixels, lambda per_pixel: self._units_for(i, per_pixel),
-                  ly.blend, ly.level, f"{self.scene.name}|{i}")
+                  ly.blend, ly.level, f"{self.scene.name}|{i}", now)
         plain = ly.blend == "replace" and ly.level >= 1
         # static attributes (also allowed alongside an effect's own settings)
         for f in fids:

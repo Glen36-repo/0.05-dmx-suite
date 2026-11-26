@@ -12,8 +12,9 @@ from .base import BLENDS, Effect, ParseCtx, Run, Unit, place_units
 from .classic import CLASSIC
 from .matrix import MATRIX
 from .more import MORE
+from .ride import RIDE
 
-REGISTRY: dict[str, Effect] = {cls.name: cls() for cls in (*CLASSIC, *MORE, *MATRIX)}
+REGISTRY: dict[str, Effect] = {cls.name: cls() for cls in (*CLASSIC, *MORE, *MATRIX, *RIDE)}
 
 
 def get(name: str) -> Effect | None:

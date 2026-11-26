@@ -2,6 +2,18 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v3, release V3.3)
+
+### Added
+- Auto classification: every light sorted into head, wash, pixel, strobe, effect or kick by what it can do; override or leave lights out per rig (`auto:`). Haze never joins.
+- FX banks: Move FX (13), Colour FX (23), drum-reactive (6) and Flash FX (8), each with what it needs, how busy it is, its speed and moods. 18 new registry effects, also in the scene builder.
+- Drum-reactive effects driven by named input roles (kick pump, snare hit, tom roll, cymbal shimmer, fill build, velocity colour).
+- Flash FX from pads and pedals (`flash_fx`): blinder, colour hit, strobe, blackout, freeze, flash and decay, chase hit, rig split hit.
+- Ride controls: speed, fade, fan, size, shift, global and per bank; layer `shift` (phase offset) on any effect.
+- Look quality rules as data (`quality.yaml`): busy scores, one lead at a time, mood speeds, speed matching, contrast between looks, palette theory.
+- Rig size scaling: only what the rig can do is offered.
+- Claude: list the FX banks, preview a look with its quality notes, read and tune the quality rules.
+
 ## Unreleased (v3, release V3.2)
 
 ### Added

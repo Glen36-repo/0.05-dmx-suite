@@ -200,6 +200,12 @@ def check_all(root: str | Path) -> list[str]:
         pal = None
     for rk, rig in rigs.items():
         problems += [f"warning: rigs/{rk}.yaml {w}" for w in rig.point_problems()]
+    try:
+        from .quality import load_rules
+
+        load_rules(root)
+    except FILE_ERRORS as e:
+        problems.append(f"quality.yaml: {e}")
     scenes: dict = {}
     shows: dict = {}
     if pal is not None:
