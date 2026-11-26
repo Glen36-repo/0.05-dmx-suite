@@ -131,6 +131,8 @@ class Sweep(Effect):
 
     def render(self, p: dict[str, Any], run: Run) -> None:
         for f, off in zip(run.fids, _offsets(p, run)):
+            if f not in p["from"] or f not in p["to"]:
+                continue  # a point this head doesn't have: it stays where it is
             phase = (run.t / p["period_s"] + off) % 1.0
             x = 0.5 - 0.5 * math.cos(2 * math.pi * phase)  # smooth there and back
             (p0, t0), (p1, t1) = p["from"][f], p["to"][f]

@@ -31,6 +31,7 @@ from ..access import Access, lan_addresses
 from ..access import claude_token as default_claude_token
 from ..app import App
 from ..fixtures import ConfigError
+from ..midi.named import device_profiles, load_device_profile
 from ..paths import app_token_file
 from ..setup import patch_report
 from ..store import LockedError, StoreError
@@ -352,6 +353,27 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, [asdict(e) for e in app.monitor.since(since)])
             if path == "/api/midi/map":
                 return self._json(200, app.router.map.to_dict())
+            if path == "/api/inputs":  # named inputs (v3), with where each is used
+                ins = app.router.inputs
+                input_rows = ins.summary()
+                for row in input_rows:
+                    m = app.router.map.get_input(row["id"])
+                    row["mapped"] = m.describe() if m else None
+                devices = [{"id": d.id, "name": d.name, "port": d.port, "channel": d.channel, "inputs": d.inputs}
+                           for d in ins.devices.values()]
+                return self._json(200, {"devices": devices, "inputs": input_rows, "profiles": device_profiles(app.files.root)})
+            if path == "/api/points":  # head points of the running rig, plus what each is used by
+                rig = app.engine.rig
+                return self._json(200, {"rig": app.names[0], "points": [
+                    {"name": pt.name, "description": pt.description, "tags": pt.tags, "stage": pt.stage,
+                     "heads": {f: {"pan": v[0], "tilt": v[1]} for f, v in pt.heads.items()},
+                     "missing": [f.id for f in rig.fixtures if f.type.has("pan") and not f.type.colour_only
+                                 and f.id not in pt.heads]} for pt in rig.points.values()],
+                    "problems": rig.point_problems()})
+            if path.startswith("/api/points/used/"):
+                return self._json(200, {"used": app.store.point_users(path.rsplit("/", 1)[1])})
+            if path.startswith("/api/inputs/used/"):
+                return self._json(200, {"used": app.store.input_users(path.rsplit("/", 1)[1])})
             if path == "/api/addresses":
                 rows, notes = patch_report(app.files.patch, app.engine.rig)
                 return self._json(200, {"rows": [asdict(r) for r in rows], "notes": notes})
@@ -666,13 +688,17 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 app.require_unlocked("removing a mapping")
                 if b["type"] == "osc":
                     r.map.remove(("osc", 0, 0, b["address"]))
+                elif b["type"] == "input":
+                    r.map.remove(("input", 0, 0, b["input"]))
                 else:
                     r.map.remove((b["type"], int(b["channel"]), int(b["number"]), b.get("port") or ""))
-            elif action == "save":
-                app.require_unlocked("saving the MIDI map")
-                path = app.files.midimap_path  # validated and backed up like every other edit
-                bid = app.store.put("midi", path.stem, r.map.to_dict(), f"save MIDI map {path.stem}")
-                return {"ok": True, "saved": str(path.name), "backup": bid}
+            elif action == "save":  # validated and backed up like every other edit, with learned inputs
+                bid = app.save_midi_map()
+                return {"ok": True, "saved": str(app.files.midimap_path.name), "backup": bid}
+            elif action == "learn_input":
+                return {"ok": True, "message": app.learn_input(str(b["input"]), b.get("device"), bool(b.get("add")))}
+            elif action == "calibrate":
+                return app.calibrate(str(b["input"]), str(b.get("level", "normal")), str(b.get("step", "start")))
             else:
                 raise ApiError(404, "unknown MIDI action")
             return {"ok": True}
@@ -708,6 +734,39 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 bid = s.remove_fixture(str(b.get("id", "")))
             elif parts == ["patch"] and method == "PUT":
                 bid = s.put_patch(b.get("fixtures"))
+            elif parts == ["input"] and method == "POST":  # named inputs (v3)
+                a = str(b.get("action", "put"))
+                if a == "put":
+                    bid = s.put_input(str(b["device"]), str(b["name"]), b.get("value") or {}, b.get("device_info"))
+                elif a == "rename":
+                    bid = s.rename_input(str(b["name"]), str(b["new_name"]))
+                elif a == "delete":
+                    bid = s.delete_input(str(b["name"]))
+                else:
+                    raise ApiError(400, "input action: put, rename or delete")
+            elif parts == ["point"] and method == "POST":  # head position points (v3)
+                a = str(b.get("action", "put"))
+                rig = str(b.get("rig") or app.names[0])
+                if a in ("put", "store"):
+                    bid = s.put_point(rig, str(b["name"]), b.get("value") or {}, merge=a == "store")
+                elif a == "rename":
+                    bid = s.rename_point(str(b["name"]), str(b["new_name"]))
+                elif a == "delete":
+                    bid = s.delete_point(rig, str(b["name"]))
+                else:
+                    raise ApiError(400, "point action: put, store, rename or delete")
+            elif parts == ["device"] and method == "POST":
+                a = str(b.get("action", "put"))
+                if a == "put":
+                    bid = s.put_device(str(b["device"]), b.get("value") or {})
+                elif a == "delete":
+                    bid = s.delete_device(str(b["device"]))
+                elif a == "load":  # a device profile (shipped or the show's devices/ folder)
+                    bid = s.put_device(str(b.get("as") or b["profile"]), load_device_profile(app.files.root, str(b["profile"])))
+                elif a == "export":
+                    bid = s.export_device(str(b["device"]))
+                else:
+                    raise ApiError(400, "device action: put, delete, load or export")
             elif parts == ["group"] and method == "POST":
                 bid = s.edit_group(str(b.get("action", "")), str(b.get("name", "")), b.get("fixtures"), b.get("new_name"))
             elif len(parts) == 3 and parts[0] in ("palettes", "fixtures") and method in ("PUT", "DELETE"):

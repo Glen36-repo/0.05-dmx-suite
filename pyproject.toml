@@ -27,6 +27,9 @@ version = {attr = "dmx_suite.__version__"}
 [tool.setuptools.packages.find]
 include = ["dmx_suite*"]
 
+[tool.setuptools.package-data]
+dmx_suite = ["web/static/**/*", "midi/devices/*.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["first_run: the browser test starts on a laptop that hasn't been through the setup wizard"]

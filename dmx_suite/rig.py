@@ -23,6 +23,34 @@ class HeadLimit:
         return min(max(v, lo), hi)
 
 
+STAGE_X = ("left", "centre", "right")
+STAGE_Y = ("front", "middle", "back")
+STAGE_Z = ("floor", "low", "mid", "high", "ceiling")
+
+
+@dataclass
+class Point:
+    """A named aim point (v3): where each head must point to hit the same spot, per rig config.
+    pan/tilt are 0-1 of the head's range (16-bit through fine channels). Not every head needs it."""
+
+    name: str
+    heads: dict[str, tuple[float, float]] = field(default_factory=dict)
+    description: str = ""
+    tags: list[str] = field(default_factory=list)
+    stage: dict[str, str] = field(default_factory=dict)  # rough place: x left/centre/right, y, z
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {}
+        if self.description:
+            d["description"] = self.description
+        if self.tags:
+            d["tags"] = list(self.tags)
+        if self.stage:
+            d["stage"] = dict(self.stage)
+        d["heads"] = {f: {"pan": round(p, 5), "tilt": round(t, 5)} for f, (p, t) in self.heads.items()}
+        return d
+
+
 SHAPES = ("row", "ring", "grid")  # how a pixel light's pixels are laid out on the layout grid
 GRID_MAX = 200  # layout size limit, cells
 
@@ -93,6 +121,18 @@ class Rig:
     tempo: TempoConfig = field(default_factory=TempoConfig)
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
+    points: dict[str, Point] = field(default_factory=dict)  # head position points (v3)
+
+    def point_problems(self) -> list[str]:
+        """Points with a head outside this rig's head limits (they still clamp at output, rule 8)."""
+        out = []
+        for pt in self.points.values():
+            for fid, (pan, tilt) in pt.heads.items():
+                lim = self.limit(fid)
+                if not (lim.pan[0] <= pan <= lim.pan[1] and lim.tilt[0] <= tilt <= lim.tilt[1]):
+                    out.append(f"point {pt.name}: {fid} is outside its head limits (pan {pan:.0%}, tilt {tilt:.0%}); "
+                               f"it's held at the limit (rule 8): re-aim it")
+        return out
 
     @property
     def fixtures(self):
@@ -205,7 +245,63 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         change_fade_s=_secs(data.get("change_fade_s", 0), "change_fade_s"),
         radio_channel=_channel(data.get("radio_channel")),
         tempo=_tempo(data.get("tempo")),
+        points=parse_points(data.get("positions"), patch),
     )
+
+
+def _unit(v: Any, what: str) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError) as e:
+        raise ConfigError(f"{what} must be 0-1") from e
+    if isinstance(v, bool) or not 0 <= f <= 1:
+        raise ConfigError(f"{what} must be 0-1")
+    return f
+
+
+def parse_point(name: str, v: Any, patch: Patch) -> Point:
+    import re
+
+    what = f"position {name}"
+    if not re.match(r"^[a-z0-9][a-z0-9_-]{0,39}$", str(name)):
+        raise ConfigError(f"{what}: names use lower case letters, digits, _ or -")
+    if not isinstance(v, dict) or set(v) - {"description", "tags", "stage", "heads"}:
+        raise ConfigError(f"{what}: description, tags, stage and heads: {{head: {{pan, tilt}}}}")
+    heads: dict[str, tuple[float, float]] = {}
+    for fid, pv in (v.get("heads") or {}).items():
+        if fid not in patch.fixtures:
+            raise ConfigError(f"{what}: unknown fixture {fid!r}")
+        t = patch.fixtures[fid].type
+        if t.colour_only:
+            raise ConfigError(f"{what}: {fid} is colour only (rule 7)")
+        if not t.has("pan"):
+            raise ConfigError(f"{what}: {fid} has no pan/tilt")
+        if not isinstance(pv, dict) or set(pv) != {"pan", "tilt"}:
+            raise ConfigError(f"{what} {fid}: needs pan and tilt (0-1)")
+        heads[str(fid)] = (_unit(pv["pan"], f"{what} {fid} pan"), _unit(pv["tilt"], f"{what} {fid} tilt"))
+    tags = v.get("tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+    if not isinstance(tags, list) or not all(isinstance(x, str) and x.strip() for x in tags):
+        raise ConfigError(f"{what}: tags is a list of words, e.g. [band, safe]")
+    stage = v.get("stage") or {}
+    if not isinstance(stage, dict):
+        raise ConfigError(f"{what}: stage is {{x, y, z}}")
+    for k, allowed in (("x", STAGE_X), ("y", STAGE_Y), ("z", STAGE_Z)):
+        if k in stage and stage[k] not in allowed:
+            raise ConfigError(f"{what}: stage {k} is one of {', '.join(allowed)}")
+    if set(stage) - {"x", "y", "z"}:
+        raise ConfigError(f"{what}: stage is {{x, y, z}}")
+    return Point(str(name), heads, str(v.get("description") or ""), [str(x).strip() for x in tags],
+                 {k: str(x) for k, x in stage.items()})
+
+
+def parse_points(d: Any, patch: Patch) -> dict[str, Point]:
+    if d is None:
+        return {}
+    if not isinstance(d, dict):
+        raise ConfigError("positions: named points, each with heads: {head: {pan, tilt}}")
+    return {str(k): parse_point(str(k), v, patch) for k, v in d.items()}
 
 
 def _channel(v: Any) -> int | None:

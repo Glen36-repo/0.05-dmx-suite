@@ -13,6 +13,10 @@ one without a port, so the SamplePad and the TD-25 can both send ch 10 notes and
 
 OSC messages share the same map: `{type: osc, address: /dmx/grand, action: grand_master}` (no
 channel or number). Faders (grand_master, sub_master, flash_level) take OSC or a MIDI CC.
+
+v3 (file format 5): mappings name an input from shows/inputs.yaml instead of a raw message:
+`{input: snare, action: flash, fixtures: [bars]}`. Change the input's note once and every mapping
+follows. Raw mappings still load (and win over nothing: a named input's mapping is tried first).
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from typing import Any
 
 from ..fixtures import ConfigError, Kind
 
-TYPES = ("note", "program_change", "control_change", "osc")
+TYPES = ("note", "program_change", "control_change", "osc", "input")
 
 # action -> allowed extra params
 ACTIONS: dict[str, set[str]] = {
@@ -64,9 +68,12 @@ class Mapping:
     params: dict[str, Any] = field(default_factory=dict)
     port: str | None = None  # substring of the input port name; None = any port
     address: str = ""  # OSC address (type osc)
+    input: str | None = None  # named input (type "input", v3)
 
     @property
     def key(self) -> tuple[str, int, int, str]:
+        if self.type == "input":
+            return ("input", 0, 0, self.input or "")
         if self.type == "osc":
             return ("osc", 0, 0, self.address)  # OSC addresses are case-sensitive
         return (self.type, self.channel, self.number, (self.port or "").lower())
@@ -75,10 +82,15 @@ class Mapping:
         return self.port is None or self.port.lower() in port_name.lower()
 
     def describe(self) -> str:
+        if self.type == "input":
+            extra = " ".join(f"{k}={v}" for k, v in self.params.items())
+            return f"{self.action} {extra}".strip()
         extra = " ".join(f"{k}={v}" for k, v in self.params.items())
         return f"{self.action} {extra}".strip() + (f" [port {self.port}]" if self.port else "")
 
     def to_dict(self) -> dict[str, Any]:
+        if self.type == "input":
+            return {"input": self.input, "action": self.action, **self.params}
         if self.type == "osc":
             return {"type": "osc", "address": self.address, "action": self.action, **self.params}
         d: dict[str, Any] = {"type": self.type, "channel": self.channel, "number": self.number}
@@ -87,11 +99,21 @@ class Mapping:
         return {**d, "action": self.action, **self.params}
 
 
-def validate(m: Mapping) -> None:
-    where = f"osc {m.address}" if m.type == "osc" else f"{m.type} ch{m.channel} #{m.number}"
+def where_of(m: Mapping) -> str:
+    if m.type == "input":
+        return f"input {m.input}"
+    return f"osc {m.address}" if m.type == "osc" else f"{m.type} ch{m.channel} #{m.number}"
+
+
+def validate(m: Mapping, input_type: str | None = None) -> None:
+    """input_type: the named input's message type, when known (faders need a CC or OSC)."""
+    where = where_of(m)
     if m.type not in TYPES:
         raise ConfigError(f"{where}: type must be one of {TYPES}")
-    if m.type == "osc":
+    if m.type == "input":
+        if not m.input or not isinstance(m.input, str):
+            raise ConfigError("mapping: input needs the name of an input from inputs.yaml")
+    elif m.type == "osc":
         if not m.address.startswith("/") or " " in m.address:
             raise ConfigError(f"{where}: an OSC address starts with / and has no spaces, e.g. /dmx/grand")
     elif not 1 <= m.channel <= 16 or not 0 <= m.number <= 127:
@@ -103,7 +125,8 @@ def validate(m: Mapping) -> None:
     bad = set(m.params) - ACTIONS[m.action]
     if bad:
         raise ConfigError(f"{where}: {m.action} doesn't take {sorted(bad)}")
-    if m.action in CONTINUOUS and m.type not in ("control_change", "osc"):
+    kind = input_type if m.type == "input" else m.type
+    if m.action in CONTINUOUS and kind is not None and kind not in ("control_change", "osc"):
         raise ConfigError(f"{where}: {m.action} needs a control_change or OSC")
     if m.action == "flash":
         if not m.params.get("fixtures"):
@@ -148,6 +171,12 @@ class MidiMap:
         last = key[3] or ""
         self._by_key.pop((key[0], key[1], key[2], last if key[0] == "osc" else last.lower()), None)
 
+    def get_input(self, name: str) -> Mapping | None:
+        return self._by_key.get(("input", 0, 0, name))
+
+    def inputs_used(self) -> set[str]:
+        return {m.input for m in self._by_key.values() if m.type == "input" and m.input}
+
     def get_osc(self, address: str) -> Mapping | None:
         return self._by_key.get(("osc", 0, 0, address))
 
@@ -168,6 +197,10 @@ def parse_map(data: dict) -> MidiMap:
     for d in data.get("mappings") or []:
         d = dict(d)
         try:
+            if "input" in d:
+                d.pop("type", None)
+                out.append(Mapping("input", 0, 0, d.pop("action"), input=str(d.pop("input")), params=d))
+                continue
             if d.get("type") == "osc":
                 d.pop("type")
                 m = Mapping("osc", 0, 0, d.pop("action"), address=str(d.pop("address")), params=d)

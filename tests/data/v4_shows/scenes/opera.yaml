@@ -1,0 +1,9 @@
+# Opera: white and incandescent yellow only, slow head scan, minimal.
+version: 4
+name: Opera
+show_colour: warm_white
+layers:
+  - {fixtures: [bars], colour: incandescent}
+  - {fixtures: [washes], colour: warm_white}
+  - {fixtures: [heads], colour: warm_white}
+  - {fixtures: [movers], effect: sweep, from: audience_l, to: audience_r, period_s: 30, spread: 1, speed: 0.2}

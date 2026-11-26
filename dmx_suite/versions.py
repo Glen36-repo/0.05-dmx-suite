@@ -22,11 +22,12 @@ import yaml
 
 from .fixtures import ConfigError
 
-FORMAT = 4
+FORMAT = 5
 
 # show folder layout: single files, then one folder per kind
-FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes", "panels.yaml": "panels"}
-FOLDERS = {"rigs": "rig", "looks": "look", "scenes": "scene", "shows": "show", "setlists": "setlist", "midi": "midi"}
+FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes", "panels.yaml": "panels", "inputs.yaml": "inputs"}
+FOLDERS = {"rigs": "rig", "looks": "look", "scenes": "scene", "shows": "show", "setlists": "setlist", "midi": "midi",
+           "devices": "device"}
 
 
 class FormatError(ConfigError):
@@ -71,6 +72,11 @@ def _fixtures_3_to_4(d: dict[str, Any]) -> dict[str, Any]:
             t.setdefault("colour_mix", "off")
     return d
 
+
+# Format 4 -> 5 (v3.1) needs no change inside a single file: named inputs (inputs.yaml), head points
+# in rig files and `palettes:` are all new and optional, and raw MIDI mappings still load. The moves
+# across files (raw mappings -> named inputs, palette positions -> rig points) are made once by
+# ShowStore.upgrade (migrate.py), with backups.
 
 STEPS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
     "rig": {1: _rig_1_to_2, 2: _rig_2_to_3},

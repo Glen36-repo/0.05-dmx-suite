@@ -18,10 +18,10 @@ import yaml
 from . import effects
 from .fixtures import ConfigError, load_patch
 from .look import INTENSITY_RULE1
-from .palettes import load_palettes
 from .paths import default_shows, giglock_on
 from .rig import load_rig
 from .scenes import parse_scene
+from .showfiles import folder_palettes
 from .store import ShowStore, StoreError
 from .versions import upgrade
 
@@ -74,7 +74,14 @@ SHOW (shows/<name>.yaml): sets; each set has `steps` [{scene, repeats N | hold_s
   (Old files with `scenes` + `step_s` still load.) Layers may time effects in `beats`.
 BUSK PANELS (panels.yaml): panels of widgets (colour, flash, solo, effect, go, fader, haze).
 SETLIST (setlists/<name>.yaml): songs: [{name, show, set} or {name, scene}, optional master: on/off].
-PALETTES: colours / positions (per head or {pan, tilt}) / gobos (DMX value, or per fixture type).
+PALETTES: colours / gobos (DMX value, or per fixture type) / palettes (named colour sets with tags).
+HEAD POINTS (v3, per rig file `positions:`): named aim points, e.g. drum_kit, audience_l, each with a
+  description, tags (band, audience, safe, floor, ceiling...), a rough stage place {x, y, z} and
+  per-head pan/tilt 0-1. Scenes name them (`position: drum_kit`, sweep from/to). list_points shows
+  them with descriptions: use them to work out where to aim. A head a point doesn't cover stays put.
+NAMED INPUTS (v3, inputs.yaml): MIDI/OSC inputs defined once in devices (e.g. td25: kick, snare,
+  crash; fcb1010: pedals) with roles (kick, snare, tom, cymbal, count_in, activity). MIDI maps
+  name them: `{input: snare, action: flash, fixtures: [bars]}`. To change a note, change the input.
 
 Every save keeps the previous file in .backups/ (list_backups, restore_backup); undo_last_change
 undoes your own last change (never one made at the laptop).
@@ -250,6 +257,31 @@ class DmxTools:
         names = self.local.names("midi")
         return "\n---\n".join(f"# midi/{n}.yaml\n" + self.local.read_text("midi", n) for n in names)
 
+    def list_inputs(self) -> str:
+        return self.local.read_text("inputs") if (self.shows / "inputs.yaml").exists() else "no inputs.yaml yet"
+
+    def list_points(self) -> str:
+        out = {}
+        for r in self.local.names("rig"):
+            pts = self.local.read("rig", r).get("positions") or {}
+            if pts:
+                out[r] = pts
+        return _dump(out) if out else "no head points yet (Heads page: aim, then store to a point)"
+
+    def save_input(self, device: str, name: str, value_yaml: str) -> str:
+        value = _yaml(value_yaml, "input")
+        return self._write("POST", "/api/store/input", {"action": "put", "device": device, "name": name, "value": value},
+                           lambda: self.local.put_input(device, name, value))
+
+    def rename_input(self, name: str, new_name: str) -> str:
+        return self._write("POST", "/api/store/input", {"action": "rename", "name": name, "new_name": new_name},
+                           lambda: self.local.rename_input(name, new_name))
+
+    def save_point(self, rig: str, name: str, value_yaml: str) -> str:
+        value = _yaml(value_yaml, "point")
+        return self._write("POST", "/api/store/point", {"action": "put", "rig": rig, "name": name, "value": value},
+                           lambda: self.local.put_point(rig, name, value))
+
     def list_backups(self) -> str:
         return _dump(self.local.backups(30)) or "no backups yet"
 
@@ -267,7 +299,7 @@ class DmxTools:
     def validate_scene(self, scene_yaml: str) -> str:
         data = _yaml(scene_yaml, "scene")
         patch = load_patch(self.shows / "fixtures.yaml")
-        pal = load_palettes(self.shows / "palettes.yaml", patch)
+        pal = folder_palettes(self.shows, patch)
         try:
             data = upgrade(data, "scene", "scene")
             sc = parse_scene(data, patch, pal, data.get("name", "scene"))

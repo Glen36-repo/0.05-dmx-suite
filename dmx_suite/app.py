@@ -43,7 +43,7 @@ class App:
         self.engine = Engine(files.rig, drivers, files.look, **({"clock": clock} if clock else {}))
         self.ctl = ShowController(self.engine, files, state_path)
         self.monitor = MidiMonitor()
-        self.router = MidiRouter(self.engine, files.midimap, self.monitor, self.ctl)
+        self.router = MidiRouter(self.engine, files.midimap, self.monitor, self.ctl, files.inputs)
         self.router.busk = self.busk  # MIDI / OSC action `busk`
         self.gig_lock = False
         self.project: Any = None  # package.DmsProject when running a .dms show file
@@ -390,6 +390,7 @@ class App:
             self.files = new
             self.ctl.files = new
             self.router.map = new.midimap
+            self.router.inputs = new.inputs
             self.ctl.replay()
             notes.append(f"rig {new.rig.name} updated live")
             if self.show_problem:
@@ -407,10 +408,134 @@ class App:
         self.files = new
         self.ctl.files = new
         self.router.map = new.midimap
+        self.router.inputs = new.inputs
         if self.show_problem:
             notes.append("show files fixed: now running them, not the last good version")
             self.show_problem = None
         return notes
+
+    # ------------------------------------------------------------------ named inputs (v3)
+
+    def save_midi_map(self) -> str:
+        """Save the running MIDI map, with any inputs MIDI learn made, as one checked change."""
+        self.require_unlocked("saving the MIDI map")
+        from .versions import stamped
+
+        path = self.files.midimap_path
+        changes: dict[Any, str | None] = {path: self.store.text_for(path, self.router.map.to_dict())}
+        if self.router.new_inputs:
+            data = self.store.read("inputs")
+            devices = data.setdefault("devices", {}) or {}
+            data["devices"] = devices
+            for iid in self.router.new_inputs:
+                inp = self.router.inputs.get(iid)
+                if inp is None:
+                    continue
+                dev = devices.setdefault(inp.device, {"name": self.router.inputs.devices[inp.device].name, "inputs": {}})
+                dev.setdefault("inputs", {})[iid] = inp.to_dict(dev.get("channel"), dev.get("port"))
+            ip = self.store.path("inputs", "")
+            changes[ip] = self.store.text_for(ip, stamped(data))
+        bid = self.store.apply(changes, f"save MIDI map {path.stem}")
+        self.router.new_inputs = []
+        self.reload()
+        return bid
+
+    def learn_input(self, name: str, device: str | None = None, add: bool = False) -> str:
+        """Arm input learn: the next message becomes input `name`'s (new inputs go in `device`).
+        add=True adds the note to the ones it has (snare head + rim)."""
+        self.require_unlocked("MIDI learn")
+        from .midi.named import suggest
+
+        def learned(msg: dict[str, Any]) -> None:
+            data = self.store.read("inputs")
+            devs = data.setdefault("devices", {}) or {}
+            data["devices"] = devs
+            did = next((d for d, v in devs.items() if name in ((v or {}).get("inputs") or {})), None) or device or "learned"
+            dev = devs.setdefault(did, {"name": did.replace("_", " ").title(), "inputs": {}})
+            dev.setdefault("inputs", {})
+            entry = dict(dev["inputs"].get(name) or {})
+            if msg["type"] == "osc":
+                entry.update({"type": "osc", "address": msg["address"]})
+                for k in ("notes", "number", "numbers", "channel", "port", "velocity"):
+                    entry.pop(k, None)
+            else:
+                same = entry.get("type") == msg["type"]
+                entry["type"] = msg["type"]
+                entry.pop("address", None)
+                if msg["type"] == "note":
+                    had = entry.get("notes") if same and add else []
+                    entry["notes"] = list(dict.fromkeys([*(had or []), msg["number"]]))
+                    entry.pop("number", None)
+                else:
+                    entry["number"] = msg["number"]
+                    entry.pop("notes", None)
+                    entry.pop("velocity", None)
+                if msg["channel"] != dev.get("channel"):
+                    entry["channel"] = msg["channel"]
+                else:
+                    entry.pop("channel", None)
+                if msg.get("port") and dev.get("port") is None and entry.get("port"):
+                    entry["port"] = msg["port"]
+            if "name" not in entry:
+                entry["name"] = suggest(msg["type"], msg["channel"], msg["number"], msg.get("address") or "")[1]
+            dev["inputs"][name] = entry
+            try:
+                with self.store.acting("ui"):
+                    self.store.put("inputs", "", data, f"learn input {name}")
+                self.reload()
+            except Exception as e:  # e.g. the message is already another input's: say so in the monitor
+                log.warning("input learn for %s refused: %s", name, e)
+                self.learn_error = str(e)
+
+        self.learn_error = ""
+        self.router.learn_input(name, learned)
+        return f"hit the pad or press the pedal for {name}"
+
+    def calibrate(self, name: str, level: str, action: str = "start") -> dict[str, Any]:
+        """Velocity calibration: `start` listens to input `name`; play it at `level` (quiet, normal
+        or loud) a few times; `done` stores the median velocity in its curve (inputs.yaml)."""
+        import statistics
+
+        if level not in ("quiet", "normal", "loud"):
+            raise ValueError("level is quiet, normal or loud")
+        inp = self.router.inputs.get(name)
+        if inp is None or inp.type != "note":
+            raise ValueError(f"{name!r} isn't a note input: only pads and keys have a velocity")
+        if action == "start":
+            self.require_unlocked("calibration")
+            self._cal_hits: list[int] = []
+
+            def hit(i: Any, m: Any, now: float) -> None:
+                if i.id == name and m.pressed:
+                    self._cal_hits.append(int(m.value))
+
+            self._cal_listener = hit
+            self.router.input_listeners.append(hit)
+            return {"ok": True, "listening": name, "level": level}
+        listener = getattr(self, "_cal_listener", None)
+        if listener in self.router.input_listeners:
+            self.router.input_listeners.remove(listener)
+        hits = list(getattr(self, "_cal_hits", []))
+        if action == "cancel":
+            return {"ok": True}
+        if not hits:
+            raise ValueError(f"no hits on {name} heard: play it a few times, then press done")
+        value = int(statistics.median(hits))
+        data = self.store.read("inputs")
+        for dev in (data.get("devices") or {}).values():
+            entry = ((dev or {}).get("inputs") or {}).get(name)
+            if entry is not None:
+                curve = dict(entry.get("curve") or {})
+                curve[level] = value
+                order = [curve[k] for k in ("quiet", "normal", "loud") if k in curve]
+                if order != sorted(order) or len(set(order)) != len(order):
+                    raise ValueError(f"{level} came out at velocity {value}, which doesn't sit between the "
+                                     f"other levels ({curve}): play it again")
+                entry["curve"] = curve
+                bid = self.store.put("inputs", "", data, f"calibrate {name} {level}: velocity {value}")
+                self.reload()
+                return {"ok": True, "velocity": value, "hits": len(hits), "curve": curve, "backup": bid}
+        raise ValueError(f"no input {name!r} in inputs.yaml")
 
     def make_starter(self, overwrite: bool = False) -> dict[str, Any]:
         """Write the starter show (and its scenes) for the running rig, then play it."""

@@ -18,11 +18,16 @@ class MonitorEntry:
     number: int
     value: int  # velocity / CC value / 0
     result: str  # what it triggered, or "unmapped"
+    input: str = ""  # named input(s) it was, e.g. "Kick" (v3)
     seq: int = 0  # set by the monitor; lets the UI ask for "everything after N"
 
     def format(self) -> str:
         t = time.strftime("%H:%M:%S", time.localtime(self.time)) + f".{int(self.time * 1000) % 1000:03d}"
-        return f"{t}  {self.port[:20]:20}  ch{self.channel:<2}  {self.type:14}  {self.number:3}  {self.value:3}  {self.result}"
+        who = ""
+        if self.input:
+            who = f"{self.input}, vel {self.value}  " if self.type == "note_on" else f"{self.input}  "
+        return (f"{t}  {self.port[:20]:20}  ch{self.channel:<2}  {self.type:14}  {self.number:3}  {self.value:3}  "
+                f"{who}{self.result}")
 
 
 class MidiMonitor:

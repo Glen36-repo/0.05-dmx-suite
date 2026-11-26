@@ -134,7 +134,7 @@ def parse_value(prm: Param, v: Any, ctx: ParseCtx) -> Any:
             raise LookError(f"{ctx.what}: {prm.key} needs a list of at least {max(1, prm.min_items)} colours")
         return [ctx.pal.colour(c, what) for c in v]
     if k == "position":
-        return {f: ctx.pal.position(v, f, what) for f in ctx.targets}
+        return ctx.pal.positions_for(v, ctx.targets, what)
     if k == "range":
         if not isinstance(v, (list, tuple)) or len(v) != 2:
             raise LookError(f"{what} must be [min, max]")

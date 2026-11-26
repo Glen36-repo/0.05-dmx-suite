@@ -156,7 +156,7 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     if "pixels" in d:
         p["pixels"] = [pal.colour(c, f"{what} pixel {i + 1}") for i, c in enumerate(d["pixels"])]
     if "position" in d:
-        p["position"] = {f: pal.position(d["position"], f, what) for f in targets}
+        p["position"] = pal.positions_for(d["position"], targets, what)
     if "gobo" in d:
         p["gobo"] = _gobos(d["gobo"], patch, pal, targets, what)
     if "colour_wheel" in d:
@@ -310,7 +310,7 @@ class ScenePlayer:
                     fl.pixels = [dict(c) for c in p["pixels"]]
                 else:
                     run.set_pixels(f, [dict(c) for c in p["pixels"]])
-            if "position" in p:
+            if "position" in p and f in p["position"]:
                 fl.pan, fl.tilt = p["position"][f]
             if "gobo" in p and p["gobo"].get(f) is not None:
                 fl.gobo = p["gobo"][f]

@@ -72,6 +72,37 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.get_midi_map()
 
     @tool
+    def list_inputs() -> str:
+        """Named MIDI/OSC inputs (inputs.yaml): devices, each input's notes / numbers / OSC address, roles."""
+        return t.list_inputs()
+
+    @tool
+    def save_input(device: str, name: str, value_yaml: str) -> str:
+        """Add or change a named input in a device (made if new), e.g. device 'td25', name 'kick',
+        value_yaml '{name: Kick, type: note, notes: [35], roles: [kick, activity]}'. Every MIDI map
+        entry that names the input follows. Types: note (notes: [...]), program_change / control_change
+        (number), osc (address). Optional: channel (1-16 or any), port, velocity [lo, hi], shared, colour."""
+        return t.save_input(device, name, value_yaml)
+
+    @tool
+    def rename_input(name: str, new_name: str) -> str:
+        """Rename a named input; every file that uses it is updated in the same change."""
+        return t.rename_input(name, new_name)
+
+    @tool
+    def list_points() -> str:
+        """Head position points per rig: description, tags, stage place and each head's pan/tilt (0-1).
+        The reference for aiming heads in scenes (`position: <point>`)."""
+        return t.list_points()
+
+    @tool
+    def save_point(rig: str, name: str, value_yaml: str) -> str:
+        """Add or replace a head point in a rig, e.g. '{description: Lead singer mic, tags: [band, safe],
+        stage: {x: centre, y: front, z: mid}, heads: {mh_a: {pan: 0.45, tilt: 0.4}}}'. A head outside its
+        head limits is refused (rule 8)."""
+        return t.save_point(rig, name, value_yaml)
+
+    @tool
     def validate_scene(scene_yaml: str) -> str:
         """Check a scene (YAML) against the fixtures, palettes and hard rules without saving it."""
         return t.validate_scene(scene_yaml)
@@ -95,8 +126,9 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
 
     @tool
     def save_palette_entry(section: str, name: str, value_yaml: str) -> str:
-        """Add or change one palette entry. section: colours, positions or gobos. value_yaml e.g. '"#ff3300"',
-        '{pan: 0.4, tilt: 0.3}', or per head '{mh_a: {pan: 0.4, tilt: 0.3}, mh_b: {pan: 0.6, tilt: 0.3}}'."""
+        """Add or change one palette entry. section: colours, gobos or palettes. value_yaml e.g. '"#ff3300"'
+        for a colour, or '{name: Warm, tags: [warm, low], colours: [amber, "#ff4000"]}' for a palette.
+        (Head positions are points in the rig file: use save_point.)"""
         return t.save_entry("palettes", section, name, value_yaml)
 
     @tool

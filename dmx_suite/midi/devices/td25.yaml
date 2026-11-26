@@ -1,0 +1,17 @@
+# Roland TD-25 (GM drum notes on channel 10). Notes as the module sends them out of the box.
+version: 5
+name: Roland TD-25
+channel: 10
+inputs:
+  kick: {name: Kick, type: note, notes: [36], roles: [kick, activity]}
+  snare: {name: Snare, type: note, notes: [38], roles: [snare, activity]}
+  snare_rim: {name: Snare rim, type: note, notes: [40], roles: [snare, activity]}
+  side_stick: {name: Side stick, type: note, notes: [37], roles: [count_in, activity]}
+  tom_1: {name: Tom 1, type: note, notes: [48, 50], roles: [tom, activity]}
+  tom_2: {name: Tom 2, type: note, notes: [45, 47], roles: [tom, activity]}
+  floor_tom: {name: Floor tom, type: note, notes: [43, 58], roles: [tom, activity]}
+  hihat: {name: Hi-hat, type: note, notes: [42, 46, 22, 26], roles: [activity]}
+  hihat_pedal: {name: Hi-hat pedal, type: note, notes: [44], roles: [count_in, activity]}
+  crash: {name: Crash, type: note, notes: [49, 55], roles: [cymbal, activity]}
+  ride: {name: Ride, type: note, notes: [51, 59], roles: [cymbal, activity]}
+  ride_bell: {name: Ride bell, type: note, notes: [53], roles: [cymbal, activity]}

@@ -40,7 +40,8 @@ def test_shipped_files_are_current_format():
 
 
 def test_every_file_kind_is_known():
-    assert {kind_of(p) for p in show_files(SHOWS)} == {"fixtures", "palettes", "rig", "look", "scene", "show", "setlist", "midi"}
+    want = {"fixtures", "palettes", "rig", "look", "scene", "show", "setlist", "midi", "inputs"}
+    assert {kind_of(p) for p in show_files(SHOWS)} == want
 
 
 def test_v1_folder_loads_without_writing(v1):

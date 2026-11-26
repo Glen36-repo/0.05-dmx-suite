@@ -1,0 +1,12 @@
+# Acoustic: many colours, gently dynamic, nothing hectic.
+version: 4
+name: Acoustic
+sets:
+  main:
+    step_s: 45
+    auto:
+      colours: [blue, deep_blue, purple, magenta, amber, cyan, green, warm_white]
+      energy: low
+      head_mix: [matching, contrast]
+      movement: [sweep, static]
+      fades: true

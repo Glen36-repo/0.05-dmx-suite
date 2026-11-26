@@ -9,7 +9,8 @@ from .auto import generate
 from .busk import Panel, parse_panels
 from .fixtures import ConfigError, Patch, load_patch
 from .look import INTENSITY_RULE1, Look, load_look
-from .midi.map import MidiMap, load_map
+from .midi.map import MidiMap, load_map, validate, where_of
+from .midi.named import Inputs, load_inputs
 from .palettes import Palettes, load_palettes
 from .rig import Rig, load_rig
 from .scenes import Scene, load_scenes
@@ -43,6 +44,7 @@ class ShowFiles:
     shows: dict[str, Show]
     setlists: dict[str, Setlist]
     panels: dict[str, Panel] = field(default_factory=dict)  # busking (panels.yaml, optional)
+    inputs: Inputs = field(default_factory=Inputs)  # named MIDI/OSC inputs (inputs.yaml, v3)
 
 
 def _pick(folder: Path, name: str) -> Path:
@@ -63,24 +65,70 @@ def profile_problems(rig: Rig, scenes: dict[str, Scene], looks: dict[str, Look])
     return out
 
 
+def _other_points(root: Path, skip: str) -> dict:
+    """Point names other rigs have (values not needed): a scene may name one this rig lacks."""
+    from .rig import Point
+
+    out: dict = {}
+    for p in sorted((root / "rigs").glob("*.yaml")):
+        if p.stem == skip:
+            continue
+        try:
+            d = read_doc(p, "rig")
+        except FILE_ERRORS:
+            continue
+        for name in (d.get("positions") or {}) if isinstance(d.get("positions"), dict) else {}:
+            out.setdefault(str(name), Point(str(name)))
+    return out
+
+
+def folder_palettes(root: Path, patch: Patch) -> Palettes:
+    """palettes.yaml with every rig's head points (first rig's values win): for checks that
+    aren't about one rig, e.g. Claude validating a scene with the app closed."""
+    from .rig import Point, parse_points
+
+    pal = load_palettes(root / "palettes.yaml", patch)
+    union: dict[str, Point] = {}
+    for p in sorted((root / "rigs").glob("*.yaml"), reverse=True):
+        try:
+            union.update(parse_points(read_doc(p, "rig").get("positions"), patch))
+        except FILE_ERRORS:
+            continue
+    return pal.with_points(union)
+
+
+def check_map_inputs(mp: MidiMap, inputs: Inputs) -> None:
+    """Mappings that name an input: the input must exist, and faders need a CC or OSC input."""
+    for m in mp.mappings:
+        if m.type == "input":
+            inp = inputs.get(m.input or "")
+            if inp is None:
+                raise ConfigError(f"MIDI map {where_of(m)}: no such input in inputs.yaml "
+                                  f"(have: {', '.join(sorted(inputs.inputs)) or 'none'})")
+            validate(m, inp.type)
+
+
 def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: str = "default") -> ShowFiles:
     root = Path(root)
     patch = _load("fixtures.yaml", load_patch, root / "fixtures.yaml")
+    inputs = _load("inputs.yaml", load_inputs, root / "inputs.yaml")
     r = _load(f"rigs/{rig}.yaml", load_rig, _pick(root / "rigs", rig), patch)
     lk = _load(f"looks/{look}.yaml", load_look, _pick(root / "looks", look), patch)
     mp_path = _pick(root / "midi", midi)
     mp = _load(f"midi/{midi}.yaml", load_map, mp_path)
+    _load(f"midi/{midi}.yaml", check_map_inputs, mp, inputs)
     for m in mp.mappings:  # flash targets must exist in the patch
         if m.action == "flash":
             patch.resolve(m.params["fixtures"])
     pal = _load("palettes.yaml", load_palettes, root / "palettes.yaml", patch)
+    pal = pal.with_points(r.points, _other_points(root, rig))  # this rig's head points (v3)
     scenes = _load("scenes", load_scenes, root / "scenes", patch, pal)
     shows = _load("shows", load_shows, root / "shows", pal, scenes)
     setlists = _load("setlists", load_setlists, root / "setlists", shows, scenes)
     for m in mp.mappings:  # show/scene names in the MIDI map must exist
         for key, table in (("show", shows), ("scene", scenes)):
             if key in m.params and m.params[key] not in table:
-                raise ConfigError(f"MIDI map {m.type} ch{m.channel} #{m.number}: unknown {key} {m.params[key]!r}")
+                raise ConfigError(f"MIDI map {where_of(m)}: unknown {key} {m.params[key]!r}")
     bad = profile_problems(r, scenes, {look: lk})
     if bad:
         raise ConfigError(f"rig {rig} (profile {r.profile.name}): " + "; ".join(bad))
@@ -88,7 +136,7 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
     for m in mp.mappings:  # busk mappings must name a real widget
         if m.action == "busk":
             _busk_target(m.params, panels)
-    return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists, panels)
+    return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists, panels, inputs)
 
 
 def load_panels(path: Path, patch: Patch, pal: Palettes, scenes: dict, shows: dict) -> dict[str, Panel]:
@@ -115,6 +163,11 @@ def check_all(root: str | Path) -> list[str]:
     unverified = [t.name for t in patch.types.values() if not t.verified]
     if unverified:
         problems.append(f"warning: unverified channel maps: {', '.join(unverified)}")
+    try:
+        inputs: Inputs | None = load_inputs(root / "inputs.yaml")
+    except FILE_ERRORS as e:
+        problems.append(f"inputs.yaml: {e}")
+        inputs = None
     rigs: dict[str, Rig] = {}
     looks: dict[str, Look] = {}
     for p in sorted((root / "rigs").glob("*.yaml")):
@@ -129,9 +182,15 @@ def check_all(root: str | Path) -> list[str]:
             problems.append(f"looks/{p.name}: {e}")
     try:
         pal = load_palettes(root / "palettes.yaml", patch)
+        union: dict = {}
+        for rig in reversed(list(rigs.values())):  # every rig's points; the first rig's values win
+            union.update(rig.points)
+        pal = pal.with_points(union)
     except FILE_ERRORS as e:
         problems.append(f"palettes.yaml: {e}")
         pal = None
+    for rk, rig in rigs.items():
+        problems += [f"warning: rigs/{rk}.yaml {w}" for w in rig.point_problems()]
     scenes: dict = {}
     shows: dict = {}
     if pal is not None:
@@ -155,6 +214,7 @@ def check_all(root: str | Path) -> list[str]:
         except FILE_ERRORS as e:
             problems.append(f"panels.yaml: {e}")
             panels = {}
+        problems += [f"warning: {w}" for w in sorted(pal.warnings)]
         # scenes and looks are shared: each must suit every rig's profile (rule 1)
         for rk, rig in rigs.items():
             problems += [f"rig {rk} (profile {rig.profile.name}): {p}" for p in profile_problems(rig, scenes, looks)]
@@ -172,6 +232,8 @@ def check_all(root: str | Path) -> list[str]:
     for p in sorted((root / "midi").glob("*.yaml")):
         try:
             mp = load_map(p)
+            if inputs is not None:
+                check_map_inputs(mp, inputs)
             for m in mp.mappings:
                 if m.action == "busk" and pal is not None:
                     _busk_target(m.params, panels)
@@ -184,7 +246,7 @@ def check_all(root: str | Path) -> list[str]:
                                     f"in the profile of rig {', '.join(off)} (rule 2)")
                 for key, table in (("show", shows), ("scene", scenes)):
                     if key in m.params and m.params[key] not in table:
-                        raise ConfigError(f"{m.type} ch{m.channel} #{m.number}: unknown {key} {m.params[key]!r}")
+                        raise ConfigError(f"{where_of(m)}: unknown {key} {m.params[key]!r}")
         except FILE_ERRORS as e:
             problems.append(f"midi/{p.name}: {e}")
     return problems

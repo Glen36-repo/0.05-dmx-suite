@@ -1,0 +1,11 @@
+# Alesis SamplePad 4 (default kit notes, channel 10). Through a merger such as the CME H2MIDI Pro,
+# set the port (part of its name, e.g. H2MIDI) so its pads can share notes with the drum kit.
+version: 5
+name: Alesis SamplePad 4
+channel: 10
+inputs:
+  pad_1: {name: Pad 1, type: note, notes: [38], roles: [activity]}
+  pad_2: {name: Pad 2, type: note, notes: [48], roles: [activity]}
+  pad_3: {name: Pad 3, type: note, notes: [45], roles: [activity]}
+  pad_4: {name: Pad 4, type: note, notes: [49], roles: [cymbal, activity]}
+  kick_trigger: {name: Kick trigger, type: note, notes: [36], roles: [kick, activity]}

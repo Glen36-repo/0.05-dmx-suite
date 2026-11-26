@@ -36,6 +36,24 @@ class Palettes:
     colours: dict[str, Colour] = field(default_factory=lambda: dict(BUILTIN_COLOURS))
     positions: dict[str, dict[str, Position]] = field(default_factory=dict)  # name -> {fid or "*": (pan, tilt)}
     gobos: dict[str, dict[str, int]] = field(default_factory=dict)  # name -> {type key or "*": value}
+    # v3: named colour sets (palette editor): name -> {name, tags, colours: [colour names or values]}
+    sets: dict[str, dict[str, Any]] = field(default_factory=dict)
+    point_info: dict[str, dict[str, Any]] = field(default_factory=dict)  # head points: description, tags, stage
+    warnings: set[str] = field(default_factory=set)  # e.g. a point a head doesn't have
+
+    def with_points(self, points: dict[str, Any], also: dict[str, Any] | None = None) -> Palettes:
+        """These palettes with a rig's head points laid over the (legacy) palette positions.
+        `also`: other rigs' points, so a scene naming a point only another rig has still loads
+        (the heads it doesn't cover stay where they are, with a warning)."""
+        out = Palettes(dict(self.colours), {k: dict(v) for k, v in self.positions.items()}, self.gobos, self.sets,
+                       dict(self.point_info))
+        for src in (also or {}, points):
+            for name, pt in src.items():
+                if src is also and name in points:
+                    continue
+                out.positions[name] = dict(pt.heads) if src is points else {}
+                out.point_info[name] = {"description": pt.description, "tags": list(pt.tags), "stage": dict(pt.stage)}
+        return out
 
     def colour(self, v: Any, what: str) -> Colour:
         if isinstance(v, str) and not v.startswith("#"):
@@ -44,7 +62,9 @@ class Palettes:
             return dict(self.colours[v])
         return parse_colour(v, what)
 
-    def position(self, v: Any, fid: str, what: str) -> Position:
+    def position(self, v: Any, fid: str, what: str) -> Position | None:
+        """A head's pan/tilt for a named point (or a {pan, tilt} given directly). None when the
+        point has no entry for this head: it stays where it is, and a warning is noted (v3)."""
         if isinstance(v, str):
             if v not in self.positions:
                 raise LookError(f"{what}: unknown position {v!r}")
@@ -53,8 +73,18 @@ class Palettes:
                 return p[fid]
             if "*" in p:
                 return p["*"]
-            raise LookError(f"{what}: position {v!r} has no entry for {fid}")
+            self.warnings.add(f"{what}: point {v!r} isn't set for {fid}; it stays where it is")
+            return None
         return _pos(v, what)
+
+    def positions_for(self, v: Any, fids: list[str], what: str) -> dict[str, Position]:
+        """{head: (pan, tilt)} for the heads the point covers."""
+        out = {}
+        for f in fids:
+            p = self.position(v, f, what)
+            if p is not None:
+                out[f] = p
+        return out
 
     def gobo(self, v: Any, type_key: str, what: str) -> int:
         if isinstance(v, int):

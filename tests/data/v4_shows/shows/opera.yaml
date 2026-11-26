@@ -1,0 +1,13 @@
+# Opera: white and incandescent yellow only, slow head scan, minimal.
+version: 4
+name: Opera
+sets:
+  main:
+    step_s: 60
+    auto:
+      colours: [warm_white, incandescent]
+      energy: low
+      head_mix: [white, matching]
+      patterns: [all, kit]
+      movement: [sweep]
+      fades: true

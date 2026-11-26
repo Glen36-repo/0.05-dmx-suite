@@ -146,9 +146,12 @@ def test_port_specific_mapping_wins(router, engine, view):
 def test_learn_bound_to_port(router):
     router.learn("blackout_toggle", {"port": "this"})
     FakeMidiIn(router.handle_mido).note(60, 100, port="H2MIDI PRO 0")
-    m = router.map.get("note", 10, 60, "H2MIDI PRO 0")
-    assert m.action == "blackout_toggle" and m.port == "H2MIDI PRO 0"
-    assert router.map.get("note", 10, 60, "UM-ONE 1") is None  # TD-25 note 60 stays unmapped
+    inp = router.inputs.get(router.new_inputs[0])
+    assert inp.port == "H2MIDI PRO 0" and inp.numbers == [60]
+    assert router.map.get_input(inp.id).action == "blackout_toggle"
+    midi = FakeMidiIn(router.handle_mido)
+    assert midi.note(60, 100, port="UM-ONE 1") == "unmapped"  # TD-25 note 60 stays unmapped
+    assert midi.note(60, 100, port="H2MIDI PRO 0").startswith("blackout")
 
 
 def test_port_mapping_roundtrip(tmp_path):

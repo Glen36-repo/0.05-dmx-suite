@@ -1,0 +1,18 @@
+# Any General MIDI drum kit or pad on channel 10.
+version: 5
+name: GM drums
+channel: 10
+inputs:
+  kick: {name: Kick, type: note, notes: [35, 36], roles: [kick, activity]}
+  snare: {name: Snare, type: note, notes: [38, 40], roles: [snare, activity]}
+  side_stick: {name: Side stick, type: note, notes: [37], roles: [count_in, activity]}
+  clap: {name: Clap, type: note, notes: [39], roles: [activity]}
+  tom_high: {name: High tom, type: note, notes: [48, 50], roles: [tom, activity]}
+  tom_mid: {name: Mid tom, type: note, notes: [45, 47], roles: [tom, activity]}
+  tom_low: {name: Floor tom, type: note, notes: [41, 43], roles: [tom, activity]}
+  hihat: {name: Hi-hat, type: note, notes: [42, 46], roles: [activity]}
+  hihat_pedal: {name: Hi-hat pedal, type: note, notes: [44], roles: [count_in, activity]}
+  crash: {name: Crash, type: note, notes: [49, 57], roles: [cymbal, activity]}
+  ride: {name: Ride, type: note, notes: [51, 59], roles: [cymbal, activity]}
+  china: {name: China, type: note, notes: [52], roles: [cymbal, activity]}
+  splash: {name: Splash, type: note, notes: [55], roles: [cymbal, activity]}
