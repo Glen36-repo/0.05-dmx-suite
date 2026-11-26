@@ -271,6 +271,14 @@ Decided 26/11/2026:
 | Drum flash while blacked out | Ignored |
 | Haze max on-time | Hitting `max_on_s` forces haze off for `rest_s`, then the mode resumes |
 | MIDI on Linux | `python-rtmidi` is an optional `hw` extra; the simulator works without it |
+| Effect timing | Every effect is time-based (`period_s` per cycle, `spread` 0-1 across the group), independent of frame rate |
+| Moving U'Kings in scenes | A movement layer that includes a colour-only head is rejected at load, not silently skipped |
+| Heads move dark | `random_move` has `dark_move_s`: the head is blacked (via colour) for that long after each new position |
+| Find fixture | Lights the one fixture full white, ignoring MASTER, grand master and the kick light; head limits still apply |
+| Channel tester | Raw values over the show output until cleared; refuses the haze channel |
+| Missing fixtures in a scene | Skipped for now; moving their effects to fixtures that are present comes with auto shows (phase 4) |
+| Fixture import | Open Fixture Library JSON first (`dmx-suite import-ofl`); always lands as `verified: false` |
+| Setup page | Console commands for now; the browser page comes in phase 5 |
 
 Open:
 
@@ -278,6 +286,8 @@ Open:
 - [ ] Fixture channel maps and DMX addresses: copy from the Daslight patch into `shows/fixtures.yaml` (all `verified: false`)
 - [ ] FCB1010 program change numbers: copy from Daslight into `shows/midi/default.yaml`
 - [ ] MH-A tilt limit value (placeholder 75 % in `shows/rigs/full.yaml`)
+- [ ] Daslight import: need a sample Daslight show/patch file to read its format
+- [ ] Palette positions and gobo values (`shows/palettes.yaml`): set at rehearsal
 - [ ] 0.05 brand assets: logo files (SVG preferred), colours, font
 - [ ] Unit DMX (U183) wiring: confirm TX/RX pins and whether a direction (DE/RE) pin is needed, before first flash (`firmware/include/config.h`)
 - [ ] Node status: CoreS3 screen (0.05 logo, status) not built yet; identify on the node only logs
