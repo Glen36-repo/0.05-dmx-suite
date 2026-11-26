@@ -503,3 +503,82 @@ def test_step_editor_live_mode_sends_the_step(ui):
         page.wait_for_timeout(50)
     assert app.engine.previewing is not None
     page.uncheck("#steps-live")
+
+
+# ---------------------------------------------------------------- pixel selection in the scene editor (item 11)
+
+
+def test_pixel_selection_click_shift_ctrl_and_selectors(ui):
+    import yaml
+
+    page, app, root, _ = ui
+    go(page, "scenes")
+    page.wait_for_selector("#scene-grid [data-id=bar_1] rect.cell[data-px='7']")
+    cell = lambda fid, px: f"#scene-grid [data-id={fid}] rect.cell[data-px='{px}']"  # noqa: E731
+    page.click(cell("bar_1", 2))
+    assert page.inner_text("#scene-sel").startswith("1") and "bar_1:px3" in page.inner_text("#scene-sel")
+    page.click(cell("bar_1", 3), modifiers=["Shift"])
+    page.click(cell("bar_1", 5), modifiers=["Control"])
+    assert "bar_1:px3-4,6" in page.inner_text("#scene-sel")
+    page.click(cell("bar_1", 5), modifiers=["Control"])  # toggles back off
+    assert "bar_1:px3-4" in page.inner_text("#scene-sel")
+    assert page.locator("#scene-grid .cell.psel").count() == 2
+    page.dblclick(cell("bar_2", 0))  # the whole bar
+    assert "bar_2" in page.inner_text("#scene-sel") and page.locator("#scene-grid [data-id=bar_2].sel").count() == 1
+    # helpers: first 1 of every bar -> the group's selector
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.fill("#px-k", "1")
+    page.click("[data-px-help=first]")
+    assert "bars:px1" in page.inner_text("#scene-sel")
+    page.click("[data-px-help=invert]")
+    assert "bars:px2-8" in page.inner_text("#scene-sel")
+    page.click("[data-px-help=odd]")
+    assert "bars:px1,3,5,7" in page.inner_text("#scene-sel")
+    # a layer from a pixel selection writes the selector; picking the layer puts it back on the stage
+    page.click("#layer-add")
+    page.fill("#scene-name", "Odd bars")
+    page.click("#scene-save")
+    page.wait_for_function("document.querySelector('#scene-state').textContent.includes('odd_bars')")
+    data = yaml.safe_load((root / "scenes" / "odd_bars.yaml").read_text())
+    assert data["layers"][0]["fixtures"] == ["bars:px1,3,5,7"]
+    page.click("#scene-group-tabs [data-group=heads]")
+    page.click("#layers li .name")
+    assert page.locator("#scene-grid .cell.psel").count() == 16  # 4 bars x 4 odd pixels
+
+
+def test_save_a_pixel_group(ui):
+    import yaml
+
+    page, app, root, _ = ui
+    go(page, "scenes")
+    page.wait_for_selector("#scene-grid [data-id=bar_1] rect.cell[data-px='7']")
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.fill("#px-k", "1")
+    page.click("[data-px-help=first]")
+    for fid in ("bar_1", "bar_2", "bar_3", "bar_4"):  # and the last pixel of each bar
+        page.click(f"#scene-grid [data-id={fid}] rect.cell[data-px='7']", modifiers=["Control"])
+    assert "bars:px1,8" in page.inner_text("#scene-sel")
+    page.on("dialog", lambda d: d.accept("bar_tips"))
+    page.click("#px-group-save")
+    for _ in range(60):
+        if "bar_tips" in app.files.patch.pixel_groups:
+            break
+        page.wait_for_timeout(50)
+    fx = yaml.safe_load((root / "fixtures.yaml").read_text())
+    assert fx["pixel_groups"]["bar_tips"] == ["bar_1:px1,8", "bar_2:px1,8", "bar_3:px1,8", "bar_4:px1,8"]
+    assert app.files.patch.pixel_groups["bar_tips"]["bar_2"] == {0, 7}
+    page.click("[data-px-help=none]")
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("[data-px-help=first]")
+    for fid in ("bar_1", "bar_2", "bar_3", "bar_4"):
+        page.click(f"#scene-grid [data-id={fid}] rect.cell[data-px='7']", modifiers=["Control"])
+    assert "bar_tips" in page.inner_text("#scene-sel")  # the saved group's name is used
+
+
+def test_layout_and_live_keep_whole_light_selection(ui):
+    page, *_ = ui
+    go(page, "layout")
+    page.wait_for_selector("#layout-grid [data-id=bar_1] rect.cell")
+    page.click("#layout-grid [data-id=bar_1] rect.cell >> nth=2")
+    assert page.locator("#layout-grid .cell.psel").count() == 0  # whole lights only outside the scene editor
+    assert page.locator("#layout-grid [data-id=bar_1].sel").count() == 1

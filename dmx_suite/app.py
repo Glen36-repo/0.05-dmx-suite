@@ -1802,6 +1802,8 @@ class App:
             "rig_name": self.names[0],
             "rigs": sorted(p.stem for p in (self.files.root / "rigs").glob("*.yaml")),
             "groups": self.engine.rig.patch.groups(),
+            "pixel_groups": {k: {f: sorted(p + 1 for p in px) for f, px in v.items()}
+                             for k, v in self.engine.rig.patch.pixel_groups.items()},
             "actions": sorted(ACTIONS),
             "panels": {k: {"name": p.name, "widgets": [{"id": w.id, "type": w.type, "label": w.label, "mode": w.mode,
                                                          "target": w.target, "action": w.action} for w in p.widgets]}

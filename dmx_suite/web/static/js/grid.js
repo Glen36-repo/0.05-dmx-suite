@@ -108,6 +108,10 @@ export class LightGrid {
     this.host = host;
     this.edit = !!opts.edit;
     this.selectable = this.edit || !!opts.select;
+    // v4 (scene editor only): each segment of a pixel light is its own target; pxSel holds the lights
+    // with only some pixels selected (fid -> Set of 0-based pixels); `selected` the whole lights
+    this.pixelSelect = !!opts.pixelSelect;
+    this.pxSel = new Map();
     this.onChange = opts.onChange || (() => {});
     this.tool = "select"; // select | lasso | move
     this.selected = new Set();
@@ -184,8 +188,13 @@ export class LightGrid {
                              transform: `rotate(${p0.rot || 0} ${p0.x * C} ${p0.y * C})` }));
     }
     const cs = (f.pixels || 1) > 1 ? 0.74 : SIZE; // segments sit inside the outline
-    const cells = this.cellsOf(id).map(([x, y]) => {
+    const many = (f.pixels || 1) > 1;
+    const cells = this.cellsOf(id).map(([x, y], i) => {
       const r = svg("rect", { x: (x - cs / 2) * C, y: (y - cs / 2) * C, width: cs * C, height: cs * C, rx: 3, class: "cell" });
+      if (many) {
+        r.dataset.px = String(i);
+        if (this.pixelSelect) r.append(Object.assign(svg("title"), { textContent: `${id} px${i + 1}` }));
+      }
       g.append(r);
       return r;
     });
@@ -459,13 +468,15 @@ export class LightGrid {
   // ---------------------------------------------------------------- selection
 
   select(ids, add = false) {
-    if (!add) this.selected.clear();
+    if (!add) { this.selected.clear(); this.pxSel.clear(); }
+    for (const id of ids) this.pxSel.delete(id); // a whole light now
     for (const id of ids) if (this.layout[id] && this.items[id]) this.selected.add(id); // not the haze machine
     this.markSelection();
     this.onChange("select");
   }
 
   toggle(id) {
+    this.pxSel.delete(id);
     if (this.selected.has(id)) this.selected.delete(id);
     else this.selected.add(id);
     this.markSelection();
@@ -479,7 +490,49 @@ export class LightGrid {
   }
 
   markSelection() {
-    for (const [id, it] of Object.entries(this.items)) it.g.classList.toggle("sel", this.selected.has(id));
+    for (const [id, it] of Object.entries(this.items)) {
+      it.g.classList.toggle("sel", this.selected.has(id));
+      const px = this.pxSel.get(id);
+      it.g.classList.toggle("psel-some", !!px);
+      it.cells.forEach((r, i) => r.classList.toggle("psel", !!px && px.has(i)));
+    }
+  }
+
+  // ---------------------------------------------------------------- pixel selection (v4, scene editor)
+
+  /** [{id, px: null | [0-based pixels]}] in patch order: whole lights and lights with some pixels */
+  selection() {
+    const order = (this.cat?.fixtures || []).map((f) => f.id);
+    const ids = [...new Set([...this.selected, ...this.pxSel.keys()])].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    return ids.map((id) => ({ id, px: this.selected.has(id) ? null : [...this.pxSel.get(id)].sort((a, b) => a - b) }));
+  }
+
+  /** map: {fid: [pixels]} - replaces the selection unless add; a full set of pixels is the whole light */
+  selectPixels(map, add = false) {
+    if (!add) { this.selected.clear(); this.pxSel.clear(); }
+    for (const [id, pxs] of Object.entries(map)) {
+      if (!this.items[id]) continue;
+      const n = this.fixtures[id].pixels || 1;
+      const set = new Set([...(this.pxSel.get(id) || []), ...pxs].filter((p) => p >= 0 && p < n));
+      this.selected.delete(id);
+      if (set.size >= n) this.selected.add(id);
+      else if (set.size) this.pxSel.set(id, set);
+      else this.pxSel.delete(id);
+    }
+    this.markSelection();
+    this.onChange("select");
+  }
+
+  togglePixel(id, px) {
+    const n = this.fixtures[id].pixels || 1;
+    const set = this.selected.has(id) ? new Set([...Array(n).keys()]) : new Set(this.pxSel.get(id) || []);
+    if (set.has(px)) set.delete(px); else set.add(px);
+    this.selected.delete(id);
+    if (set.size >= n) this.selected.add(id);
+    else if (set.size) this.pxSel.set(id, set);
+    else this.pxSel.delete(id);
+    this.markSelection();
+    this.onChange("select");
   }
 
   toCells(ev) {
@@ -491,13 +544,28 @@ export class LightGrid {
   }
 
   bindPointer() {
-    let drag = null, marquee = null;
+    let drag = null, marquee = null, pxDrag = null, lastPx = null;
     this.root.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0) return;
       ev.preventDefault();
       const hit = ev.target.closest("[data-id]");
       const at = this.toCells(ev);
       this.root.setPointerCapture(ev.pointerId);
+      const cell = ev.target.closest?.("rect.cell[data-px]");
+      if (hit && cell && this.pixelSelect) {
+        const id = hit.dataset.id, px = +cell.dataset.px;
+        const now = performance.now(); // the same segment pressed twice quickly (a double-click): the whole light
+        if (lastPx && lastPx.id === id && lastPx.px === px && now - lastPx.at < 400) {
+          lastPx = null;
+          this.select([id], ev.shiftKey);
+          return;
+        }
+        lastPx = ev.shiftKey || ev.ctrlKey || ev.metaKey ? null : { id, px, at: now };
+        if (ev.ctrlKey || ev.metaKey) { this.togglePixel(id, px); return; }
+        this.selectPixels({ [id]: [px] }, ev.shiftKey);
+        pxDrag = ev.shiftKey ? { id, from: px } : null; // shift-drag along a bar: a range
+        return;
+      }
       if (hit) {
         const id = hit.dataset.id;
         if (this.tool === "move" && this.edit) {
@@ -512,6 +580,15 @@ export class LightGrid {
       this.gMarquee.replaceChildren(marquee.shape);
     });
     this.root.addEventListener("pointermove", (ev) => {
+      if (pxDrag) {
+        const over = document.elementFromPoint(ev.clientX, ev.clientY);
+        const c = over?.closest?.(`[data-id="${CSS.escape(pxDrag.id)}"] rect.cell[data-px]`);
+        if (c) {
+          const to = +c.dataset.px, [a, b] = [Math.min(pxDrag.from, to), Math.max(pxDrag.from, to)];
+          this.selectPixels({ [pxDrag.id]: [...Array(b - a + 1).keys()].map((k) => a + k) }, true);
+        }
+        return;
+      }
       if (drag) {
         const [x, y] = this.toCells(ev);
         const dx = half(x - drag.at[0]), dy = half(y - drag.at[1]);
@@ -539,6 +616,7 @@ export class LightGrid {
       }
     });
     const end = (ev) => {
+      pxDrag = null;
       if (drag) {
         if (drag.moved) {
           this.history.push(drag.before);
@@ -551,6 +629,22 @@ export class LightGrid {
         const pts = marquee.points;
         const last = pts[pts.length - 1];
         let ids;
+        if (this.tool === "lasso" && pts.length > 2 && this.pixelSelect) {
+          // lasso over bars picks just the pixels inside it; other lights by their middle
+          const map = {};
+          for (const id of Object.keys(this.items)) {
+            const cells = this.cellsOf(id);
+            if (cells.length > 1) {
+              const inside = cells.map((c, i) => (inPolygon(c, pts) ? i : -1)).filter((i) => i >= 0);
+              if (inside.length) map[id] = inside;
+            } else if (inPolygon([this.layout[id].x, this.layout[id].y], pts)) map[id] = [0];
+          }
+          this.selectPixels(map, marquee.add);
+          this.gMarquee.replaceChildren();
+          marquee = null;
+          if (ev && this.root.hasPointerCapture?.(ev.pointerId)) this.root.releasePointerCapture(ev.pointerId);
+          return;
+        }
         if (this.tool === "lasso" && pts.length > 2) {
           ids = Object.keys(this.items).filter((id) => inPolygon([this.layout[id].x, this.layout[id].y], pts));
         } else {
@@ -569,6 +663,7 @@ export class LightGrid {
       if (ev && this.root.hasPointerCapture?.(ev.pointerId)) this.root.releasePointerCapture(ev.pointerId);
     };
     this.root.addEventListener("pointerup", end);
+
     this.root.addEventListener("pointercancel", end);
   }
 

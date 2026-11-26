@@ -113,7 +113,7 @@ function renderLayers(errLayer = null) {
 function pick(i) {
   current = i;
   const ly = doc.layers[i];
-  grid.select(expand(ly.fixtures || []));
+  selectTargets(ly.fixtures || []);
   const f = ly.fixtures || [];
   group = f.length === 1 && (f[0] === "all" || live.cat.groups[f[0]]) ? f[0] : null; // its group's tab, if it is one
   buildTabs(live.cat);
@@ -133,24 +133,125 @@ function remove(i) {
   changed();
 }
 
-// fixture ids and group names -> fixture ids
+// fixture ids, group names and pixel selectors / pixel groups -> fixture ids
 function expand(names) {
   const out = new Set();
-  for (const n of names) {
+  for (const raw of names) {
+    const n = String(raw).split(":")[0];
     if (n === "all") live.cat.fixtures.forEach((f) => out.add(f.id));
     else if (live.cat.groups[n]) live.cat.groups[n].forEach((f) => out.add(f));
+    else if (live.cat.pixel_groups?.[n]) Object.keys(live.cat.pixel_groups[n]).forEach((f) => out.add(f));
     else out.add(n);
   }
   return [...out];
 }
 
-// the selection, as a group name when it's exactly a group
+// v4: pixel numbers (0-based) <-> selector text: [0,1,2,3,7] -> "px1-4,8"
+export function pxSpec(pxs) {
+  const s = [...pxs].sort((a, b) => a - b), parts = [];
+  for (let i = 0; i < s.length; i++) {
+    let j = i;
+    while (j + 1 < s.length && s[j + 1] === s[j] + 1) j++;
+    parts.push(i === j ? `${s[i] + 1}` : `${s[i] + 1}-${s[j] + 1}`);
+    i = j;
+  }
+  return "px" + parts.join(",");
+}
+
+function parsePx(spec, n) {
+  spec = spec.toLowerCase();
+  if (spec === "odd") return [...Array(n).keys()].filter((i) => i % 2 === 0);
+  if (spec === "even") return [...Array(n).keys()].filter((i) => i % 2 === 1);
+  const m = spec.match(/^(first|last)(\d+)$/);
+  if (m) { const k = +m[2]; return m[1] === "first" ? [...Array(k).keys()] : [...Array(k).keys()].map((i) => n - k + i); }
+  return spec.replace(/^px/, "").split(",").flatMap((p) => {
+    const [a, b] = p.split("-").map(Number);
+    return [...Array((b || a) - a + 1).keys()].map((k) => a - 1 + k);
+  });
+}
+
+// put a layer's or step's targets on the stage, pixels included
+export function selectTargets(names) {
+  const map = {};
+  for (const raw of names) {
+    const [n, spec] = String(raw).split(":");
+    const pg = live.cat.pixel_groups?.[n];
+    if (pg && !spec) { for (const [id, pxs] of Object.entries(pg)) map[id] = [...(map[id] || []), ...pxs.map((p) => p - 1)]; continue; }
+    for (const id of expand([n])) {
+      const nPx = live.cat.fixtures.find((f) => f.id === id)?.pixels || 1;
+      map[id] = spec && nPx > 1 ? [...(map[id] || []), ...parsePx(spec, nPx)] : [...Array(nPx).keys()];
+    }
+  }
+  grid.selectPixels(map);
+}
+
+// the selection as the file writes it: a group name when it's exactly a group, a pixel group or
+// group:pxN when every light of a group has the same pixels, else ids and id:pxN
 function selectionNames() {
-  const sel = [...grid.selected];
-  const set = JSON.stringify([...sel].sort());
-  for (const [g, ids] of Object.entries(live.cat.groups)) if (JSON.stringify([...ids].sort()) === set) return [g];
-  const order = live.cat.fixtures.map((f) => f.id);
-  return sel.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const sel = grid.selection();
+  if (!sel.length) return [];
+  const ids = sel.map((s) => s.id);
+  const sameIds = (list) => JSON.stringify([...list].sort()) === JSON.stringify([...ids].sort());
+  const allWhole = sel.every((s) => s.px === null);
+  if (allWhole) {
+    for (const [g, gids] of Object.entries(live.cat.groups)) if (sameIds(gids)) return [g];
+    return ids;
+  }
+  const key = (s) => JSON.stringify(s.px);
+  for (const [name, pg] of Object.entries(live.cat.pixel_groups || {})) {
+    const want = Object.fromEntries(Object.entries(pg).map(([id, pxs]) => [id, JSON.stringify(pxs.map((p) => p - 1).sort((a, b) => a - b))]));
+    if (sameIds(Object.keys(want)) && sel.every((s) => s.px && want[s.id] === key(s))) return [name];
+  }
+  if (sel.every((s) => s.px && key(s) === key(sel[0]))) {
+    for (const [g, gids] of Object.entries(live.cat.groups)) if (sameIds(gids)) return [`${g}:${pxSpec(sel[0].px)}`];
+  }
+  return sel.map((s) => (s.px === null ? s.id : `${s.id}:${pxSpec(s.px)}`));
+}
+
+// ---------------------------------------------------------------- pixel helpers (item 11)
+
+function pixelLights() {
+  const sel = grid.selection().map((s) => s.id).filter((id) => (live.cat.fixtures.find((f) => f.id === id)?.pixels || 1) > 1);
+  return sel.length ? sel : live.cat.fixtures.filter((f) => (f.pixels || 1) > 1 && grid.items[f.id]).map((f) => f.id);
+}
+
+function pixelHelper(kind) {
+  const ids = pixelLights();
+  const n = (id) => live.cat.fixtures.find((f) => f.id === id).pixels;
+  const nth = Math.max(2, +$("#px-n").value || 2), k = Math.max(1, +$("#px-k").value || 1);
+  const cur = Object.fromEntries(grid.selection().map((s) => [s.id, s.px === null ? [...Array(n(s.id)).keys()] : s.px]));
+  const map = {};
+  for (const id of ids) {
+    const all = [...Array(n(id)).keys()], have = new Set(cur[id] || []);
+    map[id] = {
+      all, none: [], invert: all.filter((p) => !have.has(p)), odd: all.filter((p) => p % 2 === 0), even: all.filter((p) => p % 2 === 1),
+      nth: all.filter((p) => p % nth === 0), first: all.slice(0, k), last: all.slice(-k), left: all.slice(0, Math.ceil(all.length / 2)),
+      right: all.slice(Math.floor(all.length / 2)), centre: all.filter((p) => Math.abs(p - (all.length - 1) / 2) < k / 2 + 0.01),
+      same: [...new Set(Object.values(cur).flat())].filter((p) => p < all.length),
+    }[kind];
+  }
+  if (kind === "none") { grid.select([]); return; }
+  grid.selectPixels(map);
+}
+
+async function savePixelGroup() {
+  const name = (prompt(t("scenes.px_group_prompt")) || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+  if (!name) return;
+  const sel = grid.selection().filter((s) => s.px);
+  if (!sel.length) return toast(t("scenes.px_group_need"), true);
+  const data = await get("/api/store/fixtures");
+  data.pixel_groups = { ...(data.pixel_groups || {}), [name]: sel.map((s) => `${s.id}:${pxSpec(s.px)}`) };
+  if (await attempt(() => api("PUT", "/api/store/fixtures/", { data }), t("scenes.px_group_saved", { name }))) await refreshCatalogue();
+}
+
+function buildPixelTools() {
+  const b = (kind) => el("button", { class: "quick", "data-px-help": kind, onclick: () => pixelHelper(kind) }, t("scenes.px_" + kind));
+  $("#pixel-tools").replaceChildren(el("span", { class: "muted", text: t("scenes.px_tools") }),
+    ...["all", "none", "invert", "odd", "even"].map(b),
+    b("nth"), el("input", { id: "px-n", type: "number", class: "mini num", min: 2, max: 16, value: 2, title: t("scenes.px_n_tip") }),
+    b("first"), b("last"), el("input", { id: "px-k", type: "number", class: "mini num", min: 1, max: 16, value: 2, title: t("scenes.px_k_tip") }),
+    b("left"), b("right"), b("centre"), b("same"),
+    el("button", { class: "quick", id: "px-group-save", onclick: savePixelGroup }, t("scenes.px_group_save")));
 }
 
 // ---------------------------------------------------------------- the layer form
@@ -349,7 +450,7 @@ async function check() {
 
 function updateSelection() {
   selectionChanged();
-  const n = grid.selected.size;
+  const n = grid.selection().length; // whole lights and lights with some pixels
   $("#scene-sel").textContent = n ? t("scenes.selected", { n, names: selectionNames().join(", ") }) : t("scenes.select_help");
 }
 
@@ -378,7 +479,7 @@ try {
 
 function copy() {
   // the layer being edited, else the one lighting the first selected light
-  const src = current >= 0 ? doc.layers[current] : layerFor(doc.layers, [...grid.selected][0], expand);
+  const src = current >= 0 ? doc.layers[current] : layerFor(doc.layers, grid.selection()[0]?.id, expand);
   if (!src) return toast(t("scenes.nothing_to_copy"), true);
   clip = copyLook(src);
   try {
@@ -389,7 +490,7 @@ function copy() {
 
 function paste() {
   if (!clip) return toast(t("scenes.nothing_copied"), true);
-  const ids = [...grid.selected];
+  const ids = grid.selection().map((x) => x.id);
   if (!ids.length) return toast(t("scenes.select_first"), true);
   const layers = pasteLayers(clip, ids, selectionNames(), live.cat.fixtures, fx.effects);
   if (!layers.length) return toast(t("scenes.paste_none"), true);
@@ -401,7 +502,8 @@ function paste() {
 }
 
 export function init() {
-  grid = new LightGrid($("#scene-grid"), { select: true, onChange: updateSelection });
+  grid = new LightGrid($("#scene-grid"), { select: true, pixelSelect: true, onChange: updateSelection });
+  buildPixelTools();
   $("#look-copy").onclick = copy;
   $("#look-paste").onclick = paste;
   // step editor keys (undo / redo, page up / down) first, and kept from the Files page's global undo
@@ -410,7 +512,7 @@ export function init() {
     if (stepKey(ev)) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
     if (!ev.ctrlKey && !ev.metaKey && (ev.key === "]" || ev.key === "[")) { // next / previous light, in layout order
       const ids = Object.keys(grid.items).sort((a, b) => grid.layout[a].y - grid.layout[b].y || grid.layout[a].x - grid.layout[b].x);
-      const at = ids.indexOf([...grid.selected][0]);
+      const at = ids.indexOf(grid.selection()[0]?.id);
       const next = ids[(at + (ev.key === "]" ? 1 : -1) + ids.length) % ids.length];
       if (next) grid.select([next]);
     }

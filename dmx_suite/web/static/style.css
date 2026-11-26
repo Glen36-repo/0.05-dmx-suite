@@ -176,6 +176,8 @@ body.space-held .grid-host.edit .lightgrid { cursor: grab; }
 .lightgrid .haze-ind.hidden { display: none; }
 .lightgrid .outline { fill: color-mix(in srgb, var(--panel) 70%, #000); stroke: color-mix(in srgb, var(--muted) 70%, transparent); stroke-width: 1.5; }
 .lightgrid .fx.sel .outline { stroke: var(--accent); stroke-width: 2.5; }
+.lightgrid .fx.psel-some .outline { stroke: color-mix(in srgb, var(--accent) 55%, transparent); stroke-dasharray: 4 3; }
+.lightgrid .cell.psel { stroke: var(--accent); stroke-width: 3; }
 .lightgrid .hz { fill: var(--muted); font-size: 8px; font-weight: 700; pointer-events: none; }
 .lightgrid .mark { fill: color-mix(in srgb, var(--text) 45%, transparent); pointer-events: none; }
 .lightgrid .name { fill: var(--muted); font-size: 9px; pointer-events: none; paint-order: stroke; stroke: #000; stroke-width: 3px; stroke-linejoin: round; }

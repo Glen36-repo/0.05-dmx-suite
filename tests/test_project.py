@@ -138,6 +138,8 @@ def test_every_ui_text_key_exists():
     used |= {f"steps.playback_{p}" for p in ("loop", "once", "bounce")}
     used |= {f"steps.channel_{k}" for k in ("zoom", "focus", "frost", "strobe", "prism", "speed", "colour_wheel")}
     used |= {f"steps.tab_{k}" for k in ("colour", "position", "beam", "pixels")}
+    used |= {f"scenes.px_{k}" for k in ("all", "none", "invert", "odd", "even", "nth", "first", "last", "left", "right",
+                                        "centre", "same")}
     used |= {"steps.move_dark", "steps.move_lit"}
     # v3.4
     used |= {f"autopilot.bank_{b}" for b in ("move", "colour", "drum")} | {"autopilot.autopilot_on"}
