@@ -8,7 +8,7 @@ from typing import Any
 from ..node.health import HealthTracker
 from ..node.link import NodeLink, ReconnectingSerial
 from ..node.sim import SimTransport, default_sim
-from .base import OutputDriver
+from .base import OutputDriver, SenderThread
 
 
 class NodeSerialDriver(OutputDriver):
@@ -19,18 +19,30 @@ class NodeSerialDriver(OutputDriver):
         transport = SimTransport(default_sim()) if port == "sim" else ReconnectingSerial(port)
         self.link = NodeLink(transport, health)
         self.errors = 0
+        # real node: a sender thread does the USB writes (and port reopening), never the engine
+        self._sender = SenderThread(self._write, self.name) if port != "sim" else None
         if port != "sim":
             self.link.start()  # reader thread: status + heartbeats
 
     def send(self, universe: int, frame: bytes) -> None:
+        if self._sender is not None:
+            self._sender.put(universe, frame)
+            return
+        self._write(universe, frame)
+        self.link.poll()  # simulated node answers straight away
+
+    def _write(self, universe: int, frame: bytes) -> None:
         try:
             self.link.send_frame(frame, universe)
         except Exception:
             self.errors += 1
-        if self.port == "sim":
-            self.link.poll()
+
+    def flush(self, timeout: float = 2.0) -> bool:
+        return self._sender.flush(timeout) if self._sender else True
 
     def close(self) -> None:
+        if self._sender is not None:
+            self._sender.close()
         self.link.close()
 
     def state(self) -> dict[str, Any]:

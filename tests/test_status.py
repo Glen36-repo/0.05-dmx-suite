@@ -76,6 +76,7 @@ def test_enttec_pro_missing_at_start_then_plugged_in():
 
     def plugged_in():  # resends until the reopen timer allows a retry (Windows clocks tick ~16 ms)
         d.send(0, bytes(512))
+        d.flush()
         return bool(plug.writes)
 
     assert wait_for(plugged_in)
@@ -86,13 +87,20 @@ def test_enttec_pro_unplug_and_replug():
     plug = Plug()
     d = EnttecProDriver("COM9", serial_factory=plug.factory)
     d.send(0, bytes(512))
+    d.flush()
     plug.present = False
     d.send(0, bytes(512))  # write fails: port dropped
+    d.flush()
     assert d.state()["state"] == "bad" and "unplugged" in d.state()["detail"]
     plug.present = True
-    time.sleep(0.06)
-    d.send(0, bytes(512))
-    assert d.state()["state"] == "ok" and plug.opens == 2
+
+    def back():  # resends until the reopen timer allows a retry
+        d.send(0, bytes(512))
+        d.flush()
+        return d.state()["state"] == "ok"
+
+    assert wait_for(back)
+    assert plug.opens == 2
 
 
 def test_enttec_open_keeps_streaming_after_replug():
