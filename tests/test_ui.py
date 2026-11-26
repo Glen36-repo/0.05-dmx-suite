@@ -209,7 +209,13 @@ def test_phone_layout_has_bottom_menu(ui):
         assert page.is_visible(f"#page-{name}")
         assert not page.locator("#menu").evaluate("m => m.classList.contains('open')")  # More closes again
         # nothing runs off the side of the phone
-        assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"), name
+        wide = page.evaluate("""() => { const W = document.documentElement.clientWidth;
+            if (document.documentElement.scrollWidth <= W + 1) return [];
+            return [...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > W + 1
+                && e.offsetParent && !e.parentElement.closest('table, .grid-host, .health, .tabs'))
+              .slice(0, 6).map((e) => `${e.tagName}#${e.id}.${e.className} ${Math.round(e.getBoundingClientRect().right)}`)
+              .concat(['page ' + document.documentElement.scrollWidth + ' > ' + W]); }""")
+        assert wide == [], (name, wide)
     assert "on" in page.get_attribute("#menu-more", "class")  # lit while a More page is showing
     go(page, "live")
     assert "on" not in page.get_attribute("#menu-more", "class")

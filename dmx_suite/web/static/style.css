@@ -101,7 +101,9 @@ details.section[open] > summary { margin-bottom: 6px; }
   .now { display: none; }
   /* one line across the top of a phone */
   .top { gap: 6px; padding: 6px 8px; }
-  .top button { white-space: nowrap; padding: 8px 10px; }
+  .top button { white-space: nowrap; padding: 8px 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .top .toggle { padding: 8px 10px; }
+  .top { overflow: hidden; }
   .tempo #tempo-text { display: none; }
   .health { padding: 4px 8px; min-height: 0; }
   .tile .muted { display: none; }
