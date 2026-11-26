@@ -149,7 +149,7 @@ function update(s) {
   document.querySelectorAll("#ride-drum [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === now.drum));
   document.querySelectorAll("#ride-palettes [data-palette]").forEach((b) => b.classList.toggle("sel", b.dataset.palette === now.palette));
   $("#ride-lock").classList.toggle("on", s.ride.palette_lock);
-  if (grid) grid.update(s.fixtures);
+  if (grid) grid.update(s.fixtures, s.haze);
   const lastT = ap.last?.time;
   if (lastT && lastT !== lastDecision) { lastDecision = lastT; loadWhy(); }
 }

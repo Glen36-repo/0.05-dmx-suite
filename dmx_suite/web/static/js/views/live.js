@@ -99,7 +99,7 @@ function render(s) {
   $("#haze").textContent = bits.join(" · ");
   $$("[data-haze]").forEach((b) => b.classList.toggle("sel", h.mode === b.dataset.haze));
 
-  grid.update(s.fixtures);
+  grid.update(s.fixtures, s.haze);
   grid.mark(Object.keys(s.busk?.lights || {})); // lights held by busk buttons
 }
 

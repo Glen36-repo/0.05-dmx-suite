@@ -172,3 +172,20 @@ def test_place_labels_falls_back_to_short_names(ui):
     short, spots = out
     assert short == "UK L"
     assert any(s["short"] or s["leader"] for s in spots.values())
+
+
+def test_haze_is_a_corner_indicator_not_a_light(shot):
+    page, app, *_ = shot
+    for name, host in (("layout", "#layout-grid"), ("live", "#live-grid")):
+        go(page, name)
+        page.wait_for_selector(f"{host} .haze-ind .hz-text")
+        assert page.locator(f"{host} [data-id=smoke]").count() == 0
+        ind = page.locator(f"{host} .haze-ind rect").bounding_box()
+        svgbox = page.locator(f"{host} svg").bounding_box()
+        assert ind["x"] + ind["width"] > svgbox["x"] + svgbox["width"] * 0.8 and ind["y"] < svgbox["y"] + svgbox["height"] * 0.2
+        lights = boxes(page, f"{host} .cell")
+        hz = {"x": ind["x"], "y": ind["y"], "w": ind["width"], "h": ind["height"]}
+        assert not any(overlap(hz, c, 0.5) for c in lights)
+    app.engine.haze_toggle_manual()
+    page.wait_for_function("document.querySelector('#live-grid .hz-text').textContent.includes('manual')")
+    page.wait_for_selector("#live-grid .haze-ind.on")

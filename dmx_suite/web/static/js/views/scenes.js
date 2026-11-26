@@ -452,7 +452,7 @@ export function init() {
     buildTabs(cat);
     if (fx) renderBar();
   });
-  onState((s) => grid.update(s.fixtures));
+  onState((s) => grid.update(s.fixtures, s.haze));
   onShow("scenes", async () => {
     get("/api/inputs").then((r) => { namedInputs = r.inputs; if (fx) renderAll(); }); // for step scenes; not needed to start
     if (!fx) {

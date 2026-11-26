@@ -134,12 +134,22 @@ export class LightGrid {
     if (key !== this.patchKey) this.view = null; // patch changed: fit again
     this.patchKey = key;
     this.items = {};
-    for (const f of cat.fixtures) if (this.layout[f.id]) this.drawLight(f.id);
+    // haze machines aren't lights on the stage: a fixed indicator in the corner shows them instead
+    this.hazeIds = cat.fixtures.filter((f) => f.kind === "haze").map((f) => f.id);
+    this.gHaze = svg("g", { class: "haze-ind" + (this.hazeIds.length ? "" : " hidden") });
+    this.gHaze.append(svg("rect", { class: "hz-box", rx: 4 }), svg("text", { class: "hz-text" }));
+    this.root.append(this.gHaze);
+    for (const f of cat.fixtures) if (this.layout[f.id] && f.kind !== "haze") this.drawLight(f.id);
     this.fit();
     this.applyView();
     if (this.selectable) this.bindPointer();
     if (this.edit) this.bindView();
     this.host.replaceChildren(this.root);
+    // window or box resized: the drawing scales itself (view box); the corner indicator follows
+    this.resizer?.disconnect();
+    this.resizer = new ResizeObserver(() => this.placeHaze());
+    this.resizer.observe(this.root);
+    this.placeHaze();
     if (this.arrow) this.setArrow(this.arrow);
     this.markSelection();
     if (this.lastFixtures) this.update(this.lastFixtures);
@@ -231,7 +241,36 @@ export class LightGrid {
       for (let y = gy0; y <= gy1; y++) this.gGrid.append(svg("line", { x1: gx0 * C, y1: y * C, x2: gx1 * C, y2: y * C }));
     }
     if (this.layoutLabels) this.layoutLabels();
-    if (this.placeHaze) this.placeHaze();
+    this.placeHaze();
+  }
+
+  // the haze indicator sits in the top right corner of what's on screen
+  placeHaze() {
+    if (!this.gHaze || !this.hazeIds.length) return;
+    const [vx, vy, vw, vh] = this.root.getAttribute("viewBox").split(" ").map(Number);
+    const r = this.root.getBoundingClientRect();
+    // with "meet" the box may be wider/taller than the view box: find the visible top right
+    const s = r.width && r.height ? Math.max(vw / r.width, vh / r.height) : 1;
+    const right = vx + vw / 2 + (r.width * s) / 2, top = vy + vh / 2 - (r.height * s) / 2;
+    const w = 3.4 * C, h = 0.8 * C, pad = 0.25 * C;
+    const rect = this.gHaze.querySelector("rect"), txt = this.gHaze.querySelector("text");
+    rect.setAttribute("x", right - w - pad); rect.setAttribute("y", top + pad);
+    rect.setAttribute("width", w); rect.setAttribute("height", h);
+    txt.setAttribute("x", right - w / 2 - pad); txt.setAttribute("y", top + pad + h * 0.68);
+    txt.setAttribute("text-anchor", "middle");
+    this.drawHaze();
+  }
+
+  // haze status from the live state: {mode, on, level, resting, boosting}
+  setHaze(h) { this.haze = h; this.drawHaze(); }
+
+  drawHaze() {
+    if (!this.gHaze || !this.hazeIds.length) return;
+    const h = this.haze || {}, lvl = this.hazeLevel;
+    const pct = lvl !== undefined ? Math.round(lvl * 100) : h.on ? Math.round(h.level ?? 0) : 0;
+    const state = h.boosting ? "boost" : h.resting ? "rest" : h.mode || "off";
+    this.gHaze.querySelector("text").textContent = `HZ ${pct}% · ${state}`;
+    this.gHaze.classList.toggle("on", pct > 0);
   }
 
   get fitted() { return !this.view; }
@@ -361,10 +400,12 @@ export class LightGrid {
 
   // ---------------------------------------------------------------- live colours + beams
 
-  update(fixtures) {
+  update(fixtures, haze) {
     this.lastFixtures = fixtures;
+    if (haze) this.haze = haze;
     const lit = (c) => c && c !== "#000000";
     for (const f of fixtures) {
+      if (f.haze !== undefined && this.hazeIds?.includes(f.id)) { this.hazeLevel = f.haze; this.drawHaze(); continue; }
       const it = this.items[f.id];
       if (!it) continue;
       if (f.pixels) {
@@ -372,8 +413,6 @@ export class LightGrid {
           const c = f.pixels[i];
           r.style.fill = lit(c) ? c : "";
         });
-      } else if (f.haze !== undefined) {
-        it.g.classList.toggle("on", f.haze > 0);
       } else {
         for (const r of it.cells) r.style.fill = lit(f.colour) ? f.colour : "";
       }
@@ -400,7 +439,7 @@ export class LightGrid {
 
   select(ids, add = false) {
     if (!add) this.selected.clear();
-    for (const id of ids) if (this.layout[id]) this.selected.add(id);
+    for (const id of ids) if (this.layout[id] && this.items[id]) this.selected.add(id); // not the haze machine
     this.markSelection();
     this.onChange("select");
   }

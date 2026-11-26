@@ -123,7 +123,7 @@ export function init() {
   };
 
   onCatalogue(buildCatalogue);
-  onState((s) => grid.update(s.fixtures));
+  onState((s) => grid.update(s.fixtures, s.haze));
   onShow("layout", updateSelection);
   window.addEventListener("beforeunload", (ev) => { if (grid.dirty) ev.preventDefault(); });
 }

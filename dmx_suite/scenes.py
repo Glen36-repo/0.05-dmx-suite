@@ -36,7 +36,7 @@ from typing import Any
 from . import effects
 from .effects import BLENDS, ParseCtx, Run, Unit, place_units
 from .effects.base import num as _num_any
-from .fixtures import EMITTERS, ConfigError, Patch
+from .fixtures import EMITTERS, ConfigError, Kind, Patch
 from .layout import cell_positions, full_layout
 from .look import FORBIDDEN, Colour, FixtureLook, Look, LookError
 from .palettes import Palettes
@@ -248,7 +248,8 @@ class ScenePlayer:
         self.rig = rig
         self.timebase = timebase or (lambda now: now)  # tap tempo: effect time vs real time
         self.start = self.timebase(start)
-        present = set(rig.present)
+        # haze machines are never part of a look (rule 5), nor of where an effect runs across the stage
+        present = {f for f in rig.present if rig.patch.fixtures[f].type.kind != Kind.HAZE}
         self._layers: list[tuple[Layer, list[str]]] = []
         for ly in scene.layers:
             fids = [f for f in ly.fixtures if f in present]

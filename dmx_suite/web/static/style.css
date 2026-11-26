@@ -167,6 +167,11 @@ body.space-held .grid-host.edit .lightgrid { cursor: grab; }
 .lightgrid .gridlines line { stroke: color-mix(in srgb, var(--line) 55%, transparent); stroke-width: 1; }
 .lightgrid .cell { fill: var(--cell-off); stroke: color-mix(in srgb, var(--line) 80%, #000); stroke-width: 1.5; transition: fill .05s; }
 .lightgrid .fx.haze.on .cell { fill: #cfd3d8; }
+.lightgrid .haze-ind .hz-box { fill: color-mix(in srgb, var(--panel) 85%, #000); stroke: var(--line); stroke-width: 1; }
+.lightgrid .haze-ind.on .hz-box { fill: #cfd3d8; }
+.lightgrid .haze-ind .hz-text { fill: var(--muted); font-size: 9px; font-weight: 700; pointer-events: none; }
+.lightgrid .haze-ind.on .hz-text { fill: #000; }
+.lightgrid .haze-ind.hidden { display: none; }
 .lightgrid .outline { fill: color-mix(in srgb, var(--panel) 70%, #000); stroke: color-mix(in srgb, var(--muted) 70%, transparent); stroke-width: 1.5; }
 .lightgrid .fx.sel .outline { stroke: var(--accent); stroke-width: 2.5; }
 .lightgrid .hz { fill: var(--muted); font-size: 8px; font-weight: 700; pointer-events: none; }
