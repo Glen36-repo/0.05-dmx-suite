@@ -309,6 +309,7 @@ function stepCtx() {
 }
 
 function renderAll(errLayer = null) {
+  if (!fx) return; // still loading the effects list (a tap this early does nothing)
   renderBar();
   renderLayers(errLayer);
   renderForm();
@@ -447,7 +448,7 @@ export function init() {
   });
   onState((s) => grid.update(s.fixtures));
   onShow("scenes", async () => {
-    namedInputs = (await get("/api/inputs")).inputs;
+    get("/api/inputs").then((r) => { namedInputs = r.inputs; if (fx) renderAll(); }); // for step scenes; not needed to start
     if (!fx) {
       await loadEffects();
       setDoc({ name: t("scenes.untitled"), layers: [] }, null);

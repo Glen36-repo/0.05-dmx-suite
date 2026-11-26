@@ -24,6 +24,8 @@ Remove-Item Env:DMX_SUITE_SHOWS
 
 # smoke test the desktop app: opens the window on the simulator, checks the page loaded, quits.
 # First through the console exe, so any error is printed here, then the windowed exe the shortcuts use.
+# app data (logs, settings) in the smoke folder, so desktop.log below is the one these runs write
+$env:DMX_SUITE_DATA = Join-Path $env:TEMP "dmx-suite-smoke"
 & dist\dmx-suite\dmx-suite.exe --shows (Join-Path $env:TEMP "dmx-suite-smoke\shows") app --sim --fresh --port 8598 --smoke-test 10
 Check "desktop app smoke test (console)"
 $smokeShows = Join-Path $env:TEMP "dmx-suite-smoke\shows"
@@ -31,6 +33,7 @@ $p = Start-Process -FilePath "dist\dmx-suite\0.05 DMX Suite.exe" -PassThru -Wait
     -ArgumentList "--shows", "`"$smokeShows`"", "app", "--sim", "--fresh", "--port", "8599", "--smoke-test", "10"
 Get-Content (Join-Path $env:TEMP "dmx-suite-smoke\logs\desktop.log") -ErrorAction SilentlyContinue
 if ($p.ExitCode -ne 0) { throw "desktop app smoke test failed (exit $($p.ExitCode))" }
+Remove-Item Env:DMX_SUITE_DATA
 
 # and on a .dms show file (one file for the whole show)
 $smokeDms = Join-Path $env:TEMP "dmx-suite-smoke\smoke.dms"
