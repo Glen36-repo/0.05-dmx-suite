@@ -221,9 +221,17 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
 
         # ---------------------------------------------------------------- dispatch
 
+        def _note_client(self) -> None:
+            """Local clients (the Claude MCP server) say who they are, for the status bar."""
+            name = (self.headers.get("X-DMX-Client") or "").strip().lower()[:20]
+            if name and self._local():
+                call = (self.headers.get("X-DMX-Call") or "").strip()[:40] or None
+                app.note_client(name, call)
+
         def _guarded(self, fn: Any) -> None:
             if not self._host_ok():
                 return self._error(403, "unknown host")
+            self._note_client()
             try:
                 fn()
             except ApiError as e:
@@ -268,6 +276,10 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                     return self._error(404, "not found")
                 return self._send(200, f.read_bytes(), TYPES.get(f.suffix, "application/octet-stream"), extra)
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
+            if path == "/api/ping":
+                return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
+            if path == "/api/devices":
+                return self._json(200, app.devices())
             if path == "/api/state":
                 return self._json(200, app.snapshot())
             if path == "/api/catalogue":
@@ -304,6 +316,14 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.close_connection = True
             seq = since
+            sid = id(self)
+            app.screens[sid] = {"ip": self.client_address[0], "local": self._local(), "since": time.time()}
+            try:
+                self._stream(seq)
+            finally:
+                app.screens.pop(sid, None)
+
+        def _stream(self, seq: int) -> None:
             while not app_stopping.is_set():
                 midi = [asdict(e) for e in list(app.monitor.entries) if e.seq > seq]
                 if midi:

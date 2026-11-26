@@ -40,6 +40,9 @@ class App:
         self.log_dir = log_dir
         self.alerts: list[dict[str, Any]] = []  # node dropped / weak, newest last
         self.midi_inputs: Any = None  # MidiInputs when running live
+        self.clients: dict[str, dict[str, Any]] = {}  # e.g. "claude": {first, last, calls, last_call}
+        self.screens: dict[int, dict[str, Any]] = {}  # open browser streams: id -> {ip, local, since}
+        self._fps = (time.monotonic(), 0, 0.0)  # (window start, frames at start, last rate)
         self._lock = threading.RLock()
         self.started = time.time()
         for d in drivers:
@@ -104,6 +107,58 @@ class App:
             if isinstance(d, NodeSerialDriver):
                 return d.link
         raise ValueError("no 0.05 node output in this rig")
+
+    # ------------------------------------------------------------------ status bar
+
+    def note_client(self, name: str, call: str | None = None) -> None:
+        """A local client (the Claude MCP server) checked in or made a call."""
+        now = time.time()
+        c = self.clients.setdefault(name, {"first": now, "last": now, "calls": 0, "last_call": None, "last_call_at": None})
+        c["last"] = now
+        if call:
+            c["calls"] += 1
+            c["last_call"], c["last_call_at"] = call, now
+
+    def engine_fps(self) -> float:
+        start, frames0, rate = self._fps
+        now = time.monotonic()
+        if now - start >= 1.0:
+            rate = (self.engine.frames_sent - frames0) / (now - start)
+            self._fps = (now, self.engine.frames_sent, rate)
+        return rate
+
+    def devices(self) -> list[dict[str, Any]]:
+        """Everything outside the engine, for the status bar: kind, name, state (ok/warn/bad/sim/idle), detail."""
+        out: list[dict[str, Any]] = []
+        fps = self.engine_fps()
+        running = self.engine._thread is not None
+        out.append({"kind": "engine", "name": "Engine", "state": ("ok" if fps >= 35 else "warn") if running else "warn",
+                    "detail": f"{fps:.0f} fps" if running else "not running"})
+        for d in self.engine.drivers:
+            out.append(d.state())
+        if self.midi_inputs is not None:
+            for m in self.midi_inputs.status():
+                out.append({"kind": "midi", "name": f"MIDI {m['name']}", "state": "ok" if m["connected"] else "bad",
+                            "detail": m.get("port") or ("connected" if m["connected"] else "unplugged")})
+        else:
+            out.append({"kind": "midi", "name": "MIDI", "state": "sim", "detail": "simulated input"})
+        c = self.clients.get("claude")
+        now = time.time()
+        if c is None or now - c["last"] > 75:
+            out.append({"kind": "claude", "name": "Claude", "state": "idle",
+                        "detail": "not connected" if c is None else f"last seen {_ago(now - c['last'])} ago"})
+        else:
+            busy = c["last_call_at"] is not None and now - c["last_call_at"] < 60
+            detail = f"{c['last_call']} {_ago(now - c['last_call_at'])} ago" if busy else "connected"
+            if self.gig_lock:
+                detail += " · read-only (gig lock)"
+            out.append({"kind": "claude", "name": "Claude", "state": "ok", "detail": detail, "active": busy})
+        screens = list(self.screens.values())  # web threads add/remove while we read
+        phones = sum(1 for s in screens if not s["local"])
+        n = len(screens)
+        out.append({"kind": "screens", "name": "Screens", "state": "ok" if n else "idle",
+                    "detail": f"{n} open" + (f" ({phones} phone/tablet)" if phones else "")})
+        return out
 
     # ------------------------------------------------------------------ reload after edits
 
@@ -203,6 +258,7 @@ class App:
             "learning": self.router.learning,
             "rig": e.rig.name,
             "midi_inputs": self.midi_inputs.status() if self.midi_inputs is not None else [],
+            "devices": self.devices(),
         }
 
     def catalogue(self) -> dict[str, Any]:
@@ -218,3 +274,8 @@ class App:
             "groups": self.engine.rig.patch.groups(),
             "actions": sorted(ACTIONS),
         }
+
+
+def _ago(seconds: float) -> str:
+    s = int(seconds)
+    return f"{s} s" if s < 90 else f"{s // 60} min"

@@ -95,6 +95,7 @@ class DmxTools:
         self.url = (url or os.environ.get("DMX_SUITE_URL") or DEFAULT_URL).rstrip("/")
         self._token = token
         self.local = ShowStore(self.shows)
+        self.call_label: str | None = None  # which Claude tool is running, for the status bar
 
     # ------------------------------------------------------------------ transport
 
@@ -111,8 +112,10 @@ class DmxTools:
 
     def _call(self, method: str, path: str, body: Any = None) -> Any:
         data = None if body is None else json.dumps(body).encode()
-        req = urllib.request.Request(self.url + path, data=data, method=method,
-                                     headers={"Content-Type": "application/json", "X-DMX-Token": self.token})
+        headers = {"Content-Type": "application/json", "X-DMX-Token": self.token, "X-DMX-Client": "claude"}
+        if self.call_label:
+            headers["X-DMX-Call"] = self.call_label
+        req = urllib.request.Request(self.url + path, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return json.loads(r.read() or b"null")
@@ -124,6 +127,17 @@ class DmxTools:
             raise StoreError(msg) from None
         except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
             raise Offline(str(e)) from None
+
+    def ping(self) -> bool:
+        """Tell the engine Claude Desktop has the 0.05 tools loaded. False if the engine isn't running."""
+        saved, self.call_label = self.call_label, None
+        try:
+            self._call("GET", "/api/ping")
+            return True
+        except (Offline, StoreError):
+            return False
+        finally:
+            self.call_label = saved
 
     def _online(self) -> bool:
         try:
