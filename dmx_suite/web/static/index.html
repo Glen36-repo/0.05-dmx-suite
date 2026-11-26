@@ -15,6 +15,7 @@
 <header class="top">
   <img src="/static/themes/__THEME__/logo.svg" alt="" class="logo">
   <div class="now" id="now" data-i18n="status.connecting"></div>
+  <div class="tempo" id="tempo" data-i18n-title="top.tempo_tip"><span class="beat-dot"></span><span id="tempo-text"></span></div>
   <button id="master" class="toggle master" data-i18n="top.master"></button>
   <button id="blackout" class="toggle danger" data-i18n="top.blackout"></button>
   <button class="lock" id="giglock" data-i18n="top.giglock" data-i18n-title="top.giglock_tip"></button>
@@ -45,6 +46,8 @@
         <button data-cmd="next" data-i18n="live.next"></button>
         <button data-cmd="look" data-i18n="live.static_look"></button>
         <button id="tap" data-i18n="live.tap"></button>
+        <input id="bpm" type="number" min="40" max="240" step="1" class="narrow" data-i18n-placeholder="live.bpm_placeholder">
+        <button id="bpm-set" data-i18n="live.bpm_set"></button>
         <button data-cmd="tempo" data-bpm="off" data-i18n="live.tempo_off"></button>
         <span class="muted" id="preview"></span>
       </div>

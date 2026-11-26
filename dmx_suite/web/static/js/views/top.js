@@ -21,8 +21,27 @@ function beep() {
   } catch {}
 }
 
+let lastBeat = null;
+
+function renderTempo(tp) {
+  const box = $("#tempo");
+  if (!tp) return box.classList.add("hidden");
+  box.classList.remove("hidden");
+  const speed = tp.speed !== 1 ? ` ×${tp.speed.toFixed(2)}` : "";
+  $("#tempo-text").textContent = tp.bpm
+    ? t("top.tempo", { bpm: Math.round(tp.bpm), source: t("tempo." + tp.source) }) + speed
+    : t(tp.lost ? "top.tempo_lost" : "top.tempo_timers") + speed;
+  if (tp.bpm && tp.beat !== lastBeat) { // pulse on each beat
+    box.classList.remove("pulse");
+    void box.offsetWidth;
+    box.classList.add("pulse");
+  }
+  lastBeat = tp.beat;
+}
+
 function render(s) {
   $("#now").textContent = s.describe;
+  renderTempo(s.tempo);
   const gated = !s.profile || s.profile.master_gate;
   $("#master").classList.toggle("hidden", !gated); // no MASTER on/off under the generic profile
   $("#master").classList.toggle("on", s.master);

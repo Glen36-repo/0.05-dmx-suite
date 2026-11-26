@@ -238,5 +238,15 @@
  "scenes.blend_help": "replace: covers what's below; max: the brighter wins; add: adds up",
  "scenes.blend_replace": "replace",
  "scenes.blend_max": "brightest",
- "scenes.blend_add": "add"
+ "scenes.blend_add": "add",
+ "top.tempo_tip": "Tempo: where it comes from, and a pulse on each beat",
+ "top.tempo": "{bpm} BPM ({source})",
+ "top.tempo_timers": "fixed timers",
+ "top.tempo_lost": "tempo lost: fixed timers",
+ "tempo.tap": "tap",
+ "tempo.kick": "kick",
+ "tempo.midi_clock": "MIDI clock",
+ "live.speed": "Speed",
+ "live.bpm_placeholder": "BPM",
+ "live.bpm_set": "Set BPM"
 }

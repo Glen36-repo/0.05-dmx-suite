@@ -49,8 +49,9 @@ ACTIONS: dict[str, set[str]] = {
     "next_song": set(),
     "prev_song": set(),
     "tap_tempo": set(),
+    "speed": set(),
 }
-CONTINUOUS = {"grand_master", "sub_master", "flash_level"}  # need a CC
+CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed"}  # need a CC or OSC
 
 
 @dataclass

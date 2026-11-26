@@ -12,6 +12,10 @@ button, input, select { font: inherit; color: var(--text); }
 /* ---------------------------------------------------------------- top bar */
 .top { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 6; }
 .logo { height: 30px; }
+.tempo { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.tempo .beat-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.tempo.pulse .beat-dot { animation: beat .25s ease-out; }
+@keyframes beat { from { background: var(--accent); box-shadow: 0 0 8px var(--accent); } to { background: var(--line); } }
 .now { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top .toggle { font-weight: 700; padding: 8px 14px; }
 .lock { border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 8px 12px; }

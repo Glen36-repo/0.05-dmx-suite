@@ -35,6 +35,7 @@ function buildCatalogue(cat) {
     faders.append(el("div", { class: "fader" }, el("label", {}, el("span", { text: label }), out), inp));
   };
   fader(t("live.grand"), "grand", (v) => cmd("grand", { level: v }));
+  fader(t("live.speed"), "speed", (v) => cmd("speed", { value: 4 ** (2 * v - 1) })); // middle = as set
   fader(t("live.flash_level"), "flash_level", (v) => cmd("flash_level", { level: v }));
   for (const k of ["head", "bar", "wash", "kick"]) fader(t("live.sub_" + k), "sub:" + k, (v) => cmd("sub", { kind: k, level: v }));
 }
@@ -61,10 +62,10 @@ function render(s) {
   $$("#faders input").forEach((inp) => {
     if (inp.dataset.busy || document.activeElement === inp) return; // don't fight the finger
     const k = inp.dataset.key;
-    const v = k.startsWith("sub:") ? s.subs[k.slice(4)] : s[k];
+    const v = k === "speed" ? (Math.log(s.tempo?.speed || 1) / Math.log(4) + 1) / 2 : k.startsWith("sub:") ? s.subs[k.slice(4)] : s[k];
     if (v !== undefined) {
       inp.value = Math.round(v * 100);
-      inp.previousSibling.lastChild.textContent = inp.value + "%";
+      inp.previousSibling.lastChild.textContent = k === "speed" ? `×${(s.tempo?.speed || 1).toFixed(2)}` : inp.value + "%";
     }
   });
 
@@ -83,6 +84,7 @@ function render(s) {
 
 export function init() {
   $("#tap").onclick = () => cmd("tap");
+  $("#bpm-set").onclick = () => { const v = +$("#bpm").value; if (v) cmd("tempo", { bpm: v }); };
   $("#setlist-go").onclick = () => cmd("setlist", { setlist: $("#setlist").value });
   $$("[data-haze]").forEach((b) => (b.onclick = () => cmd("haze", { action: b.dataset.haze })));
   const boost = $("#boost");

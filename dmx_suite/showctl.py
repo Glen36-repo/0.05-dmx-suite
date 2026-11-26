@@ -58,7 +58,7 @@ class ShowController:
         self._lock = threading.RLock()
         self.e = engine
         self.files = files  # ShowFiles (with shows/setlists)
-        self.tempo = TempoClock(engine.clock())
+        self.tempo = TempoClock(engine.clock(), engine.rig.tempo)
         self.state_path = state_path
         self.mode = "look"
         self.show: Show | None = None
@@ -170,6 +170,9 @@ class ShowController:
     @_locked
     def set_tempo(self, bpm: float | None) -> None:
         self.tempo.set_bpm(bpm, self.e.clock())
+
+    def set_speed(self, speed: float) -> None:
+        self.tempo.set_speed(speed, self.e.clock())
 
     # ------------------------------------------------------------------ status
 

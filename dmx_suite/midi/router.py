@@ -48,6 +48,8 @@ class Incoming:
             return cls("program_change", ch, msg.program, 0, True, t)
         if t == "control_change":
             return cls("control_change", ch, msg.control, msg.value, msg.value >= 64, t)
+        if t in ("clock", "start", "continue", "stop"):
+            return cls(t, 0, 0, 0, False, t)
         return cls("other", ch, 0, 0, False, t)
 
 
@@ -73,7 +75,7 @@ class MidiRouter:
         params = dict(params or {})
         port = params.pop("port", None)
         # validate params now with a dummy input so a bad learn fails before the pedal press
-        dummy_type = "control_change" if action in ("grand_master", "sub_master", "flash_level") else "note"
+        dummy_type = "control_change" if action in ("grand_master", "sub_master", "flash_level", "speed") else "note"
         validate(Mapping(dummy_type, 1, 0, action, dict(params or {})))
         with self._lock:
             self._learn = (action, params, on_learned, port)
@@ -95,6 +97,8 @@ class MidiRouter:
         return self.handle(Incoming.from_osc(address, args), f"OSC {source}".strip())
 
     def handle(self, m: Incoming, port: str = "") -> str:
+        if m.type in ("clock", "start", "continue", "stop"):  # 24 a beat: not worth a monitor row each
+            return self._clock(m)
         result = self._route(m, port)
         kind = f"osc {m.address}" if m.type == "osc" else m.raw_type
         self.monitor.add(
@@ -102,16 +106,31 @@ class MidiRouter:
         )
         return result
 
+    def _clock(self, m: Incoming) -> str:
+        tempo = self.shows.tempo if self.shows is not None else None
+        if tempo is None or tempo.source != "midi_clock":
+            return "ignored"
+        now = self.engine.clock()
+        if m.type == "clock":
+            tempo.clock_tick(now)
+        elif m.type in ("start", "continue"):
+            tempo.clock_start(now)
+        return m.type
+
     def _route(self, m: Incoming, port: str = "") -> str:
         if m.type == "other":
             return "ignored"
+        tempo = self.shows.tempo if self.shows is not None else None
+        if (tempo is not None and tempo.source == "kick" and m.type == "note" and m.pressed
+                and m.number == tempo.config.kick_note):
+            tempo.kick(self.engine.clock())  # and on to whatever the kick is mapped to
         # learn takes any CC or OSC value (a pedal or fader may start low), note-ons and program changes
         learnable = m.pressed or m.type in ("control_change", "osc")
         with self._lock:
             learn = self._learn
             if learn and learnable:
                 action, params, cb, want_port = learn
-                if action in ("grand_master", "sub_master", "flash_level") and m.type not in ("control_change", "osc"):
+                if action in ("grand_master", "sub_master", "flash_level", "speed") and m.type not in ("control_change", "osc"):
                     return "learn: needs a CC or OSC fader (move a pedal, knob or fader)"
                 if m.type == "osc":
                     mapping = Mapping("osc", 0, 0, action, params, address=m.address)
@@ -137,6 +156,12 @@ class MidiRouter:
             if m.pressed and not ok:
                 return "haze boost refused (disabled or cooling down)"
             return "haze boost on" if m.pressed else "haze boost release"
+        if a == "speed":
+            level = m.level if m.level is not None else m.value / 127
+            speed = 4 ** (2 * level - 1)  # fader bottom = quarter speed, middle = as set, top = 4x
+            if self.shows is not None:
+                self.shows.set_speed(speed)
+            return f"speed x{speed:.2f}"
         if a in ("grand_master", "sub_master", "flash_level"):
             level = m.level if m.level is not None else m.value / 127
             if a == "grand_master":

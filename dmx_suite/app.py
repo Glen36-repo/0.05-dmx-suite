@@ -326,6 +326,7 @@ class App:
             "time": time.time(),
             "master": e.master,
             "profile": e.rig.profile.summary(),
+            "tempo": self.ctl.tempo.status(e.clock()),
             "fault": {"message": e.fault, "count": e.faults} if e.fault else None,
             "show_problem": self.show_problem,
             "blackout": e.blackout,

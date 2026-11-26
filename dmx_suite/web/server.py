@@ -116,6 +116,8 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
         {"next": c.next_song, "prev": c.prev_song}.get(which, lambda: c.go_song(int(which)))()
     elif cmd == "step":
         c.go_step(int(a["step"]))
+    elif cmd == "speed":
+        c.set_speed(float(a["value"]))
     elif cmd == "tap":
         return {"bpm": c.tap()}
     elif cmd == "tempo":

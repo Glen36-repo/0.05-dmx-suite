@@ -38,13 +38,14 @@ from .layout import cell_positions, full_layout
 from .look import FORBIDDEN, Colour, FixtureLook, Look, LookError
 from .palettes import Palettes
 from .rig import Rig
+from .tempo import BEAT_S
 from .versions import read_doc
 
 # effect name -> its setting keys, and the effects that move heads (for older callers)
 EFFECTS = {name: e.keys() for name, e in effects.REGISTRY.items()}
 MOVEMENT = {name for name, e in effects.REGISTRY.items() if e.movement}
 STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe"}
-COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute"}
+COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats"}
 
 
 # --------------------------------------------------------------------------- model
@@ -147,6 +148,14 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
         p["speed"] = _num(d["speed"], f"{what} speed", 0, 1)
     if eff is not None:
         p.update(eff.parse(d, ParseCtx(patch, pal, targets, what)))
+    if "beats" in d:  # a cycle of this many beats at the current tempo (120 BPM when none is set)
+        beats = _num(d["beats"], f"{what} beats", 0.125, 64)
+        if "period_s" in eff_keys:
+            p["period_s"] = beats * BEAT_S
+        elif "rate_hz" in eff_keys:
+            p["rate_hz"] = 1 / (beats * BEAT_S)
+        else:
+            raise LookError(f"{what}: beats needs an effect with a speed (period_s or rate_hz)")
     blend = d.get("blend", "replace")
     if blend not in BLENDS:
         raise LookError(f"{what}: blend must be one of {', '.join(BLENDS)}")

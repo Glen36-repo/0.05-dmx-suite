@@ -9,6 +9,7 @@ from typing import Any
 
 from .fixtures import EMITTERS, ConfigError, Kind, Patch
 from .profile import V1_DEFAULT, Profile, parse_profile, resolve_exempt
+from .tempo import SOURCES, TempoConfig
 from .versions import read_doc
 
 
@@ -88,6 +89,7 @@ class Rig:
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
     osc: OscConfig = field(default_factory=OscConfig)
     change_fade_s: float = 0.0  # crossfade when picking a scene, show or look (0 = cut, as v1)
+    tempo: TempoConfig = field(default_factory=TempoConfig)
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
 
@@ -200,7 +202,25 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         exempt=resolve_exempt(profile, patch, present),
         osc=_osc(data.get("osc")),
         change_fade_s=_secs(data.get("change_fade_s", 0), "change_fade_s"),
+        tempo=_tempo(data.get("tempo")),
     )
+
+
+def _tempo(d: Any) -> TempoConfig:
+    if d is None:
+        return TempoConfig()
+    if not isinstance(d, dict) or set(d) - {"source", "kick_note", "timeout_s"}:
+        raise ConfigError("tempo: source (tap, kick, midi_clock), kick_note, timeout_s")
+    src = d.get("source", "tap")
+    if src not in SOURCES:
+        raise ConfigError(f"tempo source must be one of {', '.join(SOURCES)}")
+    try:
+        note = int(d.get("kick_note", 36))
+    except (TypeError, ValueError) as e:
+        raise ConfigError("tempo kick_note must be a MIDI note number") from e
+    if not 0 <= note <= 127:
+        raise ConfigError("tempo kick_note must be 0-127")
+    return TempoConfig(src, note, _secs(d.get("timeout_s", 30), "tempo timeout_s", 1))
 
 
 def _osc(d: Any) -> OscConfig:
