@@ -330,7 +330,7 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     if args.sim:
         drivers: list[OutputDriver] = [LogDriver()]
         if args.sim_node:
-            drivers.append(make_driver({"driver": "node_serial", "port": "sim"}))
+            drivers.append(make_driver({"driver": "node", "port": "sim"}))
     else:
         drivers = [make_driver(o) for o in show.rig.outputs]
     for d in drivers:  # rig config lists the nodes expected, so a missing one shows at setup

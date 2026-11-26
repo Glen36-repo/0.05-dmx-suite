@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .classify import AutoRig
+from .fixtures import ConfigError
 
 BANKS = ("move", "colour", "flash", "drum")
 MOODS = ("low", "mid", "high")
@@ -229,6 +230,22 @@ def _apply_ride(layer: dict[str, Any], item: Item, ride: RideSettings) -> dict[s
     return out
 
 
+FEEL_KEYS = {"ride": "feel", "bank_ride": "bank_feel"}  # v4: the Ride controls are the Autopilot's Feel
+
+
+def norm_pick(d: Any, what: str = "pick") -> Any:
+    """A pick dict with the v4 key names (`feel`, `bank_feel`); the v3 `ride` / `bank_ride` still read."""
+    if not isinstance(d, dict):
+        return d
+    out = dict(d)
+    for old, new in FEEL_KEYS.items():
+        if old in out:
+            if new in out:
+                raise ConfigError(f"{what}: give {new} or {old} (the old name), not both")
+            out[new] = out.pop(old)
+    return out
+
+
 @dataclass
 class Pick:
     """One look on the Ride page / from the autopilot."""
@@ -245,16 +262,17 @@ class Pick:
 
     def to_dict(self) -> dict[str, Any]:
         return {"move": self.move, "colour": self.colour, "drum": self.drum, "palette": self.palette,
-                "ride": self.ride.to_dict(), "bank_ride": {k: v.to_dict() for k, v in self.bank_ride.items()}}
+                "feel": self.ride.to_dict(), "bank_feel": {k: v.to_dict() for k, v in self.bank_ride.items()}}
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> Pick:
+        d = norm_pick(d)
         return Pick(d.get("move"), d.get("colour"), d.get("drum"), str(d.get("palette") or "warm"),
-                    RideSettings.from_dict(d.get("ride")),
-                    {k: RideSettings.from_dict(v) for k, v in (d.get("bank_ride") or {}).items()})
+                    RideSettings.from_dict(d.get("feel")),
+                    {k: RideSettings.from_dict(v) for k, v in (d.get("bank_feel") or {}).items()})
 
 
-def compose(pick: Pick, ar: AutoRig, palette_colours: list[Any], name: str = "Ride") -> dict[str, Any]:
+def compose(pick: Pick, ar: AutoRig, palette_colours: list[Any], name: str = "Autopilot") -> dict[str, Any]:
     """Scene data for a pick on this rig: colour across the colour lights, movement on the heads,
     drum layer on top. Items the rig can't run are left out (rig size scaling)."""
     cols = list(palette_colours) or ["white"]

@@ -69,19 +69,19 @@ function render() {
   const pick = live.state?.ride?.pick || fx.pick;
   const byBank = (b) => ok.filter((i) => i.bank === b);
   $("#ride-move").replaceChildren(
-    el("button", { class: "ride-fx" + (!pick.move ? " sel" : ""), onclick: () => act("ride_fx", { bank: "move", item: "" }) }, t("ride.no_move")),
-    ...byBank("move").map((i) => fxButton(i, () => act("ride_fx", { bank: "move", item: i.id }))));
-  $("#ride-colour").replaceChildren(...byBank("colour").map((i) => fxButton(i, () => act("ride_fx", { bank: "colour", item: i.id }))));
+    el("button", { class: "ride-fx" + (!pick.move ? " sel" : ""), onclick: () => act("autopilot_fx", { bank: "move", item: "" }) }, t("ride.no_move")),
+    ...byBank("move").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "move", item: i.id }))));
+  $("#ride-colour").replaceChildren(...byBank("colour").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "colour", item: i.id }))));
   $("#ride-flash").replaceChildren(...byBank("flash").map(flashButton));
   $("#ride-drum").replaceChildren(
-    el("button", { class: "ride-fx" + (!pick.drum ? " sel" : ""), onclick: () => act("ride_fx", { bank: "drum", item: "" }) }, t("ride.no_drum")),
-    ...byBank("drum").map((i) => fxButton(i, () => act("ride_fx", { bank: "drum", item: i.id }))));
+    el("button", { class: "ride-fx" + (!pick.drum ? " sel" : ""), onclick: () => act("autopilot_fx", { bank: "drum", item: "" }) }, t("ride.no_drum")),
+    ...byBank("drum").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "drum", item: i.id }))));
   $("#ride-palettes").replaceChildren(...Object.entries(fx.palettes).map(([k, p]) => el("button", {
-    class: "ride-pal", "data-palette": k, onclick: () => act("ride_palette", { palette: k }) }, p.name)));
+    class: "ride-pal", "data-palette": k, onclick: () => act("autopilot_palette", { palette: k }) }, p.name)));
   $("#ride-tabs").replaceChildren(...["", "move", "colour", "drum"].map((b) => el("button", {
     class: b === bank ? "on" : "", onclick: () => { bank = b; render(); } }, b ? t("ride.bank_" + b) : t("ride.all_banks"))));
   $("#ride-faders").replaceChildren(...FADERS.map((k) => {
-    const src = bank ? pick.bank_ride?.[bank] || { speed: 1, fade: 0.5, fan: 0.5, size: 0.5, shift: 0 } : pick.ride;
+    const src = bank ? pick.bank_feel?.[bank] || { speed: 1, fade: 0.5, fan: 0.5, size: 0.5, shift: 0 } : pick.feel;
     const v = k === "speed" ? (Math.log(src.speed) / Math.log(4) + 1) / 2 : src[k];
     const inp = el("input", { type: "range", min: 0, max: 1, step: 0.01, value: v, "aria-label": t("ride.fader_" + k) });
     let last = 0;
@@ -89,9 +89,9 @@ function render() {
       const now = performance.now();
       if (now - last < 120) return;
       last = now;
-      act("ride_" + k, bank ? { bank } : {}, +inp.value);
+      act("feel_" + k, bank ? { bank } : {}, +inp.value);
     });
-    inp.addEventListener("pointerdown", (e) => { if (learning) { e.preventDefault(); act("ride_" + k, bank ? { bank } : {}); } });
+    inp.addEventListener("pointerdown", (e) => { if (learning) { e.preventDefault(); act("feel_" + k, bank ? { bank } : {}); } });
     return el("label", { class: "ride-fader" }, el("span", { text: t("ride.fader_" + k) }), inp);
   }));
   renderLights();

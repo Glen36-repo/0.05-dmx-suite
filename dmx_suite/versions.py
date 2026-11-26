@@ -22,7 +22,7 @@ import yaml
 
 from .fixtures import ConfigError
 
-FORMAT = 5
+FORMAT = 6
 
 # show folder layout: single files, then one folder per kind
 FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes", "panels.yaml": "panels", "inputs.yaml": "inputs",
@@ -79,9 +79,55 @@ def _fixtures_3_to_4(d: dict[str, Any]) -> dict[str, Any]:
 # across files (raw mappings -> named inputs, palette positions -> rig points) are made once by
 # ShowStore.upgrade (migrate.py), with backups.
 
+# Format 5 -> 6 (v4): the Ride page is the Autopilot page and busking is Override. Pick keys
+# `ride` / `bank_ride` become `feel` / `bank_feel`, MIDI actions get their new names, driver ids say
+# what the interface does (enttec_open -> usb_dmx_open). Outputs get no `universe:` here on purpose:
+# the loader assumes 0 and warns until the routing is confirmed on the Layout page.
+
+def _feel(p: Any) -> Any:
+    from .fxbanks import FEEL_KEYS
+
+    if isinstance(p, dict):
+        for old, new in FEEL_KEYS.items():
+            if old in p and new not in p:
+                p[new] = p.pop(old)
+    return p
+
+
+def _rig_5_to_6(d: dict[str, Any]) -> dict[str, Any]:
+    from .output import driver_id
+
+    ap = d.get("autopilot")
+    if isinstance(ap, dict):
+        for k in ("talking", "walk_on", "walk_off"):
+            _feel(ap.get(k))
+    for o in d.get("outputs") or []:
+        if isinstance(o, dict) and "driver" in o:
+            o["driver"] = driver_id(o["driver"])
+    return d
+
+
+def _presets_5_to_6(d: dict[str, Any]) -> dict[str, Any]:
+    for v in (d.get("presets") or {}).values():
+        if isinstance(v, dict):
+            _feel(v.get("pick"))
+    return d
+
+
+def _midi_5_to_6(d: dict[str, Any]) -> dict[str, Any]:
+    from .midi.map import canonical
+
+    for m in d.get("mappings") or []:
+        if isinstance(m, dict) and "action" in m:
+            m["action"] = canonical(m["action"])
+    return d
+
+
 STEPS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
-    "rig": {1: _rig_1_to_2, 2: _rig_2_to_3},
+    "rig": {1: _rig_1_to_2, 2: _rig_2_to_3, 5: _rig_5_to_6},
     "fixtures": {3: _fixtures_3_to_4},
+    "presets": {5: _presets_5_to_6},
+    "midi": {5: _midi_5_to_6},
 }
 
 

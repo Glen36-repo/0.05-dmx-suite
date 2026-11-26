@@ -61,7 +61,7 @@ async function render() {
 
   if (name === "interface") {
     const found = await get("/api/interfaces");
-    const options = [...found.map((f) => ({ key: `${f.driver || "serial"}|${f.port}`, label: `${f.port}: ${f.description}` + (f.driver ? ` (${t("wizard.looks_like", { what: t("wizard.drv_" + f.driver) })})` : ""), out: { driver: f.driver || "enttec_open", port: f.port } })),
+    const options = [...found.map((f) => ({ key: `${f.driver || "serial"}|${f.port}`, label: `${f.port}: ${f.description}` + (f.driver ? ` (${t("wizard.looks_like", { what: t("wizard.drv_" + f.driver) })})` : ""), out: { driver: f.driver || "usb_dmx_open", port: f.port, universe: 0 } })),
       { key: "artnet", label: t("wizard.drv_artnet"), out: { driver: "artnet" }, host: true },
       { key: "sacn", label: t("wizard.drv_sacn"), out: { driver: "sacn" }, host: true },
       { key: "log", label: t("wizard.drv_log"), out: { driver: "log" } }];

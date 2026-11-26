@@ -653,11 +653,14 @@ class App:
 
     @staticmethod
     def _clean_pick(d: dict[str, Any]) -> dict[str, Any]:
-        out = {k: v for k, v in d.items() if v not in (None, {}, "")}
         defaults = {"speed": 1.0, "fade": 0.5, "fan": 0.5, "size": 0.5, "shift": 0.0}
-        out["ride"] = {k: v for k, v in d.get("ride", {}).items() if defaults.get(k) != v}
-        if not out["ride"]:
-            out.pop("ride")
+        from .fxbanks import norm_pick
+
+        d = norm_pick(d)
+        out = {k: v for k, v in d.items() if v not in (None, {}, "")}
+        out["feel"] = {k: v for k, v in d.get("feel", {}).items() if defaults.get(k) != v}
+        if not out["feel"]:
+            out.pop("feel")
         return out
 
     def rate_look(self, pick: dict[str, Any] | str, value: int) -> str:
@@ -816,20 +819,23 @@ class App:
         if action == "preset":
             self.play_preset(str(p.get("preset")))
             return f"preset {p.get('preset')}"
+        from .midi.map import canonical
+
+        action = canonical(action)  # v3 names (ride_fx, ride_speed ...) still work
         pick = self.ride_pick
-        if action == "ride_fx":
+        if action == "autopilot_fx":
             bank, item = p.get("bank"), p.get("item")
             if bank not in ("move", "colour", "drum") or (item and item not in BY_ID):
-                raise ValueError("ride_fx needs bank move/colour/drum and an FX item")
+                raise ValueError("autopilot_fx needs bank move/colour/drum and an FX item")
             setattr(pick, bank, item or None)
-        elif action == "ride_palette":
+        elif action == "autopilot_palette":
             if p.get("palette") not in self.files.palettes.sets:
                 raise ValueError(f"no palette {p.get('palette')!r}")
             pick.palette = p["palette"]
         elif action == "palette_lock":
             self.palette_lock = not self.palette_lock if p.get("on") is None else bool(p["on"])
             return f"palette lock {'on' if self.palette_lock else 'off'}"
-        elif action.startswith("ride_") and action[5:] in RANGES:
+        elif action.startswith("feel_") and action[5:] in RANGES:
             key = action[5:]
             lo, hi = RANGES[key]
             bank = p.get("bank")
@@ -840,7 +846,7 @@ class App:
             target = pick.ride if not bank else pick.bank_ride.setdefault(bank, type(pick.ride)())
             setattr(target, key, v)
         else:
-            raise ValueError(f"unknown ride action {action!r}")
+            raise ValueError(f"unknown autopilot action {action!r}")
         self.ride_play(pick.to_dict())
         return f"{action} ok"
 

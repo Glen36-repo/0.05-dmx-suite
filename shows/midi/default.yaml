@@ -1,7 +1,7 @@
 # MIDI map: what each named input (inputs.yaml) does. Notes and program numbers live in
 # inputs.yaml, so a changed pedal or pad is fixed there once.
 # Drum pads: which pads flash which fixtures is still open (SCOPE). Use MIDI learn to fill these in.
-version: 5
+version: 6
 name: Default
 mappings:
   # FCB1010, ch 1

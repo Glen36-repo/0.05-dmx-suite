@@ -69,9 +69,9 @@ DEFAULTS: dict[str, Any] = {
     "fill": {"window_s": 1.2, "hits": 5, "crash_s": 1.0},
     "gap_s": 4.0,
     "count_in": 4,
-    "talking": {"colour": "static", "palette": "white", "move": "kit", "ride": {"speed": 0.5, "fade": 1.0}},
-    "walk_on": {"colour": "colour_fade", "palette": "band", "move": "swim", "ride": {"speed": 0.6}},
-    "walk_off": {"colour": "static", "palette": "warm", "ride": {"fade": 1.0}},
+    "talking": {"colour": "static", "palette": "white", "move": "kit", "feel": {"speed": 0.5, "fade": 1.0}},
+    "walk_on": {"colour": "colour_fade", "palette": "band", "move": "swim", "feel": {"speed": 0.6}},
+    "walk_off": {"colour": "static", "palette": "warm", "feel": {"fade": 1.0}},
     "palettes": [],
     "seed": "",
 }
@@ -87,6 +87,9 @@ def parse_config(d: Any) -> dict[str, Any]:
         return copy.deepcopy(DEFAULTS)
     if not isinstance(d, dict) or set(d) - set(DEFAULTS):
         raise ConfigError(f"autopilot: settings are {', '.join(DEFAULTS)}")
+    from .fxbanks import norm_pick
+
+    d = {k: (norm_pick(v, f"autopilot {k}") if k in ("talking", "walk_on", "walk_off") else v) for k, v in d.items()}
     out = merge(DEFAULTS, d)
     for m in MOODS:
         for k in ("moods", "fade"):
@@ -104,7 +107,7 @@ def parse_config(d: Any) -> dict[str, Any]:
     for k in ("talking", "walk_on", "walk_off"):
         p = out[k]
         if not isinstance(p, dict):
-            raise ConfigError(f"autopilot {k}: a look {{colour, move, palette, ride}}")
+            raise ConfigError(f"autopilot {k}: a look {{colour, move, palette, feel}}")
         for bank in ("move", "colour", "drum"):
             if p.get(bank) and p[bank] not in BY_ID:
                 raise ConfigError(f"autopilot {k}: unknown FX item {p[bank]!r}")

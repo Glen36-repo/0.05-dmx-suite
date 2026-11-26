@@ -29,17 +29,17 @@ from .quality import Quality
 STYLES: dict[str, dict[str, Any]] = {
     # allowed items by bank (None = any the rig can do), palettes by tag, ride feel
     "rock": {"move": None, "colour": None, "drum": ["kick_pump", "snare_hit", "fill_build", "cymbal_shimmer"],
-             "palette_tags": ["band", "high", "warm"], "ride": {"speed": 1.2, "size": 0.7}},
+             "palette_tags": ["band", "high", "warm"], "feel": {"speed": 1.2, "size": 0.7}},
     "ballad": {"move": ["float", "swim", "kit", "pan_sweep"], "colour": ["colour_fade", "twinkle", "static", "pulse", "carousel"],
-               "drum": [], "palette_tags": ["low", "warm", "cool"], "ride": {"speed": 0.6, "size": 0.35, "fade": 0.9}},
+               "drum": [], "palette_tags": ["low", "warm", "cool"], "feel": {"speed": 0.6, "size": 0.35, "fade": 0.9}},
     "acoustic": {"move": ["float", "swim", "kit"], "colour": ["static", "colour_fade", "twinkle", "split", "carousel"],
-                 "drum": [], "palette_tags": ["warm", "low", "mid"], "ride": {"speed": 0.7, "size": 0.4, "fade": 0.8}},
+                 "drum": [], "palette_tags": ["warm", "low", "mid"], "feel": {"speed": 0.7, "size": 0.4, "fade": 0.8}},
     "opera": {"move": ["pan_sweep", "kit", "float"], "colour": ["static", "colour_fade"], "drum": [],
-              "palette_tags": ["white"], "ride": {"speed": 0.5, "size": 0.3, "fade": 1.0}},
+              "palette_tags": ["white"], "feel": {"speed": 0.5, "size": 0.3, "fade": 1.0}},
     "dance": {"move": None, "colour": None, "drum": ["kick_pump", "velocity_colour", "snare_hit"],
-              "palette_tags": ["high", "cool"], "ride": {"speed": 1.4, "size": 0.8}},
+              "palette_tags": ["high", "cool"], "feel": {"speed": 1.4, "size": 0.8}},
 }
-LOCKS = ("move", "colour", "drum", "palette", "ride")
+LOCKS = ("move", "colour", "drum", "palette", "feel")
 PLAN_DEFAULT = [("verse", "low", 2), ("chorus", "high", 2), ("verse", "low", 2), ("chorus", "high", 2), ("bridge", "mid", 1),
                 ("chorus", "high", 2)]
 
@@ -89,7 +89,7 @@ class Generator:
         st = STYLES.get(style or "") if style else None
         if style and st is None:
             raise ValueError(f"style is one of {', '.join(STYLES)}")
-        ride = RideSettings.from_dict((st or {}).get("ride"))
+        ride = RideSettings.from_dict((st or {}).get("feel"))
         moves = self._items("move", mood, st)
         colours = self._items("colour", mood, st)
         drums = self._items("drum", mood, st) if mood != "low" else [None]
@@ -101,7 +101,7 @@ class Generator:
             p = Pick(self.rng.choice(moves), self.rng.choice(colours), self.rng.choice(drums), self.rng.choice(pals), ride)
             if base is not None:
                 for k in locks:
-                    if k == "ride":
+                    if k == "feel":
                         p.ride, p.bank_ride = base.ride, dict(base.bank_ride)
                     else:
                         setattr(p, k, getattr(base, k))
@@ -119,6 +119,7 @@ class Generator:
 
     def reroll(self, base: Pick, locks: tuple[str, ...], mood: str = "mid") -> Pick:
         """Keep the locked parts, re-roll the rest (never the same look back)."""
+        locks = tuple("feel" if k == "ride" else k for k in locks)  # v3 name
         bad = set(locks) - set(LOCKS)
         if bad:
             raise ValueError(f"locks are {', '.join(LOCKS)}")

@@ -1,6 +1,6 @@
 # Main band show: LOW / MID / HIGH sets on fixed-timer steps. Each step is a freshly generated
 # scene from the set's style, using only the fixtures in the active rig.
-version: 5
+version: 6
 name: Main band show
 default_set: mid
 sets:

@@ -1,5 +1,5 @@
 # Full rig. Levels are 0-100 %. Head limits are % of the pan/tilt range.
-version: 5
+version: 6
 name: Full rig
 fixtures: [all]
 
@@ -40,7 +40,7 @@ midi_inputs: [UM-ONE]          # phase 2: add H2MIDI for the SamplePad
 nodes: []                 # expected nodes, e.g. {mac: "F4:12:FA:00:A0:01", name: Left bars}
 
 outputs:
-  - {driver: enttec_open, port: COM3}     # PLACEHOLDER port; node_serial once the node is built
+  - {driver: usb_dmx_open, port: COM3, universe: 0}     # PLACEHOLDER port; node once the node is built
 
 # Head position points (v3): where each head aims to hit the same spot, 0-1 of its pan/tilt range.
 # Scenes, busk buttons and the auto show use the names. PLACEHOLDERS until focused at rehearsal

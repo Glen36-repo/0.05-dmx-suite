@@ -123,7 +123,7 @@ def test_every_ui_text_key_exists():
     used |= {f"busk.type_{k}" for k in ("colour", "flash", "solo", "effect", "go", "fader", "haze")}
     used |= {f"busk.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
     used |= {f"wizard.{s}_{x}" for s in ("interface", "lights", "profile", "starter", "pin") for x in ("title", "help")}
-    used |= {f"wizard.drv_{d}" for d in ("node_serial", "enttec_open", "enttec_pro")}
+    used |= {f"wizard.drv_{d}" for d in ("node", "usb_dmx_open", "usb_dmx_pro")}
     # v3.1
     used |= {f"alerts.state_{s}" for s in ("active", "dismissed", "minimised", "snoozed", "muted", "cleared")}
     used |= {f"heads.stage_{k}" for k in "xyz"}

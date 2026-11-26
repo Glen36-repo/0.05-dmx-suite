@@ -31,8 +31,8 @@ def v4_folder(tmp_path: Path) -> Path:
     return root
 
 
-def test_format_is_5():
-    assert FORMAT == 5
+def test_format_is_at_least_5():
+    assert FORMAT >= 5
 
 
 def test_v4_folder_still_loads_as_it_is(tmp_path):
@@ -48,7 +48,7 @@ def test_upgrade_moves_mappings_and_positions(tmp_path):
     assert bid and "midi/default.yaml" in names
     assert (root / ".backups" / bid / "midi" / "default.yaml").exists()  # originals kept
     inputs = yaml.safe_load((root / "inputs.yaml").read_text())
-    assert inputs["version"] == 5
+    assert inputs["version"] == FORMAT
     drums = inputs["devices"]["drums"]["inputs"]
     assert drums["snare"] == {"name": "Snare", "type": "note", "notes": [38], "roles": ["snare", "activity"]}
     midi = yaml.safe_load((root / "midi" / "default.yaml").read_text())

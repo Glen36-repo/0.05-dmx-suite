@@ -59,7 +59,7 @@ def test_starter_presets_load_and_compose_on_every_rig(app):
     ({"presets": {"x": {"pick": {"colour": "laser"}}}}, "isn't a colour"),
     ({"presets": {"x": {"pick": {"move": "static"}}}}, "isn't a move"),
     ({"presets": {"x": {"pick": {"colour": "static", "palette": "nope"}}}}, "unknown palette"),
-    ({"presets": {"x": {"pick": {"ride": {"speed": 9}}}}}, "ride speed"),
+    ({"presets": {"x": {"pick": {"ride": {"speed": 9}}}}}, "feel speed"),  # v3 key still read
     ({"presets": {"X": {"pick": {}}}}, "lower case"),
     ({"presets": {"x": {"name": "x"}}}, "name, tags and pick"),
     ({"other": {}}, "presets only"),
@@ -70,10 +70,10 @@ def test_bad_presets(bad, msg):
 
 
 def test_save_play_and_delete_a_preset(app):
-    app.ride_play({"move": "circle", "colour": "colour_chase", "palette": "fire", "ride": {"speed": 2.0}})
+    app.ride_play({"move": "circle", "colour": "colour_chase", "palette": "fire", "feel": {"speed": 2.0}})
     app.save_preset("chorus_fire", "Chorus fire", ["high"])
     pre = app.files.presets["chorus_fire"]
-    assert pre["pick"] == {"move": "circle", "colour": "colour_chase", "palette": "fire", "ride": {"speed": 2.0}}
+    assert pre["pick"] == {"move": "circle", "colour": "colour_chase", "palette": "fire", "feel": {"speed": 2.0}}
     app.ride_play({"colour": "static", "palette": "white"})
     app.play_preset("chorus_fire")
     assert app.ride_pick.colour == "colour_chase" and app.ride_pick.ride.speed == 2.0
@@ -274,7 +274,7 @@ def test_more_like_this(app):
     app.ride_play({"move": "circle", "colour": "colour_chase", "palette": "fire"})
     picks = app.more_like_this(4, seed="m")
     assert len(picks) == 4 and all(p["move"] == "circle" and p["colour"] == "colour_chase" for p in picks)
-    assert len({(p["palette"], p["ride"]["fan"]) for p in picks}) > 1
+    assert len({(p["palette"], p["feel"]["fan"]) for p in picks}) > 1
 
 
 def test_capture_matches_the_live_frame(app):

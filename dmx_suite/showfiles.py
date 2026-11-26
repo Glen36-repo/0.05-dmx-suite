@@ -148,7 +148,7 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
         raise ConfigError(f"rig {rig} (profile {r.profile.name}): " + "; ".join(bad))
     panels = _load("panels.yaml", load_panels, root / "panels.yaml", patch, pal, scenes, shows)
     for m in mp.mappings:  # busk mappings must name a real widget
-        if m.action == "busk":
+        if m.action == "override":
             _busk_target(m.params, panels)
     sf = ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes, shows, setlists, panels, inputs)
     sf.presets = presets
@@ -274,7 +274,7 @@ def check_all(root: str | Path) -> list[str]:
             if inputs is not None:
                 check_map_inputs(mp, inputs)
             for m in mp.mappings:
-                if m.action == "busk" and pal is not None:
+                if m.action == "override" and pal is not None:
                     _busk_target(m.params, panels)
                 if m.action == "flash":
                     patch.resolve(m.params["fixtures"])

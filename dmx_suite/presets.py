@@ -33,13 +33,13 @@ PRESET_PREFIX = "preset:"
 
 STARTERS: dict[str, dict[str, Any]] = {
     "calm_warm": {"name": "Calm warm", "tags": ["low"], "pick": {"colour": "colour_fade", "palette": "warm", "move": "float",
-                                                               "ride": {"speed": 0.7}}},
+                                                               "feel": {"speed": 0.7}}},
     "cool_drift": {"name": "Cool drift", "tags": ["low"], "pick": {"colour": "twinkle", "palette": "cool", "move": "swim"}},
     "band_groove": {"name": "Band groove", "tags": ["mid"], "pick": {"colour": "colour_chase", "palette": "band",
                                                                   "move": "pan_sweep", "drum": "kick_pump"}},
     "fire_wave": {"name": "Fire wave", "tags": ["mid"], "pick": {"colour": "wave", "palette": "fire", "move": "figure8"}},
     "neon_hits": {"name": "Neon hits", "tags": ["high"], "pick": {"colour": "static", "palette": "neon", "move": "ballyhoo",
-                                                               "drum": "snare_hit", "ride": {"speed": 1.3}}},
+                                                               "drum": "snare_hit", "feel": {"speed": 1.3}}},
     "white_lights": {"name": "White", "tags": ["low", "mid"], "pick": {"colour": "static", "palette": "white", "move": "kit"}},
 }
 
@@ -50,23 +50,24 @@ def look_key(pick: dict[str, Any]) -> str:
 
 
 def check_pick(pick: Any, palettes: set[str] | None, what: str) -> dict[str, Any]:
-    from .fxbanks import BY_ID, RANGES
+    from .fxbanks import BY_ID, RANGES, norm_pick
 
-    if not isinstance(pick, dict) or set(pick) - {"move", "colour", "drum", "palette", "ride", "bank_ride"}:
-        raise ConfigError(f"{what}: pick is {{move, colour, drum, palette, ride, bank_ride}}")
+    pick = norm_pick(pick, what)
+    if not isinstance(pick, dict) or set(pick) - {"move", "colour", "drum", "palette", "feel", "bank_feel"}:
+        raise ConfigError(f"{what}: pick is {{move, colour, drum, palette, feel, bank_feel}}")
     for bank in ("move", "colour", "drum"):
         v = pick.get(bank)
         if v is not None and (v not in BY_ID or BY_ID[v].bank != bank):
             raise ConfigError(f"{what}: {bank} {v!r} isn't a {bank} FX item")
     if palettes is not None and pick.get("palette", "warm") not in palettes:
         raise ConfigError(f"{what}: unknown palette {pick.get('palette')!r}")
-    for r in [pick.get("ride") or {}, *((pick.get("bank_ride") or {}).values())]:
+    for r in [pick.get("feel") or {}, *((pick.get("bank_feel") or {}).values())]:
         if not isinstance(r, dict) or set(r) - set(RANGES):
-            raise ConfigError(f"{what}: ride settings are {', '.join(RANGES)}")
+            raise ConfigError(f"{what}: feel settings are {', '.join(RANGES)}")
         for k, v in r.items():
             lo, hi = RANGES[k]
             if not isinstance(v, (int, float)) or not lo <= v <= hi:
-                raise ConfigError(f"{what}: ride {k} {lo:g}-{hi:g}")
+                raise ConfigError(f"{what}: feel {k} {lo:g}-{hi:g}")
     return pick
 
 

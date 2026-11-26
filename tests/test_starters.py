@@ -57,16 +57,16 @@ def test_starter_needs_lights():
 
 
 def test_interface_guesses():
-    assert guess(0x303A, 0x1001, "USB JTAG/serial debug unit") == "node_serial"
-    assert guess(0x0403, 0x6001, "DMX USB PRO") == "enttec_pro"
-    assert guess(0x0403, 0x6001, "FT232R USB UART") == "enttec_open"
+    assert guess(0x303A, 0x1001, "USB JTAG/serial debug unit") == "node"
+    assert guess(0x0403, 0x6001, "DMX USB PRO") == "usb_dmx_pro"
+    assert guess(0x0403, 0x6001, "FT232R USB UART") == "usb_dmx_open"
     assert guess(0x2341, 0x0043, "Arduino Uno") is None
     port = SimpleNamespace
     ports = [port(device="COM7", description="Arduino Uno", manufacturer="", product="", vid=0x2341, pid=0x43),
              port(device="COM3", description="FT232R USB UART", manufacturer="FTDI", product="", vid=0x0403, pid=0x6001)]
     found = interfaces(ports)
     assert [f["port"] for f in found] == ["COM3", "COM7"]  # likely interfaces first
-    assert found[0]["driver"] == "enttec_open" and found[0]["usb"] == "0403:6001"
+    assert found[0]["driver"] == "usb_dmx_open" and found[0]["usb"] == "0403:6001"
     assert isinstance(interfaces(), list)  # the real listing works (empty here)
 
 

@@ -54,7 +54,7 @@ ACTIONS: dict[str, set[str]] = {
     "prev_song": set(),
     "tap_tempo": set(),
     "speed": set(),
-    "busk": {"panel", "widget"},  # a busk widget: press / release, or a fader's value
+    "override": {"panel", "widget"},  # an Override panel widget (v3 "busk"): press / release, or a fader's value
     # step scenes (v3.2): the one playing
     "step_next": set(),
     "step_back": set(),
@@ -62,7 +62,7 @@ ACTIONS: dict[str, set[str]] = {
     "step_fade": set(),  # fader: fades 0x - 2x
     # Flash FX (v3.3): held while pressed, or for length_ms
     "flash_fx": {"fx", "colour", "side", "length_ms"},
-    # Ride page and autopilot (v3.4)
+    # Autopilot page (v3.4 Ride page; v4 names)
     "autopilot": {"state"},  # on | off | toggle
     "hold": set(),  # toggle: the look stays, the autopilot stops changing
     "look_next": set(),
@@ -70,20 +70,31 @@ ACTIONS: dict[str, set[str]] = {
     "mood": {"mood"},  # low | mid | high | up | down | auto
     "walk_on": set(),
     "walk_off": set(),
-    "ride_fx": {"bank", "item"},
-    "ride_palette": {"palette"},
+    "autopilot_fx": {"bank", "item"},
+    "autopilot_palette": {"palette"},
     "palette_lock": set(),
-    "ride_speed": set(),
-    "ride_fade": set(),
-    "ride_fan": set(),
-    "ride_size": set(),
-    "ride_shift": set(),
+    "feel_speed": set(),
+    "feel_fade": set(),
+    "feel_fan": set(),
+    "feel_size": set(),
+    "feel_shift": set(),
     "preset": {"preset"},  # v3.5: play a preset
 }
 CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade",
-              "ride_speed", "ride_fade", "ride_fan", "ride_size", "ride_shift"}  # need a CC or OSC
-RIDE_ACTIONS = {"autopilot", "hold", "look_next", "look_prev", "mood", "walk_on", "walk_off", "ride_fx", "ride_palette",
-                "palette_lock", "ride_speed", "ride_fade", "ride_fan", "ride_size", "ride_shift", "preset"}
+              "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift"}  # need a CC or OSC
+AUTOPILOT_ACTIONS = {"autopilot", "hold", "look_next", "look_prev", "mood", "walk_on", "walk_off", "autopilot_fx",
+                     "autopilot_palette", "palette_lock", "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift",
+                     "preset"}
+RIDE_ACTIONS = AUTOPILOT_ACTIONS  # v3 name
+# v3 action names (Ride page, busking) still load; v4 writes the new ones (show file format 6)
+ACTION_ALIASES = {"busk": "override", "ride_fx": "autopilot_fx", "ride_palette": "autopilot_palette",
+                  "ride_speed": "feel_speed", "ride_fade": "feel_fade", "ride_fan": "feel_fan", "ride_size": "feel_size",
+                  "ride_shift": "feel_shift"}
+
+
+def canonical(action: Any) -> Any:
+    """The v4 name of a MIDI/OSC action (v3 names accepted)."""
+    return ACTION_ALIASES.get(action, action) if isinstance(action, str) else action
 
 
 @dataclass
@@ -96,6 +107,9 @@ class Mapping:
     port: str | None = None  # substring of the input port name; None = any port
     address: str = ""  # OSC address (type osc)
     input: str | None = None  # named input (type "input", v3)
+
+    def __post_init__(self) -> None:
+        self.action = canonical(self.action)
 
     @property
     def key(self) -> tuple[str, int, int, str]:
@@ -175,14 +189,14 @@ def validate(m: Mapping, input_type: str | None = None) -> None:
         raise ConfigError(f"{where}: mood needs mood: low, mid, high, up, down or auto")
     if m.action == "autopilot" and m.params.get("state", "toggle") not in ("on", "off", "toggle"):
         raise ConfigError(f"{where}: autopilot state is on, off or toggle")
-    if m.action == "ride_fx" and (m.params.get("bank") not in ("move", "colour", "drum") or not m.params.get("item")):
-        raise ConfigError(f"{where}: ride_fx needs bank (move, colour, drum) and item")
+    if m.action == "autopilot_fx" and (m.params.get("bank") not in ("move", "colour", "drum") or not m.params.get("item")):
+        raise ConfigError(f"{where}: autopilot_fx needs bank (move, colour, drum) and item")
     if m.action == "preset" and not m.params.get("preset"):
         raise ConfigError(f"{where}: preset needs preset (a preset's name)")
-    if m.action == "ride_palette" and not m.params.get("palette"):
-        raise ConfigError(f"{where}: ride_palette needs palette")
-    if m.action == "busk" and (not m.params.get("panel") or not m.params.get("widget")):
-        raise ConfigError(f"{where}: busk needs panel and widget")
+    if m.action == "autopilot_palette" and not m.params.get("palette"):
+        raise ConfigError(f"{where}: autopilot_palette needs palette")
+    if m.action == "override" and (not m.params.get("panel") or not m.params.get("widget")):
+        raise ConfigError(f"{where}: override needs panel and widget")
     if m.action == "sub_master":
         try:
             Kind(m.params.get("kind"))

@@ -12,7 +12,7 @@ const SUBS = ["", "head", "bar", "wash", "kick"];
 const ROLES = ["dimmer", "dimmer_fine", "red", "green", "blue", "white", "amber", "uv", "pan", "pan_fine", "tilt", "tilt_fine",
   "pt_speed", "colour_wheel", "gobo", "strobe", "zoom", "zoom_fine", "focus", "focus_fine", "frost", "prism", "haze", "fixed"];
 const INVERTIBLE = ["pan", "tilt", "zoom", "focus", "frost", "pt_speed"];
-const DRIVERS = ["node_serial", "enttec_open", "enttec_pro", "artnet", "sacn", "log", "null"];
+const DRIVERS = ["node", "usb_dmx_open", "usb_dmx_pro", "artnet", "sacn", "log", "null"];
 
 let doc = null; // fixtures.yaml as data
 let saved = "";

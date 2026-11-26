@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..engine import Engine
-from .map import ACTIONS, CONTINUOUS, RIDE_ACTIONS, Mapping, MidiMap, validate
+from .map import ACTIONS, AUTOPILOT_ACTIONS, CONTINUOUS, Mapping, MidiMap, canonical, validate
 from .monitor import MidiMonitor, MonitorEntry
 from .named import InputDef, Inputs, suggest
 
@@ -83,6 +83,7 @@ class MidiRouter:
         """Arm learn: the next note-on / PC / CC becomes the input for `action`.
         params may include port: "this" (tie the mapping to whichever port the message comes from)
         or a port-name fragment such as "H2MIDI"."""
+        action = canonical(action)
         if action not in ACTIONS:
             raise ValueError(f"unknown action {action!r}")
         params = dict(params or {})
@@ -237,14 +238,14 @@ class MidiRouter:
             if m.pressed and not ok:
                 return "haze boost refused (disabled or cooling down)"
             return "haze boost on" if m.pressed else "haze boost release"
-        if a == "busk":
+        if a == "override":
             if self.busk is None:
-                return "busk: not running"
+                return "override: not running"
             level = m.level if m.level is not None else (m.value / 127 if m.type == "control_change" else None)
             try:
                 return self.busk(p["panel"], p["widget"], m.pressed, level)
             except Exception as err:  # a bad press must never stop the show
-                return f"busk failed: {err}"
+                return f"override failed: {err}"
         if a in ("step_speed", "step_fade"):
             level = m.level if m.level is not None else m.value / 127
             value = 4 ** (2 * level - 1) if a == "step_speed" else 2 * level
@@ -255,7 +256,7 @@ class MidiRouter:
             except Exception as err:
                 return f"{a}: {err}"
             return f"{a} x{value:.2f}"
-        if a in RIDE_ACTIONS:
+        if a in AUTOPILOT_ACTIONS:
             if self.ride is None:
                 return f"{a}: not running"
             level = None
