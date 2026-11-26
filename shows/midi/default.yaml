@@ -2,7 +2,7 @@
 # PLACEHOLDER numbers: the FCB1010 keeps its current program changes (SCOPE decision); copy them
 # from Daslight. Drum pads: which pads flash which fixtures is still open (SCOPE). Use MIDI learn
 # (`learn` in the simulator console) to fill these in from the real gear.
-version: 2
+version: 3
 name: Default
 mappings:
   # FCB1010, ch 1

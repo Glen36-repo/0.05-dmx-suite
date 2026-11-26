@@ -22,7 +22,7 @@ import yaml
 
 from .fixtures import ConfigError
 
-FORMAT = 2
+FORMAT = 3
 
 # show folder layout: single files, then one folder per kind
 FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes"}
@@ -39,8 +39,33 @@ def _rig_1_to_2(d: dict[str, Any]) -> dict[str, Any]:
     return d
 
 
+CELLS_PER_M = 4  # layout grid: 25 cm cells
+
+
+def _rig_2_to_3(d: dict[str, Any]) -> dict[str, Any]:
+    # stage plan in metres (x from stage left, y from the front) -> layout grid cells (y down from
+    # the back of the stage); the stage size goes, the grid fits what's on it
+    stage = d.pop("stage", None) or {}
+    try:
+        depth = float(stage.get("depth", 4.0))
+    except (TypeError, ValueError, AttributeError):
+        depth = 4.0
+    layout = d.get("layout")
+    if isinstance(layout, dict):
+        out = {}
+        for fid, p in layout.items():
+            try:
+                x = round(float(p["x"]) * CELLS_PER_M * 2) / 2 + 1  # one cell of margin
+                y = round((depth - float(p["y"])) * CELLS_PER_M * 2) / 2 + 1
+                out[fid] = {"x": max(0.0, x), "y": max(0.0, y), "rot": p.get("rot", 0)}
+            except (KeyError, TypeError, ValueError):
+                out[fid] = p  # left for the loader to report
+        d["layout"] = out
+    return d
+
+
 STEPS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
-    "rig": {1: _rig_1_to_2},
+    "rig": {1: _rig_1_to_2, 2: _rig_2_to_3},
 }
 
 

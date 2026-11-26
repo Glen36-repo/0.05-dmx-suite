@@ -1,5 +1,5 @@
 # Opera: white and incandescent yellow only, slow head scan, minimal.
-version: 2
+version: 3
 name: Opera
 sets:
   main:

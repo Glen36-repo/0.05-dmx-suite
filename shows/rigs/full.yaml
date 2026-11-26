@@ -1,5 +1,5 @@
 # Full rig. Levels are 0-100 %. Head limits are % of the pan/tilt range.
-version: 2
+version: 3
 name: Full rig
 fixtures: [all]
 

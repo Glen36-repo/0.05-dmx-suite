@@ -22,14 +22,30 @@ class HeadLimit:
         return min(max(v, lo), hi)
 
 
+SHAPES = ("row", "ring", "grid")  # how a pixel light's pixels are laid out on the layout grid
+GRID_MAX = 200  # layout size limit, cells
+
+
 @dataclass
 class Placement:
-    """Where a fixture sits on the stage plan. x from stage left (as the audience sees it),
-    y from the front edge, metres; rot in degrees (0 = facing the audience)."""
+    """Where a light sits on the layout grid (file format 3). x, y in grid cells from the top
+    left, half cells allowed; y runs down the screen with the back of the stage at the top, as in
+    a plan. rot in degrees, 0 = facing the audience (down). `shape` lays out a pixel light's
+    pixels: a row, a ring, or a grid `cols` wide; single-cell lights ignore it."""
 
     x: float
     y: float
     rot: float = 0.0
+    shape: str = "row"
+    cols: int = 0  # grid shape: pixels across (0 = as square as possible)
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"x": self.x, "y": self.y, "rot": self.rot}
+        if self.shape != "row":
+            d["shape"] = self.shape
+        if self.shape == "grid" and self.cols:
+            d["cols"] = self.cols
+        return d
 
 
 @dataclass
@@ -63,8 +79,7 @@ class Rig:
     nodes: list[tuple[str, str]] = field(default_factory=list)  # (mac, name)
     outputs: list[dict[str, Any]] = field(default_factory=list)
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
-    stage: tuple[float, float] = (6.0, 4.0)  # width, depth in metres (stage plan)
-    layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is
+    layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
 
@@ -172,37 +187,43 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         nodes=[(n["mac"].upper(), n.get("name", "")) for n in data.get("nodes") or []],
         outputs=list(data.get("outputs") or [{"driver": "null"}]),
         midi_inputs=[str(x) for x in data.get("midi_inputs") or []],
-        stage=_stage(data.get("stage")),
         layout=_layout(data.get("layout"), patch),
         profile=profile,
         exempt=resolve_exempt(profile, patch, present),
     )
 
 
-def _stage(d: Any) -> tuple[float, float]:
-    if d is None:
-        return (6.0, 4.0)
+def parse_placement(fid: str, v: Any) -> Placement:
+    if not isinstance(v, dict):
+        raise ConfigError(f"layout {fid}: needs x and y in grid cells")
     try:
-        w, dep = float(d["width"]), float(d["depth"])
+        x, y = float(v["x"]), float(v["y"])
+        rot = float(v.get("rot", 0)) % 360
+        cols = int(v.get("cols", 0))
     except (KeyError, TypeError, ValueError) as e:
-        raise ConfigError("stage needs width and depth in metres") from e
-    if not (1 <= w <= 50 and 1 <= dep <= 50):
-        raise ConfigError("stage width and depth must be 1-50 m")
-    return (w, dep)
+        raise ConfigError(f"layout {fid}: needs x and y in grid cells") from e
+    shape = v.get("shape", "row")
+    if shape not in SHAPES:
+        raise ConfigError(f"layout {fid}: shape must be {', '.join(SHAPES)}")
+    if not (0 <= x <= GRID_MAX and 0 <= y <= GRID_MAX):
+        raise ConfigError(f"layout {fid}: x/y must be 0-{GRID_MAX} cells")
+    if not 0 <= cols <= 64:
+        raise ConfigError(f"layout {fid}: cols must be 0-64")
+    return Placement(_half(x), _half(y), round(rot, 1), shape, cols)
+
+
+def _half(n: float) -> float:
+    return round(n * 2) / 2
 
 
 def _layout(d: Any, patch: Patch) -> dict[str, Placement]:
+    if d is not None and not isinstance(d, dict):
+        raise ConfigError("layout: needs `fixture: {x, y}` lines")
     out = {}
     for fid, v in (d or {}).items():
         if fid not in patch.fixtures:
             raise ConfigError(f"layout: unknown fixture {fid!r}")
-        try:
-            p = Placement(float(v["x"]), float(v["y"]), float(v.get("rot", 0)) % 360)
-        except (KeyError, TypeError, ValueError) as e:
-            raise ConfigError(f"layout {fid}: needs x and y in metres") from e
-        if not (-5 <= p.x <= 55 and -5 <= p.y <= 55):
-            raise ConfigError(f"layout {fid}: x/y out of range")
-        out[fid] = p
+        out[fid] = parse_placement(fid, v)
     return out
 
 

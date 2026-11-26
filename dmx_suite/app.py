@@ -20,6 +20,7 @@ from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
 from .node.health import HealthEvent
 from .output import NodeSerialDriver, OutputDriver
+from .rig import parse_placement
 from .scenes import ScenePlayer, parse_scene
 from .showctl import ShowController
 from .showfiles import ShowFiles, load_show
@@ -185,7 +186,7 @@ class App:
         if new.patch.fixtures.keys() != self.files.patch.fixtures.keys() or new.rig.present != self.files.rig.present:
             notes.append("fixture/rig changes take effect after a restart")
         live = self.files.rig
-        live.stage, live.layout = new.rig.stage, new.rig.layout  # the stage plan is display only: apply now
+        live.layout = new.rig.layout  # the layout is display only: apply now
         new.rig, new.patch = live, self.files.patch  # keep the live patch
         self.files = new
         self.ctl.files = new
@@ -195,15 +196,15 @@ class App:
             self.show_problem = None
         return notes
 
-    def save_layout(self, stage: dict[str, Any] | None, layout: dict[str, Any]) -> str:
-        """Write the stage plan into this rig's file (validated + backed up like any edit)."""
+    def save_layout(self, layout: dict[str, Any]) -> str:
+        """Write the light layout into this rig's file (validated + backed up like any edit)."""
         rig_name = self.names[0]
         data = self.store.read("rig", rig_name)
-        if stage is not None:
-            data["stage"] = {"width": round(float(stage["width"]), 2), "depth": round(float(stage["depth"]), 2)}
-        data["layout"] = {fid: {"x": round(float(p["x"]), 2), "y": round(float(p["y"]), 2),
-                                "rot": round(float(p.get("rot", 0)) % 360)} for fid, p in layout.items()}
-        bid = self.store.put("rig", rig_name, data, f"stage plan for rig {rig_name}")
+        if not isinstance(layout, dict):
+            raise ValueError("layout must map fixture ids to {x, y, rot, shape}")
+        data["layout"] = {fid: parse_placement(fid, p).to_dict() for fid, p in layout.items()}
+        data.pop("stage", None)
+        bid = self.store.put("rig", rig_name, data, f"light layout for rig {rig_name}")
         self.reload()
         return bid
 
@@ -310,8 +311,8 @@ class App:
                           "moves": fx.type.has("pan") and not fx.type.colour_only, "pixels": fx.type.pixels,
                           "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range}
                          for fx in self.engine.rig.fixtures],
-            "stage": {"width": self.engine.rig.stage[0], "depth": self.engine.rig.stage[1]},
-            "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot} for fid, p in full_layout(self.engine.rig).items()},
+            "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot, "shape": p.shape, "cols": p.cols}
+                       for fid, p in full_layout(self.engine.rig).items()},
             "rig_name": self.names[0],
             "groups": self.engine.rig.patch.groups(),
             "actions": sorted(ACTIONS),
