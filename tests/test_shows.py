@@ -81,7 +81,7 @@ def test_random_scene_order_never_repeats(files, clock):
 
 def test_show_validation(files):
     pal, scenes = files.palettes, files.scenes
-    with pytest.raises(ConfigError, match="either scenes or auto"):
+    with pytest.raises(ConfigError, match="one of steps, scenes or auto"):
         parse_show("x", {"sets": {"a": {"step_s": 10}}}, pal, scenes)
     with pytest.raises(ConfigError, match="unknown scene"):
         parse_show("x", {"sets": {"a": {"scenes": ["nope"]}}}, pal, scenes)

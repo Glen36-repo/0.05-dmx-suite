@@ -34,6 +34,8 @@ class Now:
     set: str | None = None
     scene: str | None = None
     step: int | None = None
+    step_index: int | None = None  # which of the set's steps (0-based), for the step list
+    repeat: tuple[int, int] | None = None  # (repeat playing, of how many)
     time_left_s: float | None = None
     setlist: str | None = None
     song: int | None = None  # 0-based
@@ -80,7 +82,7 @@ class ShowController:
             raise ConfigError(f"no scene {key!r}")
         sc = self.files.scenes[key]
         self.mode, self.scene_key, self.show, self.set_name, self.player = "scene", key, None, None, None
-        self.e.set_source(ScenePlayer(sc, self.e.rig, self.e.clock(), self.tempo.eff), sc)
+        self.e.set_source(ScenePlayer(sc, self.e.rig, self.e.clock(), self.tempo.eff), sc, self.e.rig.change_fade_s)
         self._save()
 
     @_locked
@@ -91,7 +93,7 @@ class ShowController:
         set_name = set_name or show.default_set
         self.player = ShowPlayer(show, set_name, self.e.rig, self.files.palettes, self.files.scenes, self.tempo, self.e.clock())
         self.mode, self.show, self.set_name, self.scene_key = "show", show, set_name, None
-        self.e.set_source(self.player, self.player.scene)
+        self.e.set_source(self.player, self.player.scene, self.e.rig.change_fade_s)
         self._save()
 
     @_locked
@@ -111,6 +113,15 @@ class ShowController:
             raise ConfigError("no show playing")
         with self.e.lock:  # the engine thread is reading this player
             self.player.next_step(self.e.clock())
+        self.e.set_source(self.player, self.player.scene)
+
+    @_locked
+    def go_step(self, index: int) -> None:
+        """Jump to one of the playing set's steps (tap a step on the Live page)."""
+        if self.player is None:
+            raise ConfigError("no show playing")
+        with self.e.lock:
+            self.player.go(index, self.e.clock())
         self.e.set_source(self.player, self.player.scene)
 
     # ------------------------------------------------------------------ setlist
@@ -171,6 +182,8 @@ class ShowController:
             n.show, n.set, n.step = self.show.key, self.set_name, self.player.step + 1
             n.scene = self.player.scene.name if self.player.scene else None
             n.time_left_s = self.player.time_left(self.e.clock())
+            n.step_index = self.player.index if self.player.set.auto is None else None
+            n.repeat = self.player.repeat(self.e.clock())
             n.label = f"{self.show.name} / {self.set_name}"
         if self.setlist and self.song is not None:
             n.setlist, n.song, n.song_name = self.setlist.key, self.song, self.setlist.songs[self.song].name

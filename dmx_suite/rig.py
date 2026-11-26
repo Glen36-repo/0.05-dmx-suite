@@ -87,6 +87,7 @@ class Rig:
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
     osc: OscConfig = field(default_factory=OscConfig)
+    change_fade_s: float = 0.0  # crossfade when picking a scene, show or look (0 = cut, as v1)
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
 
@@ -198,6 +199,7 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         profile=profile,
         exempt=resolve_exempt(profile, patch, present),
         osc=_osc(data.get("osc")),
+        change_fade_s=_secs(data.get("change_fade_s", 0), "change_fade_s"),
     )
 
 

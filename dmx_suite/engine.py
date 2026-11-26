@@ -13,6 +13,7 @@ import threading
 import time
 from collections.abc import Callable
 
+from .fade import Crossfade
 from .faders import Masters
 from .fixtures import DMX_CHANNELS, Kind
 from .haze import Haze, HazeMode
@@ -86,6 +87,8 @@ class Engine:
             if self._preview is not None and now >= self._preview[0]:
                 _, self.source, self.scene, self.look = self._preview
                 self._preview = None
+            if isinstance(self.source, Crossfade) and self.source.done(now):
+                self.source = self.source.new  # fade finished: drop the old look
             if self.source is not None:
                 self.look = self.source(now)
             if self.position_override:
@@ -263,14 +266,22 @@ class Engine:
     def end_preview(self) -> None:
         with self.lock:
             if self._preview:
-                _, self.source, self.scene, self.look = self._preview
+                _, src, self.scene, look = self._preview
                 self._preview = None
+                back = src if src is not None else (lambda now, lk=look: lk)
+                fade = self.rig.change_fade_s
+                self.source = Crossfade(self.source, back, self.clock(), fade) if fade and self.source else back
+                self.look = look
         self._changed()
 
-    def set_source(self, source: Callable[[float], Look], scene: Scene | None = None) -> None:
-        """Play any look source (a show, a scene with tap tempo). The rule layer still applies."""
+    def set_source(self, source: Callable[[float], Look], scene: Scene | None = None, fade_s: float = 0.0) -> None:
+        """Play any look source (a show, a scene with tap tempo), crossfading from what's on now
+        over `fade_s` seconds (0 = cut). The rule layer still applies."""
         with self.lock:
             self._preview = None  # a real selection ends any preview
+            if fade_s > 0:
+                old = self.source if self.source is not None else (lambda now, lk=self.look: lk)
+                source = Crossfade(old, source, self.clock(), fade_s)
             self.source, self.scene = source, scene
         self._changed()
 

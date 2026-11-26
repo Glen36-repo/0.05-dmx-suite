@@ -354,7 +354,11 @@ class App:
         """Names for the UI's buttons and lists."""
         f = self.files
         return {
-            "shows": {k: {"name": s.name, "sets": list(s.sets), "default_set": s.default_set} for k, s in f.shows.items()},
+            "shows": {k: {"name": s.name, "sets": list(s.sets), "default_set": s.default_set,
+                          "steps": {sk: [{"scene": st.scene, "name": f.scenes[st.scene].name, "repeats": st.repeats,
+                                          "hold_s": st.hold_s, "hold_beats": st.hold_beats}
+                                         for st in ss.steps] for sk, ss in s.sets.items()}}
+                      for k, s in f.shows.items()},
             "scenes": {k: s.name for k, s in f.scenes.items()},
             "setlists": {k: {"name": s.name, "songs": [x.name for x in s.songs]} for k, s in f.setlists.items()},
             "positions": sorted(f.palettes.positions),
