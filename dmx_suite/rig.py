@@ -67,6 +67,8 @@ class Placement:
     rot: float = 0.0
     shape: str = "row"
     cols: int = 0  # grid shape: pixels across (0 = as square as possible)
+    z: float | None = None  # v4: height above the stage in metres (kept for Claude; not drawn)
+    reverse: bool = False  # v4: pixel light mounted backwards: pixel 1 at the other end
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {"x": self.x, "y": self.y, "rot": self.rot}
@@ -74,6 +76,10 @@ class Placement:
             d["shape"] = self.shape
         if self.shape == "grid" and self.cols:
             d["cols"] = self.cols
+        if self.z is not None:
+            d["z"] = self.z
+        if self.reverse:
+            d["reverse"] = True
         return d
 
 
@@ -378,8 +384,16 @@ def parse_placement(fid: str, v: Any) -> Placement:
         x, y = float(v["x"]), float(v["y"])
         rot = float(v.get("rot", 0)) % 360
         cols = int(v.get("cols", 0))
+        z = None if v.get("z") is None else float(v["z"])
     except (KeyError, TypeError, ValueError) as e:
-        raise ConfigError(f"layout {fid}: needs x and y in grid cells") from e
+        raise ConfigError(f"layout {fid}: needs x and y in grid cells (z, if given, in metres)") from e
+    bad = set(v) - {"x", "y", "rot", "shape", "cols", "z", "reverse"}
+    if bad:
+        raise ConfigError(f"layout {fid}: unknown keys {sorted(bad)}; a place is x, y, z, rot, shape, cols, reverse")
+    if not isinstance(v.get("reverse", False), bool):
+        raise ConfigError(f"layout {fid}: reverse is true or false")
+    if z is not None and not -10 <= z <= 50:
+        raise ConfigError(f"layout {fid}: z is metres above the stage, -10 to 50")
     shape = v.get("shape", "row")
     if shape not in SHAPES:
         raise ConfigError(f"layout {fid}: shape must be {', '.join(SHAPES)}")
@@ -387,7 +401,7 @@ def parse_placement(fid: str, v: Any) -> Placement:
         raise ConfigError(f"layout {fid}: x/y must be 0-{GRID_MAX} cells")
     if not 0 <= cols <= 64:
         raise ConfigError(f"layout {fid}: cols must be 0-64")
-    return Placement(_half(x), _half(y), round(rot, 1), shape, cols)
+    return Placement(_half(x), _half(y), round(rot, 1), shape, cols, z, bool(v.get("reverse", False)))
 
 
 def _half(n: float) -> float:

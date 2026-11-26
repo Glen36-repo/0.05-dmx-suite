@@ -14,7 +14,12 @@ const half = (v) => Math.round(v * 2) / 2;
 const clamp = (v) => Math.min(GRID_MAX, Math.max(0, v));
 
 // where each pixel sits relative to the light's centre, in cells, before rotation
-export function cellOffsets(n, shape = "row", cols = 0) {
+export function cellOffsets(n, shape = "row", cols = 0, reverse = false) {
+  const out = offsets(n, shape, cols);
+  return reverse ? out.reverse() : out; // mounted backwards: pixel 1 at the other end
+}
+
+function offsets(n, shape, cols) {
   n = Math.max(1, n || 1);
   if (n === 1) return [[0, 0]];
   if (shape === "ring") {
@@ -157,7 +162,7 @@ export class LightGrid {
 
   cellsOf(id) {
     const f = this.fixtures[id], p = this.layout[id];
-    return cellOffsets(f.pixels || 1, p.shape, p.cols).map((o) => {
+    return cellOffsets(f.pixels || 1, p.shape, p.cols, p.reverse).map((o) => {
       const [dx, dy] = rotated(o, p.rot || 0);
       return [p.x + dx, p.y + dy];
     });

@@ -28,9 +28,15 @@ def full_layout(rig: Rig) -> dict[str, Placement]:
     return {f.id: placed[f.id] for f in rig.fixtures if f.id in placed}
 
 
-def cell_offsets(n: int, shape: str = "row", cols: int = 0) -> list[tuple[float, float]]:
+def cell_offsets(n: int, shape: str = "row", cols: int = 0, reverse: bool = False) -> list[tuple[float, float]]:
     """Where each pixel of a light sits relative to its centre, in cells, before rotation.
-    Same as cellOffsets in web/static/js/grid.js, so effects land where the screen shows them."""
+    Same as cellOffsets in web/static/js/grid.js, so effects land where the screen shows them.
+    `reverse`: the light is mounted backwards, pixel 1 at the other end."""
+    out = _offsets(n, shape, cols)
+    return out[::-1] if reverse else out
+
+
+def _offsets(n: int, shape: str, cols: int) -> list[tuple[float, float]]:
     n = max(1, n or 1)
     if n == 1:
         return [(0.0, 0.0)]
@@ -49,7 +55,7 @@ def cell_positions(p: Placement, pixels: int) -> list[tuple[float, float]]:
     """Grid positions of a light's cells (one per pixel, or one for a single-cell light)."""
     a = math.radians(p.rot)
     out = []
-    for x, y in cell_offsets(pixels, p.shape, p.cols):
+    for x, y in cell_offsets(pixels, p.shape, p.cols, p.reverse):
         out.append((p.x + x * math.cos(a) - y * math.sin(a), p.y + x * math.sin(a) + y * math.cos(a)))
     return out
 

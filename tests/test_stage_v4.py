@@ -58,3 +58,20 @@ def test_overlaps_raise_an_alert(tmp_path):
     assert tile["state"] == "warn" and "mh_a/par_1" in tile["detail"]
     view = app.alerts_view()
     assert any(a["kind"] == "layout" and a["severity"] == "warning" for a in view["list"])
+
+
+def test_placement_z_and_reverse_round_trip():
+    import pytest
+
+    from dmx_suite.fixtures import ConfigError
+    from dmx_suite.layout import cell_positions
+    from dmx_suite.rig import parse_placement
+
+    p = parse_placement("bar_1", {"x": 4.5, "y": 6, "z": 2.4, "reverse": True})
+    assert p.z == 2.4 and p.reverse and p.to_dict() == {"x": 4.5, "y": 6.0, "rot": 0.0, "z": 2.4, "reverse": True}
+    fwd = cell_positions(parse_placement("b", {"x": 4.5, "y": 6}), 8)
+    assert cell_positions(p, 8) == fwd[::-1]  # pixel 1 at the other end
+    assert parse_placement("b", {"x": 1, "y": 1}).to_dict() == {"x": 1.0, "y": 1.0, "rot": 0.0}  # unchanged files
+    for bad in ({"x": 1, "y": 1, "reverse": "yes"}, {"x": 1, "y": 1, "z": 99}, {"x": 1, "y": 1, "colour": 1}):
+        with pytest.raises(ConfigError):
+            parse_placement("b", bad)

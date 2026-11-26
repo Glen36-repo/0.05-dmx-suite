@@ -1380,7 +1380,7 @@ class App:
                           "gobo": fx.type.has("gobo"), "wheel": fx.type.has("colour_wheel"),
                           "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range}
                          for fx in self.engine.rig.fixtures],
-            "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot, "shape": p.shape, "cols": p.cols}
+            "layout": {fid: p.to_dict() | {"shape": p.shape, "cols": p.cols}
                        for fid, p in full_layout(self.engine.rig).items()},
             "layout_problems": self.layout_problems(),
             "rig_name": self.names[0],

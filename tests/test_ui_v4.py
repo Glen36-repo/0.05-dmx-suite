@@ -208,3 +208,20 @@ def test_layout_page_lists_overlaps_live(shot):
     page.mouse.move(box["x"] + box["width"] / 2, box["y"] + 4 * box["height"], steps=6)
     page.mouse.up()
     page.wait_for_function("!document.querySelector('#layout-problems').textContent.includes('mh_a and par_1')")
+
+
+def test_cell_offsets_match_python(ui):
+    from dmx_suite.layout import cell_offsets
+
+    page, *_ = ui
+    cases = [(n, shape, cols, rev) for n in (1, 3, 8, 12) for shape in ("row", "ring", "grid") for cols in (0, 3)
+             for rev in (False, True)]
+    js = page.evaluate("""async (cases) => {
+      const { cellOffsets } = await import('/static/js/grid.js');
+      return cases.map(([n, s, c, r]) => cellOffsets(n, s, c, r));
+    }""", [list(c) for c in cases])
+    for c, got in zip(cases, js, strict=True):
+        want = cell_offsets(*c)
+        assert len(got) == len(want)
+        for (gx, gy), (wx, wy) in zip(got, want, strict=True):
+            assert abs(gx - wx) < 1e-9 and abs(gy - wy) < 1e-9, c
