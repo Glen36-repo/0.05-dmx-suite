@@ -60,12 +60,12 @@ async function loadPoints() {
   points = r.points;
   $("#point-problems").replaceChildren(...r.problems.map((p) => el("div", { class: "chip warn", text: p })));
   $("#point-list").replaceChildren(...points.map((p) => el("li", { "data-point": p.name },
-    el("div", { class: "row wrap" },
+    el("div", { class: "row wrap grow" },
       el("b", { text: p.name }), el("span", { class: "muted", text: p.description }),
       ...p.tags.map((tg) => el("span", { class: "chip", text: tg })),
       ...(p.stage && Object.keys(p.stage).length ? [el("span", { class: "chip", text: Object.values(p.stage).join(" · ") })] : []),
       ...(p.missing.length ? [el("span", { class: "chip warn", text: t("heads.missing", { heads: p.missing.join(", ") }) })] : [])),
-    el("div", { class: "row wrap" },
+    el("div", { class: "row wrap point-tools" },
       el("button", { onclick: () => aim(p) }, t("heads.go")),
       el("button", { onclick: () => edit(p) }, t("heads.edit_point")),
       el("button", { onclick: () => startFocus([p]) }, t("heads.focus")),

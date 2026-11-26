@@ -74,7 +74,7 @@ function inputRow(i) {
     el("td", { class: "muted", text: i.id }),
     el("td", { text: i.describe }),
     el("td", {}, ...i.roles.map((r) => el("span", { class: "chip", text: t("midi.role_" + r) }))),
-    el("td", { class: "muted", text: i.mapped || "" }),
+    el("td", { class: "muted mapped", text: i.mapped || "", title: i.mapped || "" }),
     el("td", { class: "tools" },
       el("button", { onclick: () => attempt(() => api("POST", "/api/midi/learn_input", { input: i.id }), (r) => r.message) }, t("midi.learn_input")),
       ...(i.type === "note" ? [el("button", { onclick: () => attempt(() => api("POST", "/api/midi/learn_input", { input: i.id, add: true }), (r) => r.message) }, t("midi.add_note"))] : []),

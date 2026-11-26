@@ -46,6 +46,14 @@ function render() {
   if (!s) return box.replaceChildren(el("p", { class: "muted", text: t("claude.checking") }));
   const found = s.targets.filter((x) => x.installed);
   const allCurrent = found.length > 0 && found.every((x) => x.registered === "current");
+  // the section starts folded when Claude is already connected, open until then (not changed under
+  // a finger after Connect)
+  const section = $("#claude-section");
+  if (section && !section.dataset.auto) {
+    section.dataset.auto = "1";
+    section.open = !allCurrent;
+  }
+  $("#claude-sum").textContent = t(allCurrent ? "claude.sum_connected" : "claude.sum_not_connected");
   const canConnect = s.program_ok && found.length > 0 && !found.some((x) => x.error) && !allCurrent;
   const canDisconnect = s.targets.some((x) => x.registered !== "no" && !x.error);
   box.replaceChildren(
@@ -85,7 +93,9 @@ async function load(fresh = false) {
 
 export function openClaude() {
   document.querySelector("#menu [data-page=setup]")?.click();
-  setTimeout(() => $("#claude-connect")?.previousElementSibling?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  const section = $("#claude-section");
+  if (section) section.open = true;
+  setTimeout(() => section?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
 }
 
 export function init() {

@@ -14,6 +14,8 @@ function buildCatalogue(cat) {
   const shows = $("#shows");
   shows.replaceChildren(
     ...Object.entries(cat.shows).map(([k, s]) => el("button", { "data-show": k, onclick: () => cmd("show", { show: k }) }, s.name)),
+    // scenes on their own line under the shows, so the two aren't mixed in one wrapping block
+    ...(Object.keys(cat.scenes).length ? [el("span", { class: "break" }), el("span", { class: "row-label", text: t("live.scenes") })] : []),
     ...Object.entries(cat.scenes).map(([k, s]) => el("button", { "data-scene": k, onclick: () => cmd("scene", { scene: k }) }, "▸ " + s)));
   $("#sets").dataset.sets = "";
   $("#setlist").replaceChildren(...Object.entries(cat.setlists).map(([k, s]) => el("option", { value: k }, s.name)));

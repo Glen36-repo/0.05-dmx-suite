@@ -6,7 +6,7 @@ A scene is a stack of layers. Each layer picks some lights and gives them a colo
 
 On the **Scenes** page:
 
-1. Pick lights on the layout: tap, drag a box, or use a group tab.
+1. Pick lights on the layout: tap, drag a box, or use a group button (each shows how many lights it has; **None** clears the selection, **Invert** swaps it).
 2. **Add layer for the selected lights.**
 3. Choose an **Effect**, or none for a plain colour, position or gobo. The settings for that effect appear below it.
 4. **Across the lights** sets how the effect runs over the lights:

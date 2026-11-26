@@ -64,6 +64,8 @@ def ui(browser, tmp_path, request):
 
 
 def go(page, name):
+    if not page.is_visible(f"#menu [data-page={name}]"):  # phones: the page sits behind More
+        page.click("#menu-more")
     page.click(f"#menu [data-page={name}]")
     page.wait_for_selector(f"#page-{name}.on")
 
@@ -192,14 +194,100 @@ def test_theme_switch(ui):
     assert page.locator("link[href='/static/themes/005/theme.css']").count() == 1
 
 
+PAGES = ("live", "ride", "busk", "scenes", "shows", "review", "palettes", "layout", "fixtures", "heads", "midi", "setup", "files")
+
+
 def test_phone_layout_has_bottom_menu(ui):
     page, *_ = ui
     page.set_viewport_size({"width": 390, "height": 844})
     time.sleep(0.2)
     box = page.locator("#menu").bounding_box()
     assert box["y"] > 700 and box["width"] >= 380  # a bar along the bottom
-    go(page, "layout")
-    assert page.is_visible("#layout-grid")
+    assert page.is_visible("#menu-more") and not page.is_visible("#menu [data-page=layout]")
+    for name in PAGES:  # every page can be reached from the bar or More
+        go(page, name)
+        assert page.is_visible(f"#page-{name}")
+        assert not page.locator("#menu").evaluate("m => m.classList.contains('open')")  # More closes again
+        # nothing runs off the side of the phone
+        assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"), name
+    assert "on" in page.get_attribute("#menu-more", "class")  # lit while a More page is showing
+    go(page, "live")
+    assert "on" not in page.get_attribute("#menu-more", "class")
+
+
+def test_menu_groups_on_desktop(ui):
+    page, *_ = ui
+    assert page.locator(".menu-group").count() == 4
+    assert not page.is_visible("#menu-more")
+    assert all(page.is_visible(f"#menu [data-page={n}]") for n in PAGES)
+
+
+def light_boxes(page, host):
+    """Size of one light square, and how much of the host's width and height the lights cover."""
+    return page.evaluate("""(host) => {
+        const h = document.querySelector(host).getBoundingClientRect();
+        const cells = [...document.querySelectorAll(host + ' .cell')].map((c) => c.getBoundingClientRect());
+        const x0 = Math.min(...cells.map((c) => c.left)), x1 = Math.max(...cells.map((c) => c.right));
+        const y0 = Math.min(...cells.map((c) => c.top)), y1 = Math.max(...cells.map((c) => c.bottom));
+        return { cell: cells[0].width, w: (x1 - x0) / h.width, h: (y1 - y0) / h.height };
+    }""", host)
+
+
+def test_scene_picker_lights_are_big(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.wait_for_selector("#scene-grid .cell")
+    b = light_boxes(page, "#scene-grid")
+    assert b["cell"] >= 15 and b["w"] >= 0.8, b  # was ~8 px squares in a third of the box
+    page.set_viewport_size({"width": 390, "height": 844})
+    time.sleep(0.3)
+    b = light_boxes(page, "#scene-grid")
+    assert b["cell"] >= 16, b  # a phone scrolls sideways rather than shrink them
+    page.click("#scene-grid [data-id=bar_1] .cell >> nth=0")
+    assert "bar_1" in page.inner_text("#scene-sel")
+
+
+def test_group_pills_none_and_invert(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.click("#scene-group-tabs [data-group=bars]")
+    assert page.inner_text("#scene-group-tabs [data-group=bars] .n") == "4"
+    page.click("#pick-invert")
+    assert "bar_1" not in page.inner_text("#scene-sel") and "mh_a" in page.inner_text("#scene-sel")
+    page.click("#pick-none")
+    assert page.locator("#scene-grid .fx.sel").count() == 0
+
+
+def test_live_and_ride_lights_fill_their_box(ui):
+    page, *_ = ui
+    for name, host in (("live", "#live-grid"), ("ride", "#ride-grid")):
+        go(page, name)
+        page.wait_for_selector(f"{host} .cell")
+        b = light_boxes(page, host)
+        assert max(b["w"], b["h"]) >= 0.7, (name, b)  # fills the box one way or the other
+
+
+def test_setup_claude_section_folds(ui):
+    page, *_ = ui
+    go(page, "setup")
+    page.wait_for_selector("#claude-connect .claude-steps")
+    assert page.get_attribute("#claude-section", "open") is not None  # not connected yet: open
+    page.click("#claude-section > summary")
+    assert page.get_attribute("#claude-section", "open") is None
+    go(page, "live")
+    page.click(".tile.link")  # the Claude tile opens it again
+    page.wait_for_selector("#page-setup.on")
+    assert page.get_attribute("#claude-section", "open") is not None
+
+
+def test_fixtures_clash_bar_only_when_clashing(ui):
+    page, *_ = ui
+    go(page, "fixtures")
+    page.wait_for_selector("#fx-patch tr")
+    assert not page.is_visible("#fx-clash")
+    page.fill("#fx-patch tr >> nth=1 >> input >> nth=2", "1")  # mh_b on mh_a's address
+    page.locator("#fx-patch tr >> nth=1 >> input >> nth=2").dispatch_event("change")
+    page.wait_for_selector("#fx-clash", state="visible")
 
 
 # ------------------------------------------------------------------ scene builder (v2 R3)

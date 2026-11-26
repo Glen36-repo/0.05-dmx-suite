@@ -354,10 +354,16 @@ function updateSelection() {
 function buildTabs(cat) {
   const names = ["all", ...Object.keys(cat.groups).sort()];
   if (group !== null && !names.includes(group)) group = "all";
+  const ids = Object.keys(grid.layout);
+  const count = (g) => (g === "all" ? ids.length : (cat.groups[g] || []).filter((id) => grid.layout[id]).length);
+  const pick = (sel) => { group = null; buildTabs(live.cat); grid.select(sel); };
   $("#scene-group-tabs").replaceChildren(...names.map((g) => el("button", {
     role: "tab", class: g === group ? "on" : "", "aria-selected": g === group, "data-group": g,
-    onclick: () => { group = g; buildTabs(live.cat); grid.select(g === "all" ? Object.keys(grid.layout) : cat.groups[g] || []); },
-  }, g === "all" ? t("groups.all") : g)));
+    onclick: () => { group = g; buildTabs(live.cat); grid.select(g === "all" ? ids : cat.groups[g] || []); },
+  }, g === "all" ? t("groups.all") : g, el("span", { class: "n", text: String(count(g)) }))),
+  el("span", { class: "sep" }),
+  el("button", { class: "quick", id: "pick-none", onclick: () => pick([]) }, t("scenes.pick_none")),
+  el("button", { class: "quick", id: "pick-invert", onclick: () => pick(ids.filter((id) => !grid.selected.has(id))) }, t("scenes.pick_invert")));
 }
 
 // ---------------------------------------------------------------- copy / paste a look

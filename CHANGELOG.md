@@ -2,6 +2,22 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (UI tidy)
+
+### Changed
+- Scene builder: the lights in the picker are about twice the size and fill the box; the group buttons show how many lights each has, with **None** and **Invert**. On a phone the picker scrolls sideways rather than shrink the lights.
+- Live and Ride: the lights fill the picture; scenes sit on their own line under the shows.
+- The menu is grouped (Perform, Build, Rig, System). On a phone the bottom bar has Live, Ride, Busk, Scenes and Shows, and **More** opens the other pages (before, four pages couldn't be reached).
+- Ride: smaller FX buttons with the colour bank four wide, so the page is about 15% shorter.
+- MIDI: each named input fits on one line (long mappings are cut short; hover for the full text); the full mapping table is folded away.
+- Setup: Devices and Nodes side by side; Addresses folded (its summary stays in the heading); Connect to Claude folds away once Claude is connected.
+- Heads: each point on one line. Shows: short settings side by side. Review: the generator folds away.
+- Phones: the top bar fits on one line and the status strip shows just the lights.
+
+### Fixed
+- Fixtures: the empty red bar under the patch no longer shows when nothing clashes.
+- MIDI: the TD-25 buttons no longer run off the side of the card.
+
 ## Unreleased (Connect to Claude)
 
 ### Added

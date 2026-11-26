@@ -87,7 +87,7 @@ async function loadAddresses() {
   $("#addr").replaceChildren(...a.rows.map((r) => el("tr", {},
     el("td", { text: r.id }), el("td", { text: r.type }), el("td", { text: r.universe }), el("td", { text: r.start }), el("td", { text: r.end }),
     el("td", { text: r.in_rig ? t("common.yes") : "-" }), el("td", { text: r.verified ? t("common.yes") : t("setup.not_checked") }))));
-  $("#addrnotes").replaceChildren(...a.notes.map((n) => el("div", { text: n })));
+  $("#addrnotes").textContent = a.notes.join(" · ");
 }
 
 async function loadThemes() {

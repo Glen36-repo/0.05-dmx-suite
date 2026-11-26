@@ -126,22 +126,32 @@ export class LightGrid {
     this.items[id] = { g, cells, beam };
   }
 
-  // size the drawing to what's on it (plus room to drag things further when editing)
+  // size the drawing to what's on it: tight round the lights when only showing or picking them (so
+  // they fill the box), from the top left plus room to drag things further when arranging them
   fit() {
-    let maxX = 16, maxY = 10;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const id of Object.keys(this.items)) {
       for (const [x, y] of this.cellsOf(id)) {
-        maxX = Math.max(maxX, x + 1.5);
-        maxY = Math.max(maxY, y + 2);
+        minX = Math.min(minX, x); minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
       }
     }
+    if (minX === Infinity) [minX, minY, maxX, maxY] = [0, 0, 8, 4];
+    let box;
     if (this.edit) {
-      maxX += 6;
-      maxY += 4;
+      this.size = [Math.ceil(Math.max(16, maxX + 1.5) + 6), Math.ceil(Math.max(10, maxY + 2) + 4)];
+      box = [0, 0, this.size[0], this.size[1]];
+    } else {
+      // half a cell round the squares, a little more underneath for the names
+      box = [minX - 0.6, minY - 0.6, maxX - minX + 1.2, maxY - minY + 1.2 + (this.showNames ? 0.6 : 0)];
+      this.size = [box[0] + box[2], box[1] + box[3]];
     }
-    this.size = [Math.ceil(maxX), Math.ceil(maxY)];
+    this.box = box;
     const m = this.showBeams ? 3 : 0; // room round the edge for beam lines
-    this.root.setAttribute("viewBox", `${-m * C} ${-m * C} ${(this.size[0] + 2 * m) * C} ${(this.size[1] + 2 * m) * C}`);
+    this.root.setAttribute("viewBox", [box[0] - m, box[1] - m, box[2] + 2 * m, box[3] + 2 * m].map((v) => v * C).join(" "));
+    this.root.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    // the narrowest it may be drawn (a phone scrolls sideways rather than shrink the lights below --min-cell)
+    this.root.style.setProperty("--cells", String(box[2] + 2 * m));
     this.gGrid.replaceChildren();
     if (this.edit) {
       for (let x = 0; x <= this.size[0]; x++) this.gGrid.append(svg("line", { x1: x * C, y1: 0, x2: x * C, y2: this.size[1] * C }));
@@ -163,8 +173,8 @@ export class LightGrid {
     this.arrow = arrow;
     this.gArrow.replaceChildren();
     if (!arrow || !this.size) return;
-    const [w, h] = this.size;
-    const cx = (w / 2) * C, cy = (h / 2) * C, len = Math.min(w, h) * 0.38 * C;
+    const [x0, y0, w, h] = this.box;
+    const cx = (x0 + w / 2) * C, cy = (y0 + h / 2) * C, len = Math.min(w, h) * 0.38 * C;
     if (arrow.radial) {
       for (const a of [0, 90, 180, 270]) {
         const r = (a * Math.PI) / 180;
