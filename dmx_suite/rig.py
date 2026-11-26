@@ -137,6 +137,8 @@ class Rig:
     outputs: list[dict[str, Any]] = field(default_factory=list)  # v4: each has `universe` (0 when not given)
     output_warnings: list[str] = field(default_factory=list)  # e.g. "no universe: given, assumed 0"
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
+    midi_aliases: dict[str, str] = field(default_factory=dict)  # v4: port-name fragment -> alias (Drums, Pedalboard)
+    midi_outputs: list[dict[str, Any]] = field(default_factory=list)  # v4: [{device: midi-out:X, alias}]
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
     osc: OscConfig = field(default_factory=OscConfig)
     change_fade_s: float = 0.0  # crossfade when picking a scene, show or look (0 = cut, as v1)
@@ -228,6 +230,7 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         raise ConfigError(f"kick_colour: emitter levels in %, from {', '.join(EMITTERS)}")
     kick = {k: _pct(v, f"kick colour {k}") for k, v in kick_data.items()}
     outputs, out_warn = parse_outputs(data.get("outputs"))
+    midi_in, midi_alias = parse_midi_inputs(data.get("midi_inputs"))
     return Rig(
         name=name,
         patch=patch,
@@ -243,7 +246,9 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         nodes=[(n["mac"].upper(), n.get("name", "")) for n in data.get("nodes") or []],
         outputs=outputs,
         output_warnings=out_warn,
-        midi_inputs=[str(x) for x in data.get("midi_inputs") or []],
+        midi_inputs=midi_in,
+        midi_aliases=midi_alias,
+        midi_outputs=_midi_outputs(data.get("midi_outputs")),
         layout=_layout(data.get("layout"), patch),
         profile=profile,
         exempt=resolve_exempt(profile, patch, present),
@@ -372,6 +377,36 @@ def _osc(d: Any) -> OscConfig:
         except ValueError as e:
             raise ConfigError(f"osc allow: {a!r} isn't an address or network") from e
     return OscConfig(port, [str(a) for a in allow])
+
+
+def parse_midi_inputs(d: Any) -> tuple[list[str], dict[str, str]]:
+    """`midi_inputs:` - port-name fragments (v3: [UM-ONE]) and/or devices with an alias (v4:
+    [{device: midi-in:UM-ONE, alias: Drums}]); `all` or nothing = open every port."""
+    if d is None or d == "all":
+        return [], {}
+    if not isinstance(d, list):
+        raise ConfigError("midi_inputs: a list of port names or {device, alias}, or all")
+    names, aliases = [], {}
+    for x in d:
+        if isinstance(x, dict):
+            dev = str(x.get("device") or "")
+            if not dev or set(x) - {"device", "alias"}:
+                raise ConfigError("midi_inputs: each device is {device: midi-in:<port name>, alias: <name>}")
+            name = dev.split(":", 1)[1] if dev.startswith("midi-in:") else dev
+            names.append(name)
+            if x.get("alias"):
+                aliases[name] = str(x["alias"])
+        else:
+            names.append(str(x))
+    return names, aliases
+
+
+def _midi_outputs(d: Any) -> list[dict[str, Any]]:
+    if d is None:
+        return []
+    if not isinstance(d, list) or not all(isinstance(x, dict) and x.get("device") for x in d):
+        raise ConfigError("midi_outputs: a list of {device: midi-out:<port name>, alias: <name>}")
+    return [dict(x) for x in d]
 
 
 CARRIES_ALL = ("node", "log", "null")  # drivers that send every universe (nodes are set per node)

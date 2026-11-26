@@ -159,7 +159,7 @@ class EnttecOpenDriver(OutputDriver):
         return {"driver": self.name, "port": self.port, "packets": self.packets, "errors": self.errors}
 
     def state(self) -> dict[str, Any]:
-        return self._p.state("Enttec Open DMX", self.universe)
+        return self._p.state("USB DMX (Open)", self.universe)
 
 
 SOM, EOM, LABEL_SEND_DMX = 0x7E, 0xE7, 6
@@ -223,4 +223,4 @@ class EnttecProDriver(OutputDriver):
                 "dropped": self._sender.dropped if self._sender else 0}
 
     def state(self) -> dict[str, Any]:
-        return self._p.state("Enttec DMX Pro", self.universe)
+        return self._p.state("USB DMX Pro", self.universe)

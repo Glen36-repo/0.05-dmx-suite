@@ -389,6 +389,18 @@ class DmxTools:
         notes = "; ".join(r.get("notes") or [])
         return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
 
+    def list_devices(self) -> str:
+        r = self._live("GET", "/api/devices/list")
+        if not r.get("scanning"):
+            r["note"] = "the engine runs in simulator mode: no hardware is scanned"
+        return _dump(r)
+
+    def set_device(self, device: str, alias: str = "", universe: int | None = None, driver: str = "", use: bool = True) -> str:
+        body = {"id": device, "alias": alias or None, "universe": universe, "driver": driver or None, "use": use}
+        r = self._live("POST", "/api/devices/set", body)
+        notes = "; ".join(r.get("notes") or [])
+        return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
+
     def delete_fixture(self, fixture: str) -> str:
         return self._write("POST", "/api/store/fixture/remove", {"id": fixture}, lambda: self.local.remove_fixture(fixture))
 

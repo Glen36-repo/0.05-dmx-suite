@@ -47,7 +47,7 @@ DEFAULT_PORT = 8505
 # what Claude's token may change (everything else is the people at the laptop's call)
 MAX_UPLOAD = 20 * 1024 * 1024
 CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/routing/output", "/api/claude/haze",
-                 "/api/haze/settings",
+                 "/api/haze/settings", "/api/devices/set",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check", "/api/generate")
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
@@ -360,6 +360,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.layout_view())
             if path == "/api/routing":
                 return self._json(200, app.routing())
+            if path == "/api/devices/list":  # v4: devices plugged in, by USB identity / MIDI port name
+                return self._json(200, app.devices_view())
             if path == "/api/frame":  # one look at what an interface sent (Monitor, Claude)
                 return self._json(200, app.frame_view(int(q.get("u", 0)), q.get("out")))
             if path == "/api/events/frames":  # live frames, only while a page shows them
@@ -725,6 +727,11 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/layout" and method == "PUT":
                 bid = app.save_layout(body.get("layout") or {})
                 return self._json(200, {"ok": True, "backup": bid})
+            if path == "/api/devices/set" and method == "POST":
+                uni = body.get("universe")
+                r = app.set_device(str(body.get("id", "")), body.get("alias"), None if uni in (None, "") else int(uni),
+                                   body.get("driver") or None, bool(body.get("use", True)))
+                return self._json(200, {"ok": True, **r})
             if path == "/api/haze/settings" and method == "POST":  # Haze settings panel (and Claude, saving)
                 r = app.haze_settings(body.get("changes") or {}, bool(body.get("save")))
                 return self._json(200, {"ok": True, **r})

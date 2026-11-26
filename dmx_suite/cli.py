@@ -43,6 +43,14 @@ from .store import ShowStore
 log = logging.getLogger(__name__)
 
 
+
+def resolve_output(o: dict, registry: object) -> dict:
+    """An output named by its device (v4: usb:VID:PID:SERIAL) goes to whatever port that device is on
+    now, so a new COM number doesn't lose its universe; the rig's port is the fallback."""
+    dev = o.get("device")
+    port = registry.port_for(dev) if dev else None  # type: ignore[attr-defined]
+    return {**o, "port": port} if port else dict(o)
+
 def rig_view(engine: Engine) -> str:
     lines = [
         f"MASTER {'ON ' if engine.master else 'off'}  blackout {'ON' if engine.blackout else 'off'}  "
@@ -332,13 +340,19 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
         if args.sim_node:
             drivers.append(make_driver({"driver": "node", "port": "sim"}))
     else:
-        drivers = [make_driver(o) for o in show.rig.outputs]
+        from .devices import DeviceRegistry
+
+        registry = DeviceRegistry()
+        drivers = [make_driver(resolve_output(o, registry)) for o in show.rig.outputs]
     for d in drivers:  # rig config lists the nodes expected, so a missing one shows at setup
         if isinstance(d, NodeSerialDriver):
             d.link.health.expect(show.rig.nodes)
     state_path = None if args.sim else move_old_state(args.shows)  # app data, not the (OneDrive) show folder
     app = App(show, drivers, state_path, log_dir=log_dir(), rig=args.rig, look=args.look, midi=args.midi)
     app.show_problem = problem
+    if not args.sim:
+        app.registry = registry
+        registry.start()
     if project is not None:
         app.attach_project(project)
     ctl, router = app.ctl, app.router

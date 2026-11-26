@@ -79,6 +79,7 @@ class App:
         self.osc: Any = None  # osc.OscServer, when the rig turns OSC on
         self.osc_error: str | None = None
         self.midi_inputs: Any = None  # MidiInputs when running live
+        self.registry: Any = None  # devices.DeviceRegistry when running live (v4: devices by USB identity)
         self.clients: dict[str, dict[str, Any]] = {}  # e.g. "claude": {first, last, calls, last_call}
         self.screens: dict[int, dict[str, Any]] = {}  # open browser streams: id -> {ip, local, since}
         self._fps = (time.monotonic(), 0, 0.0)  # (window start, frames at start, last rate)
@@ -339,6 +340,89 @@ class App:
             self._fps = (now, self.engine.frames_sent, rate)
         return rate
 
+    # ------------------------------------------------------------------ devices (v4)
+
+    def devices_view(self) -> dict[str, Any]:
+        """Devices plugged in now, what each is used for, configured ones that are missing, new ones."""
+        rig = self.engine.rig
+        found = self.registry.all() if self.registry is not None else []
+        ids = {d["id"] for d in found}
+        rows, new = [], []
+        for d in found:
+            use: dict[str, Any] | None = None
+            if d["kind"] == "serial":
+                for i, o in enumerate(rig.outputs):
+                    if o.get("device") == d["id"] or (not o.get("device") and o.get("port") == d["port"]):
+                        use = {"output": i, "universe": o.get("universe"), "driver": o["driver"], "alias": o.get("alias")}
+                        break
+                if use is None and d.get("driver"):
+                    new.append(d)
+            elif d["kind"] == "midi_in":
+                hit = next((w for w in rig.midi_inputs if w.lower() in d["port"].lower()), None)
+                if hit is not None or not rig.midi_inputs:
+                    use = {"midi_in": True, "alias": rig.midi_aliases.get(hit or "") or None}
+                else:
+                    new.append(d)
+            else:
+                mo = [x for x in rig.midi_outputs if x["device"] == d["id"]]
+                if mo:
+                    use = {"midi_out": True, "alias": mo[0].get("alias")}
+            rows.append({**d, "use": use, "alias": (use or {}).get("alias") or None})
+        missing = [{"output": i, "device": o["device"], "alias": o.get("alias"), "label": device_label(o["device"]),
+                    "universe": o.get("universe")}
+                   for i, o in enumerate(rig.outputs) if o.get("device") and o["device"] not in ids]
+        missing += [{"midi_out": True, "device": o["device"], "alias": o.get("alias"), "label": device_label(o["device"])}
+                    for o in rig.midi_outputs if o["device"] not in ids]
+        return {"devices": rows, "missing": missing if self.registry is not None else [], "new": new,
+                "scanning": self.registry is not None}
+
+    def set_device(self, dev_id: str, alias: str | None = None, universe: int | None = None, driver: str | None = None,
+                   use: bool = True) -> dict[str, Any]:
+        """Name a device and say what it's for: a USB interface sends a universe; a MIDI input is opened
+        (role comes from its named inputs); a MIDI output is used for feedback / test sends."""
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        d = self.registry.get(dev_id) if self.registry is not None else None
+        if dev_id.startswith(("usb:", "port:")):
+            outs = list(data.get("outputs") or [])
+            idx = next((i for i, o in enumerate(outs) if o.get("device") == dev_id
+                        or (d and not o.get("device") and o.get("port") == d["port"])), None)
+            if idx is None:
+                if not use:
+                    raise ValueError(f"{dev_id} isn't used by an output")
+                outs.append({"driver": driver or (d or {}).get("driver") or "usb_dmx_open", "universe": 0})
+                idx = len(outs) - 1
+            o = dict(outs[idx])
+            if dev_id.startswith("usb:"):
+                o["device"] = dev_id
+            if d:
+                o["port"] = d["port"]
+            for k, v in (("alias", alias), ("universe", universe), ("driver", driver)):
+                if v not in (None, ""):
+                    o[k] = v
+            if use:
+                outs[idx] = o
+            else:
+                outs.pop(idx)
+            data["outputs"] = outs
+        elif dev_id.startswith("midi-in:"):
+            base = dev_id.split(":", 1)[1]
+            ins = [x for x in (data.get("midi_inputs") or []) if not (
+                (isinstance(x, dict) and x.get("device") == dev_id) or (isinstance(x, str) and x.lower() == base.lower()))]
+            if use:
+                ins.append({"device": dev_id, **({"alias": alias} if alias else {})})
+            data["midi_inputs"] = ins
+        elif dev_id.startswith("midi-out:"):
+            outs = [x for x in (data.get("midi_outputs") or []) if x.get("device") != dev_id]
+            if use:
+                outs.append({"device": dev_id, **({"alias": alias} if alias else {})})
+            data["midi_outputs"] = outs
+        else:
+            raise ValueError("a device id is usb:VID:PID:SERIAL, port:COM3, midi-in:<name> or midi-out:<name>")
+        bid = self.store.put("rig", rig_name, data, f"device {alias or dev_id} on rig {rig_name}")
+        notes = self.reload()
+        return {"backup": bid, "notes": notes}
+
     # ------------------------------------------------------------------ routing (v4)
 
     def routing(self) -> dict[str, Any]:
@@ -493,6 +577,11 @@ class App:
                                   f"{self.show_problem['problem']}"})
         for d in self.engine.drivers:
             st = d.state()
+            cfg = d.cfg or {}
+            found = self.registry.get(cfg["device"]) if self.registry is not None and cfg.get("device") else None
+            if cfg.get("alias") or found:  # the name the band gave it, or what the device says it is
+                st["model"] = found["name"] if found else st["name"]
+                st["name"] = cfg.get("alias") or (found or {}).get("name") or st["name"]
             unis = [u for u in (sorted(set(self.engine.rig.universes)) or [0]) if d.carries(u)]
             if unis and st.get("state") != "sim":  # which universe(s) it carries, at the front
                 st["detail"] = f"U{','.join(map(str, unis))} · {st['detail']}"
@@ -509,9 +598,19 @@ class App:
             out.append({"kind": "layout", "name": "Layout", "state": "warn", "detail": f"{what}: {pairs} (Layout page)"})
         for msg in self.node_problems():
             out.append({"kind": "node", "name": "0.05 node", "state": "warn", "detail": msg})
+        dv = self.devices_view() if self.registry is not None else None
+        for m in (dv or {}).get("missing", []):
+            out.append({"kind": "device", "name": m["alias"] or m["label"], "state": "warn",
+                        "detail": f"missing: {m['alias'] or m['label']} ({m['label']}); Setup > Devices: use another"})
+        for n in (dv or {}).get("new", []):
+            what = "MIDI device" if n["kind"].startswith("midi") else "USB interface"
+            out.append({"kind": "device_new", "name": n["name"], "state": "warn",
+                        "detail": f"New {what}: {n['name']}; assign it? (Setup > Devices)"})
         if self.midi_inputs is not None:
+            aliases = self.engine.rig.midi_aliases
             for m in self.midi_inputs.status():
-                out.append({"kind": "midi", "name": f"MIDI {m['name']}", "state": "ok" if m["connected"] else "bad",
+                out.append({"kind": "midi", "name": f"MIDI {aliases.get(m['name']) or m['name']}",
+                            "state": "ok" if m["connected"] else "bad",
                             "detail": m.get("port") or ("connected" if m["connected"] else "unplugged")})
         else:
             out.append({"kind": "midi", "name": "MIDI", "state": "sim", "detail": "simulated input"})
@@ -1552,6 +1651,20 @@ def _uses_preset(data: Any, key: str) -> int:
         return sum(_uses_preset(x, key) for x in data)
     return 0
 
+
+
+def device_label(dev_id: str) -> str:
+    """A device id as words for a 'missing' notice: usb:0403:6001:A1B2 -> FTDI SN A1B2."""
+    from .devices import VENDORS
+
+    if dev_id.startswith("usb:"):
+        parts = dev_id.split(":")
+        try:
+            vendor = VENDORS.get(int(parts[1], 16), f"USB {parts[1]}:{parts[2]}")
+        except (IndexError, ValueError):
+            return dev_id
+        return f"{vendor} SN {parts[3]}" if len(parts) > 3 else vendor
+    return dev_id.split(":", 1)[-1]
 
 def _ago(seconds: float) -> str:
     s = int(seconds)

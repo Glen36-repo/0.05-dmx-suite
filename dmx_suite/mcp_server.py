@@ -300,6 +300,22 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.set_output(index, driver, port, universe, mac, alias)
 
     @tool
+    def list_devices() -> str:
+        """Devices plugged into the laptop, as they report themselves: USB DMX interfaces and the 0.05 node
+        (product name, manufacturer, serial number, VID:PID, COM port, driver guess) and MIDI ports (OS name),
+        with their alias and what each is used for (universe, MIDI in/out); configured devices that are
+        missing; new ones not assigned yet. Engine must be running (not the simulator)."""
+        return t.list_devices()
+
+    @tool
+    def set_device(device: str, alias: str = "", universe: int | None = None, driver: str = "", use: bool = True) -> str:
+        """Name a device and say what it's for. device is an id from list_devices (usb:0403:6001:A1B2C3,
+        midi-in:UM-ONE, midi-out:...). A USB interface sends `universe` (driver usb_dmx_open / usb_dmx_pro /
+        node; default from what was detected); a MIDI input is opened; use=false stops using it. Saved to the
+        running rig by device identity, so a new COM number keeps its universe. Not during gig lock."""
+        return t.set_device(device, alias, universe, driver, use)
+
+    @tool
     def delete_fixture(fixture: str) -> str:
         """Take a patched light out of the patch and every rig (layout, head limits). Refused if a scene or
         look names it directly; not during gig lock. Backed up (undo_last_change)."""
