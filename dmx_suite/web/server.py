@@ -358,6 +358,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, self._project_info())
             if path == "/api/project/download":
                 return self._download()
+            if path.startswith("/api/ofl/export/"):
+                return self._ofl_export(path.rsplit("/", 1)[1])
             if path.startswith("/api/store/"):
                 parts = path.split("/")[3:]
                 if len(parts) == 1:
@@ -401,6 +403,37 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if access.lan != was and on_lan is not None:
                 on_lan(access.lan)  # listen on the network, or localhost only (after this reply)
             return {"ok": True, **self._access_status()}
+
+        # ---------------------------------------------------------------- Open Fixture Library
+
+        def _ofl_import(self, b: dict) -> dict[str, Any]:
+            """An OFL fixture JSON (picked in the browser) as a fixture type, not saved yet."""
+            from ..ofl import ofl_to_type
+
+            data = b.get("json")
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError as e:
+                    raise ApiError(400, f"not an Open Fixture Library file (JSON): {e}") from e
+            if not isinstance(data, dict):
+                raise ApiError(400, "not an Open Fixture Library file")
+            modes = [m.get("name") for m in data.get("modes") or [] if isinstance(m, dict)]
+            mode = b.get("mode") or (modes[0] if len(modes) == 1 else None)
+            if mode is None:
+                return {"ok": True, "modes": modes, "entry": None}
+            entry, warnings = ofl_to_type(data, mode, b.get("key") or None, b.get("kind") or None)
+            return {"ok": True, "modes": modes, "entry": entry, "warnings": warnings}
+
+        def _ofl_export(self, key: str) -> None:
+            from ..ofl import type_to_ofl
+
+            types = app.store.read("fixtures").get("types") or {}
+            if key not in types:
+                return self._error(404, f"no fixture type {key!r}")
+            data = type_to_ofl(key, types[key], time.strftime("%Y-%m-%d"))
+            self._send(200, json.dumps(data, indent=2).encode(), "application/json",
+                       {"Content-Disposition": f'attachment; filename="{key}.json"'})
 
         # ---------------------------------------------------------------- .dms show files
 
@@ -568,6 +601,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
         def _dispatch(self, method: str, path: str, body: dict) -> None:
             if path == "/api/access" and method == "POST":
                 return self._json(200, self._access_change(body))
+            if path == "/api/ofl/import" and method == "POST":
+                return self._json(200, self._ofl_import(body))
             if path.startswith("/api/project/") and method == "POST":
                 return self._json(200, self._project(path.rsplit("/", 1)[1], body))
             if path in ("/api/undo", "/api/redo", "/api/undo/claude") and method == "POST":
@@ -656,6 +691,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 bid = s.restore(b["backup"], b["file"])
             elif parts == ["fixture"] and method == "POST":
                 bid = s.put_fixture(b["entry"])
+            elif parts == ["fixture", "remove"] and method == "POST":
+                bid = s.remove_fixture(str(b.get("id", "")))
+            elif parts == ["patch"] and method == "PUT":
+                bid = s.put_patch(b.get("fixtures"))
             elif parts == ["group"] and method == "POST":
                 bid = s.edit_group(str(b.get("action", "")), str(b.get("name", "")), b.get("fixtures"), b.get("new_name"))
             elif len(parts) == 3 and parts[0] in ("palettes", "fixtures") and method in ("PUT", "DELETE"):

@@ -101,3 +101,32 @@ def test_removing_a_fixture_drops_what_aimed_at_it(app):
     app.reload()
     assert "uking_l" not in app.engine.rig.present and "uking_l" not in app.engine.position_override
     app.engine.output()  # renders fine without it
+
+
+def test_patch_save_and_fixture_removal_across_rigs(app):
+    data = app.store.read("fixtures")
+    rows = data["fixtures"]
+    rows.append({"id": "par_1", "type": "starcolor72", "universe": 0, "address": 400})
+    app.store.put_patch(rows)
+    app.reload()
+    assert "par_1" in app.engine.rig.patch.fixtures
+    rig = app.store.read("rig", "full")
+    rig.setdefault("head_limits", {})["uking_r"] = {"pan": [5, 95]}
+    app.store.put("rig", "full", rig)
+    app.store.remove_fixture("par_1")
+    assert "par_1" not in {f["id"] for f in app.store.read("fixtures")["fixtures"]}
+    with pytest.raises(Exception, match="no fixture"):
+        app.store.remove_fixture("par_1")
+    # a light a scene names directly can't go: the scene must change first
+    with pytest.raises(Exception, match="rejected"):
+        app.store.remove_fixture("mh_a")
+    app.store.remove_fixture("uking_r")  # used only through groups: goes, and leaves the rigs too
+    rig = app.store.read("rig", "full")
+    assert "uking_r" not in (rig.get("head_limits") or {}) and "uking_r" not in (rig.get("layout") or {})
+
+
+def test_overlapping_patch_refused(app):
+    rows = app.store.read("fixtures")["fixtures"]
+    rows.append({"id": "clash", "type": "starcolor72", "universe": rows[0].get("universe", 0), "address": rows[0]["address"]})
+    with pytest.raises(Exception, match="overlaps"):
+        app.store.put_patch(rows)

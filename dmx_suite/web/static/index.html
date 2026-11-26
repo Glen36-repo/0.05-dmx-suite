@@ -31,6 +31,7 @@
     <button data-page="scenes"><span class="ic">◆</span><span class="lbl" data-i18n="menu.scenes"></span></button>
     <button data-page="shows"><span class="ic">▶</span><span class="lbl" data-i18n="menu.shows"></span></button>
     <button data-page="busk"><span class="ic">◍</span><span class="lbl" data-i18n="menu.busk"></span></button>
+    <button data-page="fixtures"><span class="ic">⊞</span><span class="lbl" data-i18n="menu.fixtures"></span></button>
     <button data-page="heads"><span class="ic">✥</span><span class="lbl" data-i18n="menu.heads"></span></button>
     <button data-page="midi"><span class="ic">♪</span><span class="lbl" data-i18n="menu.midi"></span></button>
     <button data-page="setup"><span class="ic">⚙</span><span class="lbl" data-i18n="menu.setup"></span></button>
@@ -331,6 +332,55 @@
       <div class="row wrap">
         <button id="update-check" data-i18n="setup.update_check"></button>
         <span class="muted" id="update-result"></span>
+      </div>
+    </section>
+
+    <!-- FIXTURES -->
+    <section id="page-fixtures" class="page">
+      <div class="tabs" id="fx-tabs" role="tablist">
+        <button data-tab="patch" class="on" data-i18n="fixtures.tab_patch"></button>
+        <button data-tab="types" data-i18n="fixtures.tab_types"></button>
+        <button data-tab="rig" data-i18n="fixtures.tab_rig"></button>
+        <span class="muted" id="fx-state"></span>
+      </div>
+      <div id="fx-tab-patch">
+        <p class="muted" data-i18n="fixtures.patch_help"></p>
+        <table class="grid-table">
+          <thead><tr><th data-i18n="fixtures.col_id"></th><th data-i18n="fixtures.col_type"></th><th data-i18n="fixtures.col_universe"></th>
+            <th data-i18n="fixtures.col_address"></th><th data-i18n="fixtures.col_channels"></th><th data-i18n="fixtures.col_groups"></th>
+            <th data-i18n="fixtures.col_sub"></th><th></th></tr></thead>
+          <tbody id="fx-patch"></tbody>
+        </table>
+        <div class="error" id="fx-clash" role="alert"></div>
+        <div class="row wrap">
+          <select id="fx-add-type"></select>
+          <input id="fx-add-count" type="number" min="1" max="64" value="1" class="num" data-i18n-title="fixtures.add_count">
+          <input id="fx-add-id" class="narrow" data-i18n-placeholder="fixtures.add_id">
+          <button id="fx-add" data-i18n="fixtures.add"></button>
+          <button id="fx-auto" data-i18n="fixtures.auto_patch" data-i18n-title="fixtures.auto_patch_tip"></button>
+          <button id="fx-patch-save" data-i18n="fixtures.save_patch"></button>
+        </div>
+      </div>
+      <div id="fx-tab-types" class="hidden">
+        <div class="row wrap">
+          <select id="fx-type-pick"></select>
+          <button id="fx-type-new" data-i18n="fixtures.new_type"></button>
+          <label class="button"><span data-i18n="fixtures.import_ofl"></span><input type="file" id="fx-ofl" accept=".json" class="hidden"></label>
+          <button id="fx-ofl-export" data-i18n="fixtures.export_ofl"></button>
+          <button id="fx-type-del" class="danger-text" data-i18n="fixtures.delete_type"></button>
+          <button id="fx-type-save" data-i18n="fixtures.save_type"></button>
+        </div>
+        <div id="fx-type"></div>
+      </div>
+      <div id="fx-tab-rig" class="hidden">
+        <div class="row wrap">
+          <select id="fx-rig-pick"></select>
+          <button id="fx-rig-use" data-i18n="fixtures.use_rig"></button>
+          <button id="fx-rig-save" data-i18n="fixtures.save_rig"></button>
+          <span class="muted" id="fx-rig-state"></span>
+        </div>
+        <p class="muted" data-i18n="fixtures.rig_help"></p>
+        <div id="fx-rig"></div>
       </div>
     </section>
 

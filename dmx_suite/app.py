@@ -525,6 +525,7 @@ class App:
             "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot, "shape": p.shape, "cols": p.cols}
                        for fid, p in full_layout(self.engine.rig).items()},
             "rig_name": self.names[0],
+            "rigs": sorted(p.stem for p in (self.files.root / "rigs").glob("*.yaml")),
             "groups": self.engine.rig.patch.groups(),
             "actions": sorted(ACTIONS),
             "panels": {k: {"name": p.name, "widgets": [{"id": w.id, "type": w.type, "label": w.label, "mode": w.mode,

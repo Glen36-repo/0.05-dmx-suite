@@ -222,3 +222,13 @@ body.restarting main { opacity: 0.4; pointer-events: none; }
 body.offline .offline-box { display: flex; }
 .toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
 @media (max-width: 720px) { main { padding-bottom: calc(90px + env(safe-area-inset-bottom)); } }
+
+/* ---------------------------------------------------------------- fixtures page */
+.grid-table { border-collapse: collapse; margin: 6px 0; }
+.grid-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 2px 6px; }
+.grid-table td { padding: 2px 4px; }
+.grid-table tr.error td { background: color-mix(in srgb, var(--bad) 18%, transparent); }
+.grid-table input.narrow { width: 110px; }
+.grid-table input.num, input.num { width: 72px; }
+input.mini { width: 110px; }
+#fx-tab-types h3, #fx-tab-rig h3 { margin: 14px 0 4px; }

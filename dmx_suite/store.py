@@ -328,6 +328,40 @@ class ShowStore:
         p = self.path("fixtures", "")
         return self.apply({p: self.text_for(p, data)}, f"put fixture {entry['id']}")
 
+    def put_patch(self, fixtures: Any) -> str:
+        """Replace the whole patch list (Fixtures page: addresses, universes, groups, sub-masters)."""
+        if not isinstance(fixtures, list) or not all(isinstance(f, dict) and f.get("id") for f in fixtures):
+            raise StoreError("the patch is a list of fixtures, each with an id")
+        data = self.read("fixtures")
+        data["fixtures"] = fixtures
+        p = self.path("fixtures", "")
+        return self.apply({p: self.text_for(p, data)}, f"patch: {len(fixtures)} fixtures")
+
+    def remove_fixture(self, fid: str) -> str:
+        """Take a fixture out of the patch and every rig (layout, head limits, fixture lists) in one
+        change. Scenes or looks that name it directly are reported and refuse the change."""
+        data = self.read("fixtures")
+        fx = [f for f in data.get("fixtures") or [] if f.get("id") != fid]
+        if len(fx) == len(data.get("fixtures") or []):
+            raise StoreError(f"no fixture {fid!r}")
+        data["fixtures"] = fx
+        p = self.path("fixtures", "")
+        changes: dict[Path, str | None] = {p: self.text_for(p, data)}
+        for name in self.names("rig"):
+            rig = self.read("rig", name)
+            touched = False
+            for key in ("layout", "head_limits"):
+                if isinstance(rig.get(key), dict) and fid in rig[key]:
+                    del rig[key][fid]
+                    touched = True
+            if isinstance(rig.get("fixtures"), list) and fid in rig["fixtures"]:
+                rig["fixtures"] = [x for x in rig["fixtures"] if x != fid]
+                touched = True
+            if touched:
+                rp = self.path("rig", name)
+                changes[rp] = self.text_for(rp, rig)
+        return self.apply(changes, f"remove fixture {fid}")
+
     # ------------------------------------------------------------------ groups
 
     def edit_group(self, action: str, name: str, fixtures: list[str] | None = None, new_name: str | None = None) -> str:

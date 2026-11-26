@@ -489,3 +489,68 @@ def test_layer_picks_its_group_tab(ui):
     page.click("#layers li >> nth=0 >> button.name")
     page.wait_for_selector("#scene-group-tabs [data-group=bars].on")
     assert page.locator("#scene-swatches, .swatches").first.locator(".sw[title=off]").count() <= 1
+
+
+# ------------------------------------------------------------------ fixtures page (v2 R7)
+
+
+def fixtures_page(page, tab="patch"):
+    go(page, "fixtures")
+    page.wait_for_selector("body[data-fixtures-ready='1']")
+    page.click(f"#fx-tabs [data-tab={tab}]")
+
+
+def test_add_lights_auto_patch_and_save(ui):
+    page, app, root, _ = ui
+    fixtures_page(page)
+    n = page.locator("#fx-patch tr").count()
+    page.select_option("#fx-add-type", "starcolor72")
+    page.fill("#fx-add-count", "2")
+    page.fill("#fx-add-id", "par")
+    page.click("#fx-add")
+    assert page.locator("#fx-patch tr").count() == n + 2
+    assert page.inner_text("#fx-clash") == ""  # placed on free addresses
+    page.locator("#fx-patch tr").nth(n).locator("input[type=number]").nth(1).fill("1")  # onto the first light
+    page.locator("#fx-patch tr").nth(n).locator("input[type=number]").nth(1).dispatch_event("input")
+    page.wait_for_selector("#fx-patch tr.error")
+    assert page.is_disabled("#fx-patch-save")
+    page.click("#fx-auto")
+    page.wait_for_function("!document.querySelector('#fx-patch tr.error')")
+    page.click("#fx-patch-save")
+    page.wait_for_selector("#toast:not(.hidden)")
+    data = yaml.safe_load((root / "fixtures.yaml").read_text(encoding="utf-8"))
+    assert {"par_1", "par_2"} <= {f["id"] for f in data["fixtures"]}
+    assert "par_1" in app.engine.rig.patch.fixtures  # running already
+
+
+def test_edit_a_type_and_import_from_ofl(ui, tmp_path):
+    page, app, root, _ = ui
+    fixtures_page(page, "types")
+    page.select_option("#fx-type-pick", "starcolor72")
+    page.locator("#fx-type .form select").nth(1).select_option("auto")  # colour mixing (after kind)
+    page.click("#fx-type-save")
+    page.wait_for_selector("#toast:not(.hidden)")
+    data = yaml.safe_load((root / "fixtures.yaml").read_text(encoding="utf-8"))
+    assert data["types"]["starcolor72"]["colour_mix"] == "auto"
+    page.set_input_files("#fx-ofl", str(Path(__file__).parent / "data" / "eurolite_led-tmh-7.json"))
+    page.wait_for_function("document.querySelector('#fx-type-pick').value.startsWith('led_tmh')")
+    assert page.locator("#fx-type tbody tr").count() >= 11
+    page.click("#fx-type-save")
+    page.wait_for_function("document.querySelector('#toast').textContent.startsWith('Saved type')")
+    assert "led_tmh_7" in yaml.safe_load((root / "fixtures.yaml").read_text(encoding="utf-8"))["types"]
+
+
+def test_rig_settings_and_switch(ui):
+    page, app, root, _ = ui
+    fixtures_page(page, "rig")
+    page.wait_for_selector("#fx-rig .form select")
+    page.locator("#fx-rig .form select").first.select_option("generic")
+    page.click("#fx-rig-save")
+    page.wait_for_selector("#toast:not(.hidden)")
+    assert yaml.safe_load((root / "rigs" / "full.yaml").read_text(encoding="utf-8"))["profile"] == "generic"
+    assert not app.engine.rig.profile.master_gate  # live
+    page.select_option("#fx-rig-pick", "small")
+    page.wait_for_function("!document.querySelector('#fx-rig-use').disabled")
+    page.click("#fx-rig-use")
+    page.wait_for_function("document.querySelector('#toast').textContent.includes('small')")
+    assert app.names[0] == "small"
