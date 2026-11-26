@@ -53,6 +53,9 @@ STEP SCENE (v3.2, `type: steps`): hand-programmed steps. Scene step_s / step_bea
   {colour, position, gobo, colour_wheel, strobe, zoom, focus, frost, prism, speed}}, step_s,
   step_beats, fade_s, move}]. Tracking: a step keeps everything from the step before, so only list
   what changes. Optional `layers` are effects over the steps. move: lit glides heads (inside limits).
+  v4: a set: key may be a pixel selection (colour only): bar_1:px3, bar_1:px1-4, bars:px1,8, bars:odd /
+  even / first3 / last3, or a saved pixel group (fixtures.yaml pixel_groups:, e.g. bar_tips). Edit one
+  step with add_step / update_step / move_step / delete_step instead of rewriting the scene.
 SCENE (scenes/<name>.yaml): layers applied in order; later layers override earlier ones.
   name: Blue kit
   show_colour: blue            # drum flashes use this
@@ -571,14 +574,59 @@ class DmxTools:
             c = self._offline(self.local.undo)
         return f"undone: {c['note']} ({', '.join(c['files'])})"
 
-    def preview_scene(self, scene: str, seconds: float = 10) -> str:
-        """`scene` is a scene name, or a whole scene in YAML (try it before saving)."""
+    def preview_scene(self, scene: str, seconds: float = 10, step: int = 0) -> str:
+        """`scene` is a scene name, or a whole scene in YAML (try it before saving). step: a step scene's
+        step number (1 = first) to hold on."""
         body: dict[str, Any] = {"seconds": seconds}
+        if step:
+            body["step"] = int(step) - 1
         if "\n" in scene or ":" in scene:
             body["scene_data"] = _yaml(scene, "scene")
         else:
             body["scene"] = scene
         return self._live("POST", "/api/preview", body)["message"]
+
+    # ------------------------------------------------------------------ step scenes, one step at a time (v4)
+
+    def _step_op(self, op: str, scene: str, body: dict[str, Any]) -> str:
+        b = {"op": op, "scene": scene, **body}
+
+        def offline() -> str:
+            s = self.local
+            raw = body.get("step_ref")
+            ref: int | str = raw if isinstance(raw, (int, str)) else 0
+            if op == "add":
+                return s.add_step(scene, body["step"], body.get("at"))
+            if op == "update":
+                return s.update_step(scene, ref, body.get("set"), body.get("timing"), bool(body.get("replace")))
+            if op == "move":
+                return s.move_step(scene, ref, int(body["to"]))
+            return s.delete_step(scene, ref)
+
+        return self._write("POST", "/api/steps/edit", b, offline)
+
+    @staticmethod
+    def _ref(step: str | int) -> int | str:
+        return int(step) if isinstance(step, int) or str(step).isdigit() else str(step)
+
+    def add_step(self, scene: str, step_yaml: str, at: int = 0) -> str:
+        return self._step_op("add", scene, {"step": _yaml(step_yaml, "step"), "at": at or None})
+
+    def update_step(self, scene: str, step: str | int, set_yaml: str = "", timing_yaml: str = "", replace: bool = False) -> str:
+        body: dict[str, Any] = {"step_ref": self._ref(step), "replace": replace}
+        if set_yaml.strip():
+            body["set"] = _yaml(set_yaml, "set")
+        if timing_yaml.strip():
+            body["timing"] = _yaml(timing_yaml, "timing")
+        if "set" not in body and "timing" not in body:
+            raise StoreError("update_step needs set_yaml and/or timing_yaml")
+        return self._step_op("update", scene, body)
+
+    def move_step(self, scene: str, step: str | int, to: int) -> str:
+        return self._step_op("move", scene, {"step_ref": self._ref(step), "to": int(to)})
+
+    def delete_step(self, scene: str, step: str | int) -> str:
+        return self._step_op("delete", scene, {"step_ref": self._ref(step)})
 
     def set_haze(self, action: str) -> str:
         if action not in ("off", "manual", "pulse"):

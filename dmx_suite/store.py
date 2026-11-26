@@ -877,6 +877,82 @@ class ShowStore:
         if name == "all" or name in ids or name in {k.value for k in Kind}:
             raise StoreError(f"{name!r} can't be a group name: it's a fixture, a fixture kind or 'all'")
 
+    # ------------------------------------------------------------------ step scenes, one step at a time (v4)
+
+    def _step_scene(self, scene: str) -> dict[str, Any]:
+        data = self.read("scene", scene)
+        if data.get("type") != "steps" or not isinstance(data.get("steps"), list):
+            raise StoreError(f"{scene} isn't a step scene (type: steps)")
+        return data
+
+    @staticmethod
+    def _step_index(data: dict[str, Any], ref: int | str) -> int:
+        """A step by number (1-based, as shown) or by name."""
+        steps = data["steps"]
+        if isinstance(ref, int) or (isinstance(ref, str) and ref.isdigit()):
+            i = int(ref) - 1
+            if not 0 <= i < len(steps):
+                raise StoreError(f"no step {ref}; the scene has {len(steps)}")
+            return i
+        for i, st in enumerate(steps):
+            if isinstance(st, dict) and st.get("name") == ref:
+                return i
+        raise StoreError(f"no step named {ref!r}")
+
+    def add_step(self, scene: str, step: dict[str, Any], at: int | None = None) -> str:
+        """Insert a step (at = 1-based place; default the end)."""
+        data = self._step_scene(scene)
+        if not isinstance(step, dict):
+            raise StoreError("a step is {name, set: {lights: {colour, ...}}, step_s, fade_s, move}")
+        pos = len(data["steps"]) if at is None or at < 1 else min(at - 1, len(data["steps"]))
+        data["steps"].insert(pos, step)
+        return self.put("scene", scene, data, f"{scene}: add step {pos + 1}")
+
+    def update_step(self, scene: str, ref: int | str, set_: dict[str, Any] | None = None,
+                    timing: dict[str, Any] | None = None, replace: bool = False) -> str:
+        """Change one step: `set_` merged into its set: per light/group (replace=True swaps the whole set:;
+        a null value drops that light from the step, so it tracks again); `timing`: name, step_s,
+        step_beats, fade_s, move (null removes the step's own value)."""
+        data = self._step_scene(scene)
+        i = self._step_index(data, ref)
+        st = dict(data["steps"][i] or {})
+        if set_ is not None:
+            cur = {} if replace else dict(st.get("set") or {})
+            for target, attrs in set_.items():
+                if attrs is None:
+                    cur.pop(target, None)
+                elif isinstance(attrs, dict) and not replace and isinstance(cur.get(target), dict):
+                    merged = {**cur[target], **attrs}
+                    cur[target] = {k: v for k, v in merged.items() if v is not None}
+                else:
+                    cur[target] = attrs
+            st["set"] = cur
+        for k, v in (timing or {}).items():
+            if k not in ("name", "step_s", "step_beats", "fade_s", "move"):
+                raise StoreError(f"a step's timing is name, step_s, step_beats, fade_s, move (not {k})")
+            if v is None:
+                st.pop(k, None)
+            else:
+                st[k] = v
+        data["steps"][i] = st
+        return self.put("scene", scene, data, f"{scene}: step {i + 1}")
+
+    def move_step(self, scene: str, ref: int | str, to: int) -> str:
+        data = self._step_scene(scene)
+        i = self._step_index(data, ref)
+        st = data["steps"].pop(i)
+        j = max(0, min(int(to) - 1, len(data["steps"])))
+        data["steps"].insert(j, st)
+        return self.put("scene", scene, data, f"{scene}: step {i + 1} to {j + 1}")
+
+    def delete_step(self, scene: str, ref: int | str) -> str:
+        data = self._step_scene(scene)
+        if len(data["steps"]) == 1:
+            raise StoreError("a step scene needs at least one step")
+        i = self._step_index(data, ref)
+        data["steps"].pop(i)
+        return self.put("scene", scene, data, f"{scene}: delete step {i + 1}")
+
     def _rename_refs(self, old: str, new: str) -> dict[Path, str | None]:
         """Files whose fixture lists name group `old`, rewritten to name `new`."""
 

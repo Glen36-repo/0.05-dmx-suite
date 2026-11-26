@@ -241,10 +241,37 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.now_playing()
 
     @tool
-    def preview_scene(scene: str, seconds: float = 10) -> str:
+    def preview_scene(scene: str, seconds: float = 10, step: int = 0) -> str:
         """Play a scene on the rig for a few seconds, then go back to what was running. `scene` is a saved
-        scene name or a whole scene as YAML (to try before saving). Not allowed during gig lock."""
-        return t.preview_scene(scene, seconds)
+        scene name or a whole scene as YAML (to try before saving). step: hold a step scene on that step
+        (1 = first). Not allowed during gig lock."""
+        return t.preview_scene(scene, seconds, step)
+
+    @tool
+    def add_step(scene: str, step_yaml: str, at: int = 0) -> str:
+        """Add one step to a saved step scene without rewriting it: '{name: Chorus hit, set: {bars:
+        {colour: red}, "bars:px1,8": {colour: white}, movers: {position: drum_kit}}, step_s: 2}'. at = place
+        (1 = first; default the end). Pixel selectors (bar_1:px1-4, bars:odd) are colour only. Validated
+        and backed up; not during gig lock."""
+        return t.add_step(scene, step_yaml, at)
+
+    @tool
+    def update_step(scene: str, step: str, set_yaml: str = "", timing_yaml: str = "", replace: bool = False) -> str:
+        """Change one step (number, 1 = first, or its name). set_yaml is merged per light/group into the step's
+        set: ('{bars: {colour: blue}, wash_l: null}' - null takes a light out of the step so it tracks the
+        one before); replace=true swaps the whole set:. timing_yaml: '{step_s: 1.5, fade_s: 0.3, move: lit,
+        name: Verse}' (null clears a step's own value)."""
+        return t.update_step(scene, step, set_yaml, timing_yaml, replace)
+
+    @tool
+    def move_step(scene: str, step: str, to: int) -> str:
+        """Move one step (number or name) to place `to` (1 = first)."""
+        return t.move_step(scene, step, to)
+
+    @tool
+    def delete_step(scene: str, step: str) -> str:
+        """Delete one step (number or name). A step scene keeps at least one step."""
+        return t.delete_step(scene, step)
 
     @tool
     def set_haze(action: str, settings_yaml: str = "") -> str:

@@ -175,6 +175,39 @@ def parse_steps(data: dict[str, Any], patch: Any, pal: Any, name: str) -> Steps:
     return out
 
 
+# ---------------------------------------------------------------------- tracking view (v4 step editor)
+
+
+def track_view(data: dict[str, Any], index: int, patch: Any) -> dict[str, Any]:
+    """What each light shows at step `index` (0-based) and where it comes from: set in this step, or
+    tracked from an earlier one. Works on unsaved scene data (the editor's). Keyed by fixture id; a
+    pixel selection adds `pixels` (1-based numbers). Unknown targets are skipped (validation says so)."""
+    steps = data.get("steps") or []
+    if not 0 <= index < len(steps):
+        raise LookError(f"no step {index + 1}; the scene has {len(steps)}")
+    out: dict[str, dict[str, Any]] = {}
+    for i, st in enumerate(steps[: index + 1]):
+        for target, attrs in ((st or {}).get("set") or {}).items():
+            try:
+                sel = patch.resolve_targets([target])
+            except Exception:  # noqa: BLE001 - shown by validation, not here
+                continue
+            for fid, px in sel.items():
+                slot = out.setdefault(fid, {})
+                for k, v in (attrs or {}).items():
+                    entry: dict[str, Any] = {"value": v, "from_step": i, "via": target,
+                                             "source": "set" if i == index else "tracked"}
+                    if px is not None:
+                        entry["pixels"] = sorted(n + 1 for n in px)
+                        key = f"{k}@px" + ",".join(str(n + 1) for n in sorted(px))
+                    else:
+                        key = k
+                        for old in [x for x in slot if x.startswith(f"{k}@px")]:  # a whole-light value covers the pixels
+                            del slot[old]
+                    slot[key] = entry
+    return {"step": index, "name": (steps[index] or {}).get("name") or f"Step {index + 1}", "fixtures": out}
+
+
 # ---------------------------------------------------------------------- playback
 
 

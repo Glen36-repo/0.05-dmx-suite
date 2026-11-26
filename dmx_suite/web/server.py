@@ -46,7 +46,8 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
 DEFAULT_PORT = 8505
 # what Claude's token may change (everything else is the people at the laptop's call)
 MAX_UPLOAD = 20 * 1024 * 1024
-CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/routing/output", "/api/claude/haze",
+CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/steps/edit", "/api/steps/view",
+                 "/api/routing/output", "/api/claude/haze",
                  "/api/haze/settings", "/api/devices/set",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
                  "/api/autopilot/check", "/api/generate")
@@ -752,6 +753,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 r = app.set_device(str(body.get("id", "")), body.get("alias"), None if uni in (None, "") else int(uni),
                                    body.get("driver") or None, bool(body.get("use", True)))
                 return self._json(200, {"ok": True, **r})
+            if path == "/api/steps/view" and method == "POST":  # v4 step editor: set vs tracked per light
+                return self._json(200, app.step_view(body.get("scene") or {}, int(body.get("index", 0))))
+            if path == "/api/steps/edit" and method == "POST":  # one step of a saved step scene (Claude, editor)
+                return self._json(200, {"ok": True, **app.edit_step(str(body.get("op")), str(body.get("scene")), body)})
             if path == "/api/haze/settings" and method == "POST":  # Haze settings panel (and Claude, saving)
                 r = app.haze_settings(body.get("changes") or {}, bool(body.get("save")))
                 return self._json(200, {"ok": True, **r})

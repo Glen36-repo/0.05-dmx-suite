@@ -1595,8 +1595,53 @@ class App:
                 raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
         except (ConfigError, ValueError, TypeError, KeyError, AttributeError) as e:
             m = re.search(r"layer (\d+)", str(e))
-            return {"ok": False, "error": str(e), "layer": int(m.group(1)) if m else None}
-        return {"ok": True, "length_s": sc.length, "layers": len(sc.layers)}
+            st = re.search(r"step (\d+)(?: ([^:]+))?:", str(e))
+            return {"ok": False, "error": str(e), "layer": int(m.group(1)) if m and not st else None,
+                    "step": int(st.group(1)) - 1 if st else None, "target": st.group(2) if st else None}
+        return {"ok": True, "length_s": sc.length, "layers": len(sc.layers), "problems": self._limit_problems(sc)}
+
+    def _limit_problems(self, sc: Any) -> list[dict[str, Any]]:
+        """Positions outside the running rig's head limits (rule 8 holds them at the limit, but the
+        editor says so against the step)."""
+        rig = self.engine.rig
+        out: list[dict[str, Any]] = []
+        groups = [(None, sc.layers)] + ([(i, st.layers) for i, st in enumerate(sc.steps.steps)] if sc.steps else [])
+        for step, layers in groups:
+            for ly in layers:
+                for fid, (pan, tilt) in (ly.params.get("position") or {}).items():
+                    lim = rig.limit(fid)
+                    if not (lim.pan[0] - 1e-6 <= pan <= lim.pan[1] + 1e-6 and lim.tilt[0] - 1e-6 <= tilt <= lim.tilt[1] + 1e-6):
+                        out.append({"step": step, "fixture": fid,
+                                    "message": f"{fid} pan {pan:.0%} tilt {tilt:.0%} is outside its head limits; "
+                                               "it's held at the limit (rule 8)"})
+        return out
+
+    def step_view(self, data: Any, index: int) -> dict[str, Any]:
+        from .steps import track_view
+
+        if isinstance(data, str):
+            data = self.store.read("scene", data)
+        return track_view(upgrade(data, "scene", "scene"), index, self.files.patch)
+
+    def edit_step(self, op: str, scene: str, b: dict[str, Any]) -> dict[str, Any]:
+        """Step tools (Claude, the editor): add, update, move, delete one step of a saved step scene."""
+        s = self.store
+        raw = b.get("step_ref")
+        if op != "add" and not isinstance(raw, (int, str)):
+            raise ValueError("which step: its number (1 = first) or name")
+        ref: int | str = raw if isinstance(raw, (int, str)) else 0
+        if op == "add":
+            bid = s.add_step(scene, b.get("step") or {}, b.get("at"))
+        elif op == "update":
+            bid = s.update_step(scene, ref, b.get("set"), b.get("timing"), bool(b.get("replace")))
+        elif op == "move":
+            bid = s.move_step(scene, ref, int(b.get("to", 1)))
+        elif op == "delete":
+            bid = s.delete_step(scene, ref)
+        else:
+            raise ValueError("op is add, update, move or delete")
+        notes = self.reload()
+        return {"backup": bid, "notes": notes}
 
     def _busk_state(self) -> dict[str, Any]:
         held = self.engine.held()
