@@ -8,7 +8,9 @@ from pathlib import Path
 from .fixtures import ConfigError, Patch, load_patch
 from .look import Look, load_look
 from .midi.map import MidiMap, load_map
+from .palettes import Palettes, load_palettes
 from .rig import Rig, load_rig
+from .scenes import Scene, load_scenes
 
 
 @dataclass
@@ -19,6 +21,8 @@ class ShowFiles:
     look: Look
     midimap: MidiMap
     midimap_path: Path
+    palettes: Palettes
+    scenes: dict[str, Scene]
 
 
 def _pick(folder: Path, name: str) -> Path:
@@ -39,7 +43,9 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
     for m in mp.mappings:  # flash targets must exist in the patch
         if m.action == "flash":
             patch.resolve(m.params["fixtures"])
-    return ShowFiles(root, patch, r, lk, mp, mp_path)
+    pal = load_palettes(root / "palettes.yaml", patch)
+    scenes = load_scenes(root / "scenes", patch, pal)
+    return ShowFiles(root, patch, r, lk, mp, mp_path, pal, scenes)
 
 
 def check_all(root: str | Path) -> list[str]:
@@ -59,6 +65,17 @@ def check_all(root: str | Path) -> list[str]:
                 loader(p, patch)
             except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
                 problems.append(f"{sub}/{p.name}: {e}")
+    try:
+        pal = load_palettes(root / "palettes.yaml", patch)
+    except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+        problems.append(f"palettes.yaml: {e}")
+        pal = None
+    if pal is not None:
+        for p in sorted((root / "scenes").glob("*.yaml")):
+            try:
+                load_scenes_file(p, patch, pal)
+            except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
+                problems.append(f"scenes/{p.name}: {e}")
     for p in sorted((root / "midi").glob("*.yaml")):
         try:
             mp = load_map(p)
@@ -68,3 +85,11 @@ def check_all(root: str | Path) -> list[str]:
         except (ConfigError, OSError, KeyError, TypeError, ValueError) as e:
             problems.append(f"midi/{p.name}: {e}")
     return problems
+
+
+def load_scenes_file(path: Path, patch: Patch, pal: Palettes) -> Scene:
+    import yaml
+
+    from .scenes import parse_scene
+
+    return parse_scene(yaml.safe_load(path.read_text(encoding="utf-8")) or {}, patch, pal, path.stem)

@@ -1,0 +1,7 @@
+# Heads wander independently (moving dark), bars red, washes off.
+name: Red movers
+show_colour: red
+layers:
+  - {fixtures: [bars], colour: red}
+  - {fixtures: [heads], colour: red}
+  - {fixtures: [movers], effect: random_move, period_s: 6, tilt: [0.2, 0.8], dark_move_s: 1.0, speed: 0.6}

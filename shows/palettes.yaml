@@ -1,0 +1,31 @@
+# Palettes: named colours, positions and gobos used by scenes.
+# Colours: "#rrggbb", [r, g, b] (0-1) or {red, green, blue, white, amber, uv} (0-1).
+# Built in: off / black, white.
+# Positions are 0-1 of the pan/tilt range; PLACEHOLDERS until set at rehearsal.
+# Gobos are DMX values for the MHL36 gobo channel; PLACEHOLDERS until checked on the fixture.
+
+colours:
+  blue: "#0030ff"
+  deep_blue: [0.0, 0.05, 0.6]
+  red: [1, 0, 0]
+  amber: {red: 1.0, green: 0.45}
+  magenta: [1, 0, 0.6]
+  cyan: [0, 0.8, 1]
+  green: [0, 1, 0.1]
+  purple: [0.5, 0, 1]
+  warm_white: {red: 1.0, green: 0.7, blue: 0.35, white: 1.0}
+  incandescent: {red: 1.0, green: 0.55, blue: 0.12, white: 0.6}   # opera show
+
+positions:
+  drum_kit:
+    mh_a: {pan: 0.42, tilt: 0.30}
+    mh_b: {pan: 0.58, tilt: 0.30}
+  centre: {pan: 0.5, tilt: 0.5}
+  audience_l: {pan: 0.30, tilt: 0.55}
+  audience_r: {pan: 0.70, tilt: 0.55}
+  ceiling: {pan: 0.5, tilt: 0.95}
+
+gobos:
+  open: 0
+  dots: {mhl36: 24}
+  star: {mhl36: 48}
