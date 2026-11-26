@@ -100,6 +100,20 @@
 
   <!-- SETUP -->
   <section id="tab-setup" class="tab">
+    <h2>Stage plan</h2>
+    <p class="muted">Drag each light to where it really is. Select one to rotate it (the small arrow shows which way it faces). Saved in this rig's file.</p>
+    <div class="arrange" id="arrange"></div>
+    <div class="row wrap">
+      <button id="rot-l" title="Rotate selected anticlockwise">⟲ 15°</button>
+      <button id="rot-r" title="Rotate selected clockwise">⟳ 15°</button>
+      <span class="muted" id="arrange-sel">Tap a light to select it</span>
+    </div>
+    <div class="row wrap">
+      <label class="muted">Stage width (m)</label><input id="stage-w" type="number" min="1" max="50" step="0.5" class="narrow">
+      <label class="muted">depth (m)</label><input id="stage-d" type="number" min="1" max="50" step="0.5" class="narrow">
+      <button id="layout-save">Save stage plan</button>
+      <button id="layout-reset">Undo changes</button>
+    </div>
     <h2>Find fixture</h2>
     <div class="row wrap" id="find"></div>
     <h2>Channel tester</h2>
@@ -132,6 +146,7 @@
   </section>
 </main>
 <div class="toast hidden" id="toast"></div>
+<script src="/static/plan.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

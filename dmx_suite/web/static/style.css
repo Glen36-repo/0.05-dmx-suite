@@ -66,18 +66,6 @@ input, select { background: var(--panel); border: 1px solid var(--line); border-
 input.narrow { width: 80px; }
 input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
 
-.stage { display: grid; gap: 10px; padding: 12px; background: #000; border: 1px solid var(--line); border-radius: var(--radius); margin-top: 10px; }
-.stage .lane { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; align-items: center; }
-.fx { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
-.head { width: 34px; height: 34px; border-radius: 50%; border: 1px solid #333; position: relative; }
-.head .beam { position: absolute; left: 50%; top: 50%; width: 2px; height: 16px; background: rgba(255,255,255,.5); transform-origin: top center; }
-.bar { display: flex; gap: 2px; }
-.bar i { width: 12px; height: 16px; border-radius: 2px; display: block; outline: 1px solid #2a2a33; }
-.wash, .head { outline: 1px solid #2a2a33; }
-.wash { width: 44px; height: 24px; border-radius: 8px; }
-.kick { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #333; }
-.hazefx { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); }
-.hazefx.on { background: #ddd; color: #000; }
 
 .faders { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .fader { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
@@ -106,3 +94,24 @@ table.monitor, table.map, table.nodes, table.addr, table.devices { display: bloc
 
 .toast { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 600px; margin: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; z-index: 10; }
 .toast.err { border-color: var(--bad); }
+
+/* stage plan */
+.stage { display: block; padding: 6px; background: #000; border: 1px solid var(--line); border-radius: var(--radius); margin-top: 10px; }
+.plan { width: 100%; height: auto; display: block; touch-action: none; user-select: none; }
+.plan .floor { fill: #0b0b10; stroke: #2a2a33; stroke-width: 2; }
+.plan .grid { stroke: #17171e; stroke-width: 1; }
+.plan .aud { fill: #4a4a58; font-size: 18px; letter-spacing: .3em; }
+.plan .aud.back { font-size: 14px; letter-spacing: .1em; }
+.plan .rim { fill: #050507; stroke: #3a3a46; stroke-width: 2; }
+.plan .lamp { fill: #111116; transition: fill .05s; }
+.plan .lamp.haze { fill: #16161c; stroke: #3a3a46; }
+.plan .lamp.haze.on { fill: #d8d8e0; }
+.plan .hz { fill: #7c7c8c; font-size: 11px; font-weight: 700; pointer-events: none; }
+.plan .dotc { fill: none; stroke: #050507; stroke-width: 2; }
+.plan .nose { fill: #4a4a58; }
+.plan .label { fill: #8c8c9c; font-size: 15px; pointer-events: none; }
+.plan .beam { stroke-width: 6; stroke-linecap: round; opacity: .75; }
+.plan .beam.dark { stroke-dasharray: 6 8; stroke-width: 3; opacity: .6; }
+.plan.edit .fx { cursor: grab; }
+.plan.edit .fx.sel .rim { stroke: var(--accent); stroke-width: 4; }
+.arrange { background: #000; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; }
