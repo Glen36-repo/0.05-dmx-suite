@@ -71,6 +71,7 @@ class FakeWebview:
         return w
 
     def start(self, func=None, icon=None):
+        self.icon = icon
         if func:
             func()
         if self.during:
@@ -209,3 +210,11 @@ def test_windowed_exe_defaults_to_app(monkeypatch, argv, expected):
     monkeypatch.setattr("dmx_suite.cli.main", lambda a: got.append(a) or 0)
     desktop.main(argv)
     assert got == [expected]
+
+
+def test_icon_only_passed_off_windows(tray, monkeypatch):
+    for platform, expected in (("win32", None), ("linux", str(desktop.ICON))):
+        monkeypatch.setattr(desktop.sys, "platform", platform)
+        wv = FakeWebview()
+        desktop.Desktop(app_args("--smoke-test", "0"), wv, start_session).run()
+        assert wv.icon == expected

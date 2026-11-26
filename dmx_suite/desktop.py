@@ -168,11 +168,13 @@ class Desktop:
             self.tray.run_detached()
         smoke = getattr(self.args, "smoke_test", None)
         self.smoke_ok = smoke is None
+        # Windows takes the window icon from the exe (its icon parameter only accepts .ico)
+        kw = {} if sys.platform == "win32" else {"icon": str(ICON)}
         try:
             if smoke is not None:
-                self.webview.start(lambda: self.smoke(smoke), icon=str(ICON))
+                self.webview.start(lambda: self.smoke(smoke), **kw)
             else:
-                self.webview.start(icon=str(ICON))
+                self.webview.start(**kw)
         finally:
             if self.tray is not None:
                 self.tray.stop()
