@@ -22,6 +22,16 @@ class HeadLimit:
 
 
 @dataclass
+class Placement:
+    """Where a fixture sits on the stage plan. x from stage left (as the audience sees it),
+    y from the front edge, metres; rot in degrees (0 = facing the audience)."""
+
+    x: float
+    y: float
+    rot: float = 0.0
+
+
+@dataclass
 class HazeConfig:
     enabled: bool = True
     default_mode: str = "off"  # off | manual | pulse
@@ -52,6 +62,8 @@ class Rig:
     nodes: list[tuple[str, str]] = field(default_factory=list)  # (mac, name)
     outputs: list[dict[str, Any]] = field(default_factory=list)
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
+    stage: tuple[float, float] = (6.0, 4.0)  # width, depth in metres (stage plan)
+    layout: dict[str, "Placement"] = field(default_factory=dict)  # fixture id -> where it is
 
     @property
     def fixtures(self):
@@ -133,7 +145,36 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         nodes=[(n["mac"].upper(), n.get("name", "")) for n in data.get("nodes") or []],
         outputs=list(data.get("outputs") or [{"driver": "null"}]),
         midi_inputs=[str(x) for x in data.get("midi_inputs") or []],
+        stage=_stage(data.get("stage")),
+        layout=_layout(data.get("layout"), patch),
     )
+
+
+def _stage(d: Any) -> tuple[float, float]:
+    if d is None:
+        return (6.0, 4.0)
+    try:
+        w, dep = float(d["width"]), float(d["depth"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise ConfigError("stage needs width and depth in metres") from e
+    if not (1 <= w <= 50 and 1 <= dep <= 50):
+        raise ConfigError("stage width and depth must be 1-50 m")
+    return (w, dep)
+
+
+def _layout(d: Any, patch: Patch) -> dict[str, Placement]:
+    out = {}
+    for fid, v in (d or {}).items():
+        if fid not in patch.fixtures:
+            raise ConfigError(f"layout: unknown fixture {fid!r}")
+        try:
+            p = Placement(float(v["x"]), float(v["y"]), float(v.get("rot", 0)) % 360)
+        except (KeyError, TypeError, ValueError) as e:
+            raise ConfigError(f"layout {fid}: needs x and y in metres") from e
+        if not (-5 <= p.x <= 55 and -5 <= p.y <= 55):
+            raise ConfigError(f"layout {fid}: x/y out of range")
+        out[fid] = p
+    return out
 
 
 def load_rig(path: str | Path, patch: Patch) -> Rig:

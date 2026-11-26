@@ -64,6 +64,8 @@ class FixtureType:
     colour_only: bool = False  # U'King heads: never move
     home: dict[str, float] = field(default_factory=lambda: {"pan": 0.5, "tilt": 0.5})
     verified: bool = False  # channel map checked against the real fixture / Daslight patch
+    pan_range: float = 540.0  # degrees, for the stage plan's beam lines
+    tilt_range: float = 270.0
 
     @property
     def footprint(self) -> int:
@@ -168,6 +170,8 @@ def _type(key: str, d: dict) -> FixtureType:
         colour_only=bool(d.get("colour_only", False)),
         home={"pan": 0.5, "tilt": 0.5, **d.get("home", {})},
         verified=bool(d.get("verified", False)),
+        pan_range=float(d.get("pan_range", 540)),
+        tilt_range=float(d.get("tilt_range", 270)),
     )
     if kind == Kind.HAZE and not t.has("haze"):
         raise ConfigError(f"{key}: haze fixture needs a haze channel")

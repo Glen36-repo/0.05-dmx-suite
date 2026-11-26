@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .engine import Engine
+from .layout import full_layout
 from .fixtures import EMITTERS, Kind
 from .midi.map import ACTIONS
 from .midi.monitor import MidiMonitor
@@ -170,11 +171,25 @@ class App:
         notes = []
         if new.patch.fixtures.keys() != self.files.patch.fixtures.keys() or new.rig.present != self.files.rig.present:
             notes.append("fixture/rig changes take effect after a restart")
-        new.rig, new.patch = self.files.rig, self.files.patch  # keep the live patch
+        live = self.files.rig
+        live.stage, live.layout = new.rig.stage, new.rig.layout  # the stage plan is display only: apply now
+        new.rig, new.patch = live, self.files.patch  # keep the live patch
         self.files = new
         self.ctl.files = new
         self.router.map = new.midimap
         return notes
+
+    def save_layout(self, stage: dict[str, Any] | None, layout: dict[str, Any]) -> str:
+        """Write the stage plan into this rig's file (validated + backed up like any edit)."""
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        if stage is not None:
+            data["stage"] = {"width": round(float(stage["width"]), 2), "depth": round(float(stage["depth"]), 2)}
+        data["layout"] = {fid: {"x": round(float(p["x"]), 2), "y": round(float(p["y"]), 2),
+                                "rot": round(float(p.get("rot", 0)) % 360)} for fid, p in layout.items()}
+        bid = self.store.put("rig", rig_name, data, f"stage plan for rig {rig_name}")
+        self.reload()
+        return bid
 
     # ------------------------------------------------------------------ preview
 
@@ -270,7 +285,12 @@ class App:
             "setlists": {k: {"name": s.name, "songs": [x.name for x in s.songs]} for k, s in f.setlists.items()},
             "positions": sorted(f.palettes.positions),
             "fixtures": [{"id": fx.id, "kind": fx.kind.value, "type": fx.type.name, "colour_only": fx.type.colour_only,
-                          "moves": fx.type.has("pan") and not fx.type.colour_only} for fx in self.engine.rig.fixtures],
+                          "moves": fx.type.has("pan") and not fx.type.colour_only, "pixels": fx.type.pixels,
+                          "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range}
+                         for fx in self.engine.rig.fixtures],
+            "stage": {"width": self.engine.rig.stage[0], "depth": self.engine.rig.stage[1]},
+            "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot} for fid, p in full_layout(self.engine.rig).items()},
+            "rig_name": self.names[0],
             "groups": self.engine.rig.patch.groups(),
             "actions": sorted(ACTIONS),
         }
