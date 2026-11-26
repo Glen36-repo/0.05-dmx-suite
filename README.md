@@ -118,9 +118,11 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 
 `dmx-suite run` also starts the UI at http://localhost:8505/ (`--port` to change, `--no-web` to turn off); the desktop app shows the same screens in its own window. Pages are in a menu down the left (a bar along the bottom on a phone); MASTER, blackout, gig lock and the status strip stay along the top.
 
-- **Live:** the light layout with live colours, show/set/scene buttons, next step, tap tempo, setlist (tap a song to jump to it), grand master and sub-master faders, haze.
+- **Live:** the light layout with live colours, show/set/scene buttons, the playing set's steps (tap one to jump to it, with repeat count and time left), next step, tap tempo or type a BPM, speed fader, setlist (tap a song to jump to it), grand master and sub-master faders, haze.
 - **Layout:** arrange the lights and make groups (below).
 - **Scenes:** build scenes on screen (below).
+- **Shows:** build shows from scenes and edit setlists (below).
+- **Busk:** your own panels of buttons and faders to play over the running show (below).
 - **Heads:** drag on a pad to hold a head at a spot (head limits still apply); save held positions as a palette position.
 - **MIDI:** live monitor (what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
 - **Setup:** find a light, channel tester, drum flash test, devices, node health (name/identify nodes), address check, theme, check for updates.
@@ -217,7 +219,27 @@ Every effect that runs across several lights takes `mapping`: `order` (as listed
 
 **Scene builder** (Scenes page): pick lights on the layout and add a layer. Then choose a colour, position or gobo and/or an effect; its settings form comes from the effect itself. For a spatial effect, an arrow on the layout shows which way it runs. Tick **Live preview** to play the unsaved scene on the rig. A layer that breaks a rule is marked in red with the reason. Save, duplicate or delete scene files.
 
-Shows (`shows/shows/*.yaml`) have sets on fixed step timers. A set is either a list of scenes (in order, or random without repeats) or an `auto` style that generates a fresh scene every step from the palette colours, energy (low/mid/high), head colour mix (matching/white/contrast), patterns (all, heads only, bars only, static on the kit) and movement (random/sweep/static), using only the fixtures in the active rig. `band` has LOW / MID / HIGH (60 / 40 / 20 s) plus a `cues` set; `opera` and `acoustic` are single-set shows. Setlists (`shows/setlists/`) list songs, each with a show/set or a scene, optionally forcing MASTER. A scene layer can name a `fallback` group to use when its fixtures aren't in the rig.
+Shows (`shows/shows/*.yaml`) have sets. A set is either a list of steps or an `auto` style that generates a fresh scene every step from the palette colours, energy (low/mid/high), head colour mix (matching/white/contrast), patterns (all, heads only, bars only, static on the kit) and movement (random/sweep/static), using only the fixtures in the active rig. `band` has LOW / MID / HIGH (60 / 40 / 20 s) plus a `cues` set; `opera` and `acoustic` are single-set shows.
+
+**Show steps** (like a Daslight super scene): each step plays a scene, then moves on after `repeats` (times through the scene's `length_s`), `hold_s` seconds, or `hold_beats` / `hold_bars` at the current tempo. `fade_s` on the set crossfades between steps; a step's own `fade_s` overrides it (0 = cut). A set plays its steps in `order: sequence` or `random`, and `loop: false` stops on the last step. Older files with `scenes:` and `step_s` still load as steps of `hold_s`. Crossfades mix colour; a moving head that changes position goes dark, moves, then fades in; channels not in the new look end at exactly 0. Rig `change_fade_s` crossfades when you pick a scene, show or look (default 0, a cut, as before).
+
+```yaml
+sets:
+  verse:
+    fade_s: 2
+    order: sequence      # or random
+    loop: true
+    steps:
+      - {scene: blue_chase, repeats: 4}
+      - {scene: red_movers, hold_s: 30, fade_s: 0}
+      - {scene: strobe_hit, hold_bars: 2}
+```
+
+On the **Shows** page: pick or make a show, add sets, add scenes as steps, set each one's repeats, hold (seconds, beats or bars) and fade, reorder them, and set the set's fade, order and loop; or switch a set to auto and fill in its style. Save, play or delete. The setlist editor beside it adds, reorders and removes songs, each a show (and set) or a scene, with MASTER on, off or as it is.
+
+**Beat sync:** the rig file picks a tempo source with `tempo: {source: tap | kick | midi_clock}`. `tap` is a pedal, key or button; `kick` follows the drummer's kick note (`kick_note`, default 36; average of the last 4 beats, fills ignored); `midi_clock` follows MIDI clock from any input. If a kick or clock goes quiet, the last tempo is kept for `timeout_s` (default 30 s), then effects return to fixed timers. With no tempo, everything runs on fixed timers as before. A layer's `beats` sets its effect cycle in beats instead of seconds. A `speed` action (MIDI, OSC or a busk fader) multiplies effect speed 0.25-4×. The top bar shows the tempo, its source and a beat pulse.
+
+**Busking** (Busk page, `shows/panels.yaml`): panels of buttons and faders, one per show (or `default`). Widgets: colour (latch, or while held), flash, solo (everything else dark while held), effect (latch a scene's layers over the show), go (a scene, or a show and set), fader (grand master, a sub-master, flash level or speed) and haze. Tick **Edit panels** to make panels and add, reorder or remove widgets. Busk overrides sit on top of the show and under the rules (colour only under the 0.05 band profile, unlit channels at 0, solo leaves the kick light alone); releasing fades back to the show over the panel's `release_fade_s`. Lights held by busk buttons get a dashed outline on the layout, and **Release all** lets go of everything. Map any widget to MIDI or OSC with the `busk` action (`panel`, `widget`). Setlists (`shows/setlists/`) list songs, each with a show/set or a scene, optionally forcing MASTER. A scene layer can name a `fallback` group to use when its fixtures aren't in the rig.
 
 **Rule profiles:** each rig file picks which rig rules apply with `profile:`. `0.05_band` (the shipped rigs) is MASTER on/off with colour-only scenes, drum flash with MASTER off, and the kick light ignoring MASTER. `generic` is standard dimmer behaviour: lights follow the scene, a layer or look can set `intensity: 0-1`, and there's no drum flash. A block (`profile: {base: 0.05_band, master_exempt: [wash]}`) changes single settings. A rig file with no `profile:` runs as `0.05_band`. Safety rules (no glow, haze only from the Haze controls, grand master intensity only, head limits) apply under every profile. `dmx-suite check` refuses a scene or look that sets `intensity` while any rig uses a MASTER on/off profile.
 

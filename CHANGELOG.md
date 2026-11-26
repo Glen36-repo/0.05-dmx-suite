@@ -2,6 +2,20 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v2, release R5)
+
+### Added
+- Show steps: repeat a scene a number of times, hold for seconds, beats or bars, and fade into the next step; sets play in order or at random, looped or once.
+- Crossfades between steps, and optionally when picking a scene, show or look (`change_fade_s`); busk releases fade back to the show.
+- Shows page: build shows, sets and steps on screen; setlist editor.
+- Live page: the set's steps (tap to jump), repeat count and time left, typed BPM, speed fader.
+- Beat sync: tempo from tap, the kick drum or MIDI clock; layers timed in beats; speed control; tempo and beat pulse in the top bar.
+- Busk page: your own panels of colour, flash, solo, effect, go, fader and haze buttons over the running show, each mappable to MIDI or OSC; Release all; held lights marked on the layout.
+
+### Changed
+- Changing tempo no longer makes effects jump.
+- MIDI clock is no longer shown in the MIDI monitor.
+
 ## Unreleased (v2, release R4)
 
 ### Added
