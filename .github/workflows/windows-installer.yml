@@ -3,7 +3,8 @@ name: Windows installer
 on:
   workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches: ["**"]
+    tags: ["v*"]  # path filters are not applied to tag pushes
     paths:
       - "installer/**"
       - "dmx_suite/paths.py"
