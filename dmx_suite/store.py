@@ -169,7 +169,7 @@ class ShowStore:
                     log.exception("moving MIDI mappings / positions for file format 5 failed; files upgraded as they are")
             if not changes:
                 return None, []
-            names = [str(p.relative_to(self.root)) for p in changes]
+            names = [p.relative_to(self.root).as_posix() for p in changes]  # same on Windows and Linux
             return self._commit(changes, f"upgrade to file format {FORMAT}: {', '.join(names)}"), names
 
     def _migrate_v5(self, staged: dict[Path, str | None]) -> dict[Path, str | None]:
