@@ -279,6 +279,16 @@ On the **Shows** page: pick or make a show, add sets, add scenes as steps, set e
 
 Levels in rig files are 0-100 %. Looks (`shows/looks/`) set colour, pixels, wheel, gobo and position only; a `dimmer` or `haze` key is rejected (hard rules 1 and 5). The static look is the fallback when no scene is playing.
 
+## 0.05 node (firmware 0.2)
+
+When the node connects or restarts, the app stores a fallback look for each universe on it (the static look with MASTER on, no haze), so if the laptop goes away every receiver keeps a sensible look instead of going dark. On the Setup page, node table:
+- **Identify** flashes a node's screen or a receiver's LED;
+- naming waits for the node to confirm and says if it didn't;
+- **Replace with spare…** gives a switched-on spare a dead node's name, universe and place in the rig;
+- **Move radio** moves the node and its receivers to another Wi-Fi channel (also `radio_channel: 6` in the rig file, set on connect).
+
+The status bar warns about firmware older than 0.2, a node built with the development pairing key, and a DMX output that didn't start. Protocol: `docs/PROTOCOL.md` (v1.1); flashing and the bench-test list: `firmware/README.md`.
+
 ## Node test script
 
 Runs against real hardware (`--port COM5`) or the simulator (`--sim`).

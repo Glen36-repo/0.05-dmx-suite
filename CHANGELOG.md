@@ -2,6 +2,23 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v2, release R8)
+
+### Added
+- Node firmware 0.2: fallback looks for up to 4 universes, sent by the app whenever the node connects (each universe's static look); fallback, blackout and keep-alive reach every universe.
+- Radio channel: move the node and its receivers from the Setup page or the rig file; receivers that missed it find the node again by themselves.
+- Node status screen on the CoreS3 (mode, universe, frame rate, receivers, channel, firmware, warnings); identify and tap flash it.
+- Replace a dead node or receiver with a spare from the Setup page.
+- Warnings for old node firmware, the development pairing key, and a DMX output that didn't start.
+
+### Changed
+- Naming a node or receiver waits for it to confirm, and says if it didn't.
+- Requests to the node carry an id, so a late answer can't be taken for the wrong request.
+
+### Fixed
+- Receivers on a two-universe rig no longer report about 50 % packet loss.
+- Receivers on other universes no longer go dark 5 s after the laptop goes away; they run their fallback look.
+
 ## Unreleased (v2, release R7)
 
 ### Added

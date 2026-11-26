@@ -1,6 +1,13 @@
-# 0.05 node link protocol (v1)
+# 0.05 node link protocol (v1.1)
 
 USB serial between the laptop and the CoreS3 SE node, and ESP-NOW between the node and the AtomS3 Lite receivers. Python side: `dmx_suite/node/protocol.py`. Firmware side: `firmware/include/proto.h`. Both must match this file; `tests/test_firmware_proto.py` checks the two encoders produce identical bytes.
+
+v1.1 (firmware 0.2, v2 R8) only adds to v1, so either side can be older:
+- two new requests (SET_FALLBACK_U, SET_CHANNEL);
+- an optional request id byte at the end of every request that gets an ACK, echoed as a third ACK byte;
+- two bytes at the end of STATUS.
+
+The laptop sends request ids and the new requests only to firmware 0.2 or later (it reads the version from the node's heartbeat), and reads both STATUS sizes.
 
 All multi-byte integers are little-endian.
 
@@ -31,10 +38,17 @@ The node is a USB CDC device; baud rate is ignored.
 | `0x05` | ASSIGN | `mac[6]`, `universe u8`, `name[16]` (UTF-8, NUL-padded) | ACK |
 | `0x06` | IDENTIFY | `mac[6]`, `seconds u8` | ACK |
 | `0x07` | STATUS_REQ | none | STATUS |
+| `0x08` | SET_FALLBACK_U | `universe u8`, then a fallback look (§3) | ACK (v1.1) |
+| `0x09` | SET_CHANNEL | `channel u8` (1–13) | ACK (v1.1) |
+
+v1.1 request ids: SET_FALLBACK, SET_FALLBACK_U, SET_CHANNEL, ASSIGN and IDENTIFY may carry one extra byte at the end, `req u8`. The ACK then carries it as a third byte, so the laptop can tell which request an ACK answers (one that timed out can't be mistaken for the next).
 
 - DMX_FRAME is output on the next DMX packet. The node does not wait for its own tick, so a drum hit reaches the wire within one DMX packet time (~23 ms worst case for 512 channels, less for shorter frames).
 - BLACKOUT holds all channels at 0 until the next DMX_FRAME. It is the panic button, so it does not time out into the fallback look.
-- ASSIGN / IDENTIFY with the node's own MAC act on the node; any other MAC is forwarded to that receiver over ESP-NOW. The receiver's next heartbeat carries the new name/universe, which is the laptop's confirmation.
+- ASSIGN / IDENTIFY with the node's own MAC act on the node; any other MAC is forwarded to that receiver over ESP-NOW. The receiver's next heartbeat carries the new name/universe, which is the laptop's confirmation: the app waits up to 4 s for it and says whether it took.
+- The node keeps every universe it is sent (up to 16): its last frame, which it resends to that universe's receivers as a keep-alive every 100 ms, and its own radio sequence number. A universe is dropped 10 s after its last frame unless it has a fallback look.
+- BLACKOUT with `0xFF` blacks out every universe the node is keeping, over the radio too, and the keep-alive goes on sending black.
+- SET_CHANNEL: the node stores the channel, tells its receivers (SET_CHANNEL radio packet, every 50 ms for 400 ms) and then moves. A receiver that hears nothing from the rig for 10 s listens on each channel in turn (300 ms each) until it finds the node again, and stores that channel.
 
 ### Node → laptop
 
@@ -44,10 +58,10 @@ The node is a USB CDC device; baud rate is ignored.
 | `0x82` | HEARTBEAT | heartbeat record (§2), node's own every 1 s, receivers' relayed as received |
 | `0x83` | ANNOUNCE | heartbeat record, sent on node power-up and the first time a receiver is heard |
 | `0x84` | PONG | `token u32` (echo) |
-| `0x85` | ACK | `acked_type u8`, `code u8` |
+| `0x85` | ACK | `acked_type u8`, `code u8`, and `req u8` if the request carried one (v1.1) |
 | `0x86` | LOG | UTF-8 text |
 
-STATUS payload (18 bytes):
+STATUS payload (20 bytes; firmware 0.1 sends only the first 18):
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -58,6 +72,8 @@ STATUS payload (18 bytes):
 | other_errors | u16 | NAKs, wireless send failures |
 | mode | u8 | 0 = live, 1 = fallback, 2 = blackout |
 | receivers_online | u8 | receivers heard in the last 3.5 s |
+| flags | u8 | v1.1: bit 0 = built with the development pairing key, bit 1 = wired DMX driver didn't start |
+| channel | u8 | v1.1: radio channel in use |
 
 ACK codes: 0 ok, 1 bad length, 2 bad value, 3 unknown target, 4 storage error, 5 unknown type.
 
@@ -86,7 +102,13 @@ Laptop health states (`dmx_suite/node/health.py`):
 
 ## 3. Fallback look
 
-When no DMX_FRAME has arrived for `hold_ms`, the node switches from live to fallback mode and renders the stored look until frames return. The same applies at power-up, so a node that boots without the laptop goes straight to the safe default. Stored in NVS, so it survives power cycles. If none is stored, fallback is full black.
+When no DMX_FRAME has arrived for `hold_ms`, the node switches from live to fallback mode and renders the stored looks until frames return. The same applies at power-up, so a node that boots without the laptop goes straight to the safe default. Stored in NVS, so they survive power cycles.
+
+- SET_FALLBACK stores the look for the node's own universe.
+- SET_FALLBACK_U (v1.1) stores one for any universe, up to 4 universes.
+- In fallback every universe the node keeps gets its own look, or black if it has none. Without a stored look that is the node's own universe; with one, it includes the radio universes.
+
+The laptop sends the looks when the node connects or restarts: each universe's static look with MASTER on and haze at 0.
 
 SET_FALLBACK payload:
 
@@ -119,10 +141,12 @@ Packets with the wrong magic, version or net_id are ignored. This keeps other ba
 | `0x01` DMX_CHUNK | node → broadcast | `universe u8`, `seq u8`, `offset u16`, `len u8`, `data[len]` (≤ 200) |
 | `0x02` ASSIGN | node → broadcast | `mac[6]`, `universe u8`, `name[16]` |
 | `0x03` IDENTIFY | node → broadcast | `mac[6]`, `seconds u8` |
+| `0x04` SET_CHANNEL | node → broadcast | `channel u8` (v1.1) |
 | `0x10` HEARTBEAT | receiver → broadcast | heartbeat record (§2) |
 
 - A 512-channel frame goes as 3 chunks (offsets 0, 171, 342) with the same `seq`. Receivers write each chunk straight into their output buffer, so there is no reassembly delay.
-- Loss is worked out on the receiver from gaps in `seq`, over the last second.
+- `seq` counts per universe (v1.1). With one shared counter (firmware 0.1), a receiver saw every packet for another universe as a gap and reported about 50 % loss on a two-universe rig.
+- Loss is worked out on the receiver from gaps in `seq` on its own universe, over the last second.
 - RSSI is measured on the receiver from the node's packets.
 - Receivers output the universe they are assigned; an unassigned receiver follows universe 0, so a fresh single-universe rig works before anything is named.
 - A receiver that hears nothing for 5 s outputs black (the node already runs the fallback look while the laptop is away, so silence means the node itself is gone).
@@ -135,4 +159,4 @@ Every board in the rig must be built with the same key:
 PLATFORMIO_BUILD_FLAGS='-DPAIRING_KEY=\"your-band-key\"' pio run
 ```
 
-Without it, the firmware uses a development key and will only pair with other development builds. The laptop does not need the key.
+Without it, the firmware uses a development key and will only pair with other development builds; the build prints a warning, the node's screen says DEV PAIRING KEY, and the app's status bar warns too (STATUS flag). The laptop does not need the key.
