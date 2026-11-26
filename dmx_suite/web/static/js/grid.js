@@ -136,7 +136,8 @@ export class LightGrid {
       maxY += 4;
     }
     this.size = [Math.ceil(maxX), Math.ceil(maxY)];
-    this.root.setAttribute("viewBox", `0 0 ${this.size[0] * C} ${this.size[1] * C}`);
+    const m = this.showBeams ? 3 : 0; // room round the edge for beam lines
+    this.root.setAttribute("viewBox", `${-m * C} ${-m * C} ${(this.size[0] + 2 * m) * C} ${(this.size[1] + 2 * m) * C}`);
     this.gGrid.replaceChildren();
     if (this.edit) {
       for (let x = 0; x <= this.size[0]; x++) this.gGrid.append(svg("line", { x1: x * C, y1: 0, x2: x * C, y2: this.size[1] * C }));
@@ -152,7 +153,7 @@ export class LightGrid {
 
   setZoom(pct) { this.zoom = pct; this.applyView(); }
   setNames(on) { this.showNames = on; this.applyView(); }
-  setBeams(on) { this.showBeams = on; this.applyView(); }
+  setBeams(on) { this.showBeams = on; this.fit(); this.applyView(); }
 
   // ---------------------------------------------------------------- live colours + beams
 
