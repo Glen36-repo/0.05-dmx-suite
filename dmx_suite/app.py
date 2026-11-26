@@ -6,13 +6,15 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
+from . import effects
 from .engine import Engine
-from .fixtures import EMITTERS, Kind
+from .fixtures import EMITTERS, ConfigError, Kind
 from .layout import full_layout
 from .look import INTENSITY_RULE1
 from .midi.map import ACTIONS
@@ -231,6 +233,40 @@ class App:
         if self.engine.rig.profile.master_gate and not self.engine.master:
             msg += " (MASTER is off, so the rig stays dark)"
         return msg
+
+    def validate_scene(self, data: Any) -> dict[str, Any]:
+        """Check scene data the way saving would, without saving (scene builder). Says which
+        layer is at fault so the builder can mark it."""
+        try:
+            if not isinstance(data, dict):
+                raise ValueError("a scene is a mapping with layers")
+            data = upgrade(data, "scene", "scene")
+            sc = parse_scene(data, self.files.patch, self.files.palettes, data.get("name") or "scene")
+            if sc.uses_intensity and self.engine.rig.profile.master_gate:
+                raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
+        except (ConfigError, ValueError, TypeError, KeyError, AttributeError) as e:
+            m = re.search(r"layer (\d+)", str(e))
+            return {"ok": False, "error": str(e), "layer": int(m.group(1)) if m else None}
+        return {"ok": True, "length_s": sc.length, "layers": len(sc.layers)}
+
+    def effects_catalogue(self) -> dict[str, Any]:
+        """What the scene builder needs: every effect's settings, and the palette to pick from."""
+        pal = self.files.palettes
+
+        def hexed(c: dict[str, float]) -> str:
+            r = min(1.0, c.get("red", 0) + c.get("white", 0) + c.get("amber", 0))
+            g = min(1.0, c.get("green", 0) + c.get("white", 0) + 0.6 * c.get("amber", 0))
+            b = min(1.0, c.get("blue", 0) + c.get("white", 0) + c.get("uv", 0))
+            return "#" + "".join(f"{round(v * 255):02x}" for v in (r, g, b))
+
+        return {
+            "effects": effects.schemas(),
+            "blends": list(effects.BLENDS),
+            "colours": {k: hexed(c) for k, c in pal.colours.items()},
+            "positions": sorted(pal.positions),
+            "gobos": sorted(pal.gobos),
+            "intensity": not self.engine.rig.profile.master_gate,  # scenes may set intensity
+        }
 
     # ------------------------------------------------------------------ snapshot for the UI
 

@@ -15,12 +15,13 @@ from typing import Any
 
 import yaml
 
+from . import effects
 from .fixtures import ConfigError, load_patch
 from .look import INTENSITY_RULE1
 from .palettes import load_palettes
 from .paths import default_shows
 from .rig import load_rig
-from .scenes import EFFECTS, parse_scene
+from .scenes import parse_scene
 from .store import ShowStore, StoreError
 from .versions import upgrade
 
@@ -58,8 +59,13 @@ SCENE (scenes/<name>.yaml): layers applied in order; later layers override earli
   [r, g, b] 0-1, or {red, green, blue, white, amber, uv} 0-1. Positions: palette names or
   {pan, tilt} 0-1. Timing: period_s = one cycle; spread 0-1 = how much of a cycle is spread
   across the layer's fixtures (0 in step, 1 evenly round). Static keys: colour, pixels,
-  position, gobo, colour_wheel, strobe, speed (0-1, 1 = fastest).
-EFFECTS and their keys:
+  position, gobo, colour_wheel, strobe, speed (0-1, 1 = fastest); they can sit alongside an effect
+  (not a position with a movement effect). Layer keys: level 0-1, blend replace|max|add, mute.
+  Effects that run across lights also take: mapping order|spatial (spatial = by where the lights
+  are on the layout, each pixel where it's drawn), direction forward|reverse|centre_out|out_centre|
+  random|angle, angle (degrees, 0 = left to right, 90 = top to bottom), groups_of N.
+  Scene `length_s` = one cycle (default: the longest effect period).
+EFFECTS (name: what it does. Settings):
 {effects}
 SHOW (shows/<name>.yaml): sets on fixed step timers; each set has `scenes` (order: sequence|random)
   or `auto` {colours, energy: low|mid|high, head_mix: [matching, white, contrast],
@@ -73,8 +79,7 @@ Gig lock (set by the band at the laptop): read only, no preview, no haze changes
 
 
 def guide() -> str:
-    eff = "\n".join(f"  {k}: {', '.join(sorted(v))}" for k, v in EFFECTS.items())
-    return GUIDE.replace("{effects}", eff)
+    return GUIDE.replace("{effects}", effects.guide())
 
 
 class Offline(Exception):

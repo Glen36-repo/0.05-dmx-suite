@@ -234,3 +234,37 @@ def test_groups_over_http_apply_live(running):
     assert status == 400
     app.set_gig_lock(True)
     assert call(url + "/api/store/group", "POST", {"action": "delete", "name": "front"})[0] == 423
+
+
+# ------------------------------------------------------------------ scene builder API (v2 R3)
+
+
+def test_effects_catalogue(running):
+    _, url, _ = running
+    status, cat = call(url + "/api/effects")
+    assert status == 200
+    names = [e["name"] for e in cat["effects"]]
+    assert "linear_wave" in names and "colour_chase" in names
+    assert cat["colours"]["blue"].startswith("#") and "drum_kit" in cat["positions"]
+    assert cat["blends"] == ["replace", "max", "add"] and cat["intensity"] is False  # 0.05 band rig
+
+
+def test_validate_scene_points_at_the_layer(running):
+    _, url, _ = running
+    good = {"name": "T", "layers": [{"fixtures": ["bars"], "effect": "rainbow", "period_s": 4}]}
+    status, r = call(url + "/api/validate/scene", "POST", {"data": good})
+    assert status == 200 and r["ok"] and r["length_s"] == 4
+    bad = {"name": "T", "layers": [{"fixtures": ["bars"], "colour": "blue"}, {"fixtures": ["ukings"], "effect": "circle",
+                                                                                 "centre": "drum_kit"}]}
+    r = call(url + "/api/validate/scene", "POST", {"data": bad})[1]
+    assert not r["ok"] and r["layer"] == 2 and "rule 7" in r["error"]
+    r = call(url + "/api/validate/scene", "POST", {"data": {"layers": [{"fixtures": ["bars"], "colour": "blue",
+                                                                         "intensity": 0.5}]}})[1]
+    assert not r["ok"] and "rule 1" in r["error"]
+
+
+def test_guide_lists_registry_effects():
+    from dmx_suite.claude_tools import guide
+
+    g = guide()
+    assert "linear_wave:" in g and "blend replace|max|add" in g and "mapping order|spatial" in g

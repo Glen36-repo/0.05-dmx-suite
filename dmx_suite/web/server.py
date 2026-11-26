@@ -283,6 +283,8 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             if path == "/api/ping":
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
+            if path == "/api/effects":
+                return self._json(200, app.effects_catalogue())
             if path == "/api/settings":
                 return self._json(200, {"settings": settings.load(), "themes": settings.themes()})
             if path == "/api/update":  # only when the user asks (UI button); check only, nothing installed
@@ -351,6 +353,8 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             body = self._body()
             if path == "/api/control" and method == "POST":
                 return self._json(200, control(app, body.get("cmd", ""), body))
+            if path == "/api/validate/scene" and method == "POST":  # read-only check, allowed under gig lock
+                return self._json(200, app.validate_scene(body.get("data")))
             if path == "/api/settings" and method == "POST":  # this laptop's settings (theme)
                 try:
                     return self._json(200, {"ok": True, "settings": settings.save(body)})
