@@ -1,6 +1,6 @@
 // Layout page: arrange the lights on the grid, and make groups from a selection.
 import { api, attempt, toast } from "../api.js";
-import { $, $$, el, remember } from "../dom.js";
+import { $, $$, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
 import { t } from "../i18n.js";
 import { onShow } from "../nav.js";
@@ -61,10 +61,21 @@ function buildCatalogue(cat) {
 }
 
 export function init() {
-  grid = new LightGrid($("#layout-grid"), { edit: true, onChange: updateSelection });
-  grid.zoom = remember.get("layout.zoom", 100);
-  $("#zoom").value = grid.zoom;
-  $("#zoom").oninput = (e) => { grid.setZoom(+e.target.value); remember.set("layout.zoom", +e.target.value); };
+  const syncView = () => {
+    $("#zoom").value = Math.max(50, Math.min(400, grid.zoom));
+    $("#layout-fit").classList.toggle("primary", !grid.fitted); // zoomed by hand: Fit brings it all back
+  };
+  grid = new LightGrid($("#layout-grid"), { edit: true, onChange: updateSelection, onView: syncView });
+  $("#zoom").oninput = (e) => grid.setZoom(+e.target.value);
+  $("#layout-fit").onclick = () => grid.fitView();
+  // Space + drag pans the stage
+  document.addEventListener("keydown", (ev) => {
+    if (ev.code === "Space" && $("#page-layout").classList.contains("on") && !ev.target.matches("input, select, textarea, button")) {
+      ev.preventDefault();
+      document.body.classList.add("space-held");
+    }
+  });
+  document.addEventListener("keyup", (ev) => { if (ev.code === "Space") document.body.classList.remove("space-held"); });
   $("#show-names").onchange = (e) => grid.setNames(e.target.checked);
   $("#show-beams").onchange = (e) => grid.setBeams(e.target.checked);
   $$("[data-tool]").forEach((b) => (b.onclick = () => {
@@ -92,6 +103,7 @@ export function init() {
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); grid.undo(); }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "a") { ev.preventDefault(); grid.select(Object.keys(grid.layout)); }
     if (ev.key === "Escape") grid.select([]);
+    if (ev.key === "0" && !ev.ctrlKey && !ev.metaKey) grid.fitView();
   });
 
   $("#group-new").onclick = () => {

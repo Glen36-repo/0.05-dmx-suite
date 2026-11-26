@@ -60,3 +60,26 @@ def test_focus_outline_visible(ui):
     page.keyboard.press("Shift+Tab")
     style = page.eval_on_selector("#update-check", "e => getComputedStyle(e).outlineStyle")
     assert style != "none"
+
+
+# ---------------------------------------------------------------- stage view (items 1-5)
+
+FILL = """sel => { const host = document.querySelector(sel), g = host.querySelector('svg.lightgrid > g:nth-of-type(3)');
+  const h = host.getBoundingClientRect(), b = g.getBoundingClientRect();
+  return Math.max(b.width / h.width, b.height / h.height); }"""
+
+
+def test_layout_zooms_to_fit_and_back(ui):
+    page, *_ = ui
+    go(page, "layout")
+    page.wait_for_selector("#layout-grid [data-id=bar_1]")
+    assert page.evaluate(FILL, "#layout-grid") > 0.75  # the rig fills the box, not a speck in the middle
+    vb = page.eval_on_selector("#layout-grid svg", "s => s.getAttribute('viewBox')")
+    box = page.locator("#layout-grid svg").bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.wheel(0, -300)
+    page.wait_for_function("document.querySelector('#layout-fit').classList.contains('primary')")
+    assert page.eval_on_selector("#layout-grid svg", "s => s.getAttribute('viewBox')") != vb
+    page.click("#layout-fit")
+    assert page.eval_on_selector("#layout-grid svg", "s => s.getAttribute('viewBox')") == vb
+    assert "primary" not in page.eval_on_selector("#layout-fit", "b => b.className")

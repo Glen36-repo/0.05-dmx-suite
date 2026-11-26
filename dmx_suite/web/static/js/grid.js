@@ -59,6 +59,8 @@ export class LightGrid {
     this.items = {};
     this.history = [];
     this.zoom = 100;
+    this.view = null; // null: fit to the lights; else [x, y, w, h] in cells (zoomed / panned by hand)
+    this.onView = opts.onView || (() => {});
     this.showBeams = false;
     this.showNames = true;
   }
@@ -78,11 +80,16 @@ export class LightGrid {
     this.gMarquee = svg("g");
     this.gArrow = svg("g", { class: "arrow" });
     this.root.append(this.gGrid, this.gBeams, this.gLights, this.gArrow, this.gMarquee);
+    this.patchKey = this.patchKey === undefined ? null : this.patchKey;
+    const key = cat.fixtures.map((f) => f.id).join(",");
+    if (key !== this.patchKey) this.view = null; // patch changed: fit again
+    this.patchKey = key;
     this.items = {};
     for (const f of cat.fixtures) if (this.layout[f.id]) this.drawLight(f.id);
     this.fit();
     this.applyView();
     if (this.selectable) this.bindPointer();
+    if (this.edit) this.bindView();
     this.host.replaceChildren(this.root);
     if (this.arrow) this.setArrow(this.arrow);
     this.markSelection();
@@ -126,9 +133,9 @@ export class LightGrid {
     this.items[id] = { g, cells, beam };
   }
 
-  // size the drawing to what's on it: tight round the lights when only showing or picking them (so
-  // they fill the box), from the top left plus room to drag things further when arranging them
-  fit() {
+  // the box round what's on it, in cells: tight round the lights when only showing or picking them
+  // (so they fill the box), with room round the edge when arranging them
+  contentBox() {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const id of Object.keys(this.items)) {
       for (const [x, y] of this.cellsOf(id)) {
@@ -137,35 +144,105 @@ export class LightGrid {
       }
     }
     if (minX === Infinity) [minX, minY, maxX, maxY] = [0, 0, 8, 4];
-    let box;
-    if (this.edit) {
-      this.size = [Math.ceil(Math.max(16, maxX + 1.5) + 6), Math.ceil(Math.max(10, maxY + 2) + 4)];
-      box = [0, 0, this.size[0], this.size[1]];
-    } else {
-      // half a cell round the squares, a little more underneath for the names
-      box = [minX - 0.6, minY - 0.6, maxX - minX + 1.2, maxY - minY + 1.2 + (this.showNames ? 0.6 : 0)];
-      this.size = [box[0] + box[2], box[1] + box[3]];
-    }
+    const pad = this.edit ? 2 : 0.6; // cells
+    const names = this.showNames ? (this.edit ? 1 : 0.6) : 0;
+    return [minX - pad, minY - pad, maxX - minX + 2 * pad, maxY - minY + 2 * pad + names];
+  }
+
+  // zoom to fit (the default), re-fitted whenever the lights change; a hand zoom / pan keeps its view
+  // until Fit (or the patch changes)
+  fit() {
+    const box = this.contentBox();
     this.box = box;
+    this.size = [box[0] + box[2], box[1] + box[3]];
     const m = this.showBeams ? 3 : 0; // room round the edge for beam lines
-    this.root.setAttribute("viewBox", [box[0] - m, box[1] - m, box[2] + 2 * m, box[3] + 2 * m].map((v) => v * C).join(" "));
+    const vb = this.view || [box[0] - m, box[1] - m, box[2] + 2 * m, box[3] + 2 * m];
+    this.root.setAttribute("viewBox", vb.map((v) => v * C).join(" "));
     this.root.setAttribute("preserveAspectRatio", "xMidYMid meet");
     // the narrowest it may be drawn (a phone scrolls sideways rather than shrink the lights below --min-cell)
     this.root.style.setProperty("--cells", String(box[2] + 2 * m));
     this.gGrid.replaceChildren();
     if (this.edit) {
-      for (let x = 0; x <= this.size[0]; x++) this.gGrid.append(svg("line", { x1: x * C, y1: 0, x2: x * C, y2: this.size[1] * C }));
-      for (let y = 0; y <= this.size[1]; y++) this.gGrid.append(svg("line", { x1: 0, y1: y * C, x2: this.size[0] * C, y2: y * C }));
+      // grid lines over everything that can be on screen, whatever the box's shape
+      const [x0, y0, w, h] = vb, ext = Math.max(w, h);
+      const gx0 = Math.floor(x0 - ext), gx1 = Math.ceil(x0 + w + ext), gy0 = Math.floor(y0 - ext), gy1 = Math.ceil(y0 + h + ext);
+      for (let x = gx0; x <= gx1; x++) this.gGrid.append(svg("line", { x1: x * C, y1: gy0 * C, x2: x * C, y2: gy1 * C }));
+      for (let y = gy0; y <= gy1; y++) this.gGrid.append(svg("line", { x1: gx0 * C, y1: y * C, x2: gx1 * C, y2: y * C }));
     }
+    if (this.layoutLabels) this.layoutLabels();
+    if (this.placeHaze) this.placeHaze();
+  }
+
+  get fitted() { return !this.view; }
+
+  fitView() {
+    this.view = null;
+    this.zoom = 100;
+    this.fit();
+    this.onView();
+  }
+
+  // zoom by `factor` round a point (cells; default the middle of what's showing)
+  zoomBy(factor, at = null) {
+    const vb = this.view || this.currentBox();
+    const [cx, cy] = at || [vb[0] + vb[2] / 2, vb[1] + vb[3] / 2];
+    const w = Math.min(GRID_MAX * 2, Math.max(2, vb[2] / factor)), h = vb[3] * (w / vb[2]);
+    this.view = [cx - (cx - vb[0]) * (w / vb[2]), cy - (cy - vb[1]) * (h / vb[3]), w, h];
+    this.zoom = Math.round((this.box[2] / w) * 100);
+    this.fit();
+    this.onView();
+  }
+
+  panBy(dx, dy) {
+    const vb = this.view || this.currentBox();
+    this.view = [vb[0] - dx, vb[1] - dy, vb[2], vb[3]];
+    this.fit();
+    this.onView();
+  }
+
+  currentBox() {
+    const m = this.showBeams ? 3 : 0, b = this.box || this.contentBox();
+    return [b[0] - m, b[1] - m, b[2] + 2 * m, b[3] + 2 * m];
+  }
+
+  // wheel = zoom round the pointer; middle button, or Space + drag, pans
+  bindView() {
+    this.root.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      this.zoomBy(ev.deltaY < 0 ? 1.15 : 1 / 1.15, this.toCells(ev));
+    }, { passive: false });
+    let pan = null;
+    const spaceDown = () => document.body.classList.contains("space-held");
+    this.root.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 1 && !(ev.button === 0 && spaceDown())) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      pan = { at: this.toCells(ev) };
+      this.root.setPointerCapture(ev.pointerId);
+    }, true);
+    this.root.addEventListener("pointermove", (ev) => {
+      if (!pan) return;
+      ev.stopImmediatePropagation();
+      const [x, y] = this.toCells(ev);
+      this.panBy(x - pan.at[0], y - pan.at[1]);
+    }, true);
+    const end = (ev) => { if (pan) { pan = null; ev.stopImmediatePropagation(); } };
+    this.root.addEventListener("pointerup", end, true);
+    this.root.addEventListener("pointercancel", end, true);
   }
 
   applyView() {
-    if (this.edit) this.root.style.width = this.zoom + "%"; // the live view always fits its box
     this.root.classList.toggle("no-names", !this.showNames);
     this.gBeams.style.display = this.showBeams ? "" : "none";
   }
 
-  setZoom(pct) { this.zoom = pct; this.applyView(); }
+  // the zoom slider (%): 100 = fit
+  setZoom(pct) {
+    if (pct === 100) return this.fitView();
+    const cur = this.view ? this.box[2] / this.view[2] * 100 : 100;
+    this.zoomBy(pct / cur);
+  }
+
 
   // which way an effect runs across the layout: {angle} (degrees, 0 = left to right) or
   // {radial: "out" | "in"}; null hides it

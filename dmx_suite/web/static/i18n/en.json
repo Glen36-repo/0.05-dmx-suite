@@ -59,6 +59,8 @@
  "layout.tool_lasso_tip": "Draw round the lights to select",
  "layout.tool_move": "✥ Move",
  "layout.tool_move_tip": "Drag the selected lights to where they are",
+ "layout.fit": "Fit",
+ "layout.fit_tip": "Zoom to fit every light (0). Wheel zooms; middle button or Space + drag pans",
  "layout.zoom": "Zoom",
  "layout.names": "Names",
  "layout.beams": "Beams",
