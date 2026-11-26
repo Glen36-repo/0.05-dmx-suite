@@ -52,14 +52,18 @@ class MidiRouter:
     # ------------------------------------------------------------------ learn
 
     def learn(self, action: str, params: dict[str, Any] | None = None, on_learned: Callable[[Mapping], None] | None = None) -> None:
-        """Arm learn: the next note-on / PC / CC becomes the input for `action`."""
+        """Arm learn: the next note-on / PC / CC becomes the input for `action`.
+        params may include port: "this" (tie the mapping to whichever port the message comes from)
+        or a port-name fragment such as "H2MIDI"."""
         if action not in ACTIONS:
             raise ValueError(f"unknown action {action!r}")
+        params = dict(params or {})
+        port = params.pop("port", None)
         # validate params now with a dummy input so a bad learn fails before the pedal press
         dummy_type = "control_change" if action in ("grand_master", "sub_master", "flash_level") else "note"
         validate(Mapping(dummy_type, 1, 0, action, dict(params or {})))
         with self._lock:
-            self._learn = (action, dict(params or {}), on_learned)
+            self._learn = (action, params, on_learned, port)
 
     def cancel_learn(self) -> None:
         with self._lock:
@@ -75,13 +79,13 @@ class MidiRouter:
         return self.handle(Incoming.from_mido(msg), port)
 
     def handle(self, m: Incoming, port: str = "") -> str:
-        result = self._route(m)
+        result = self._route(m, port)
         self.monitor.add(
             MonitorEntry(time.time(), port, m.channel, m.raw_type, m.number, m.value, result)
         )
         return result
 
-    def _route(self, m: Incoming) -> str:
+    def _route(self, m: Incoming, port: str = "") -> str:
         if m.type == "other":
             return "ignored"
         # learn takes any CC value (a pedal may start low), note-ons and program changes
@@ -89,10 +93,11 @@ class MidiRouter:
         with self._lock:
             learn = self._learn
             if learn and learnable:
-                action, params, cb = learn
+                action, params, cb, want_port = learn
                 if action in ("grand_master", "sub_master", "flash_level") and m.type != "control_change":
                     return "learn: needs a CC (move a pedal or knob)"
-                mapping = Mapping(m.type, m.channel, m.number, action, params)
+                bind = port if want_port == "this" else want_port
+                mapping = Mapping(m.type, m.channel, m.number, action, params, port=bind or None)
                 self.map.add(mapping)
                 self._learn = None
         if learn and learnable:
@@ -100,7 +105,7 @@ class MidiRouter:
                 cb(mapping)
             return f"learned: {mapping.describe()}"
 
-        mp = self.map.get(m.type, m.channel, m.number)
+        mp = self.map.get(m.type, m.channel, m.number, port)
         if mp is None:
             return "unmapped"
         return self._act(mp, m)

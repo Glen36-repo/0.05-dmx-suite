@@ -349,7 +349,7 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             elif action == "clear":
                 m.clear()
             elif action == "remove":
-                r.map.remove((b["type"], int(b["channel"]), int(b["number"])))
+                r.map.remove((b["type"], int(b["channel"]), int(b["number"]), b.get("port") or ""))
             elif action == "save":
                 app.require_unlocked("saving the MIDI map")
                 save_map(r.map, app.files.midimap_path)

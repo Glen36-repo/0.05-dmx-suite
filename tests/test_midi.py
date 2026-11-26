@@ -88,7 +88,7 @@ def test_learn_maps_next_message(router, midi, tmp_path, engine):
     assert router.learning == "flash"
     assert midi.note(42, 90).startswith("learned: flash")
     assert router.learning is None
-    assert learned[0].key == ("note", 10, 42)
+    assert learned[0].key == ("note", 10, 42, "")
     midi.program(0)  # MASTER off
     assert midi.note(42, 127).startswith("flash wash")
     path = tmp_path / "map.yaml"

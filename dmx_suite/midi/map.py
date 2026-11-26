@@ -6,6 +6,10 @@
       - {type: control_change, channel: 1, number: 7, action: grand_master}
 
 Channels are 1-16 as printed on the gear (mido uses 0-15).
+
+`port` (optional) ties a mapping to one MIDI input: any port whose name contains it (case doesn't
+matter), e.g. "H2MIDI" for the SamplePad through the H2MIDI Pro. A port-specific mapping wins over
+one without a port, so the SamplePad and the TD-25 can both send ch 10 notes and do different things.
 """
 
 from __future__ import annotations
@@ -55,17 +59,24 @@ class Mapping:
     number: int  # note / program / controller
     action: str
     params: dict[str, Any] = field(default_factory=dict)
+    port: str | None = None  # substring of the input port name; None = any port
 
     @property
-    def key(self) -> tuple[str, int, int]:
-        return (self.type, self.channel, self.number)
+    def key(self) -> tuple[str, int, int, str]:
+        return (self.type, self.channel, self.number, (self.port or "").lower())
+
+    def matches_port(self, port_name: str) -> bool:
+        return self.port is None or self.port.lower() in port_name.lower()
 
     def describe(self) -> str:
         extra = " ".join(f"{k}={v}" for k, v in self.params.items())
-        return f"{self.action} {extra}".strip()
+        return f"{self.action} {extra}".strip() + (f" [port {self.port}]" if self.port else "")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"type": self.type, "channel": self.channel, "number": self.number, "action": self.action, **self.params}
+        d: dict[str, Any] = {"type": self.type, "channel": self.channel, "number": self.number}
+        if self.port:
+            d["port"] = self.port
+        return {**d, "action": self.action, **self.params}
 
 
 def validate(m: Mapping) -> None:
@@ -76,6 +87,8 @@ def validate(m: Mapping) -> None:
         raise ConfigError(f"{where}: channel 1-16, number 0-127")
     if m.action not in ACTIONS:
         raise ConfigError(f"{where}: unknown action {m.action!r}")
+    if m.port is not None and (not isinstance(m.port, str) or not m.port.strip()):
+        raise ConfigError(f"{where}: port must be part of a MIDI port name, e.g. H2MIDI")
     bad = set(m.params) - ACTIONS[m.action]
     if bad:
         raise ConfigError(f"{where}: {m.action} doesn't take {sorted(bad)}")
@@ -100,7 +113,7 @@ def validate(m: Mapping) -> None:
 class MidiMap:
     def __init__(self, name: str = "MIDI map", mappings: list[Mapping] | None = None) -> None:
         self.name = name
-        self._by_key: dict[tuple[str, int, int], Mapping] = {}
+        self._by_key: dict[tuple[str, int, int, str], Mapping] = {}
         for m in mappings or []:
             self.add(m)
 
@@ -115,11 +128,19 @@ class MidiMap:
         self._by_key[m.key] = m
         return old
 
-    def remove(self, key: tuple[str, int, int]) -> None:
-        self._by_key.pop(key, None)
+    def remove(self, key: tuple) -> None:
+        """key: (type, channel, number) or (type, channel, number, port)."""
+        if len(key) == 3:
+            key = (*key, "")
+        self._by_key.pop((key[0], key[1], key[2], (key[3] or "").lower()), None)
 
-    def get(self, type_: str, channel: int, number: int) -> Mapping | None:
-        return self._by_key.get((type_, channel, number))
+    def get(self, type_: str, channel: int, number: int, port_name: str | None = None) -> Mapping | None:
+        """The mapping for this input. With a port name, a port-specific mapping wins."""
+        if port_name is not None:
+            for m in self._by_key.values():
+                if m.port and (m.type, m.channel, m.number) == (type_, channel, number) and m.matches_port(port_name):
+                    return m
+        return self._by_key.get((type_, channel, number, ""))
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "mappings": [m.to_dict() for m in self.mappings]}
@@ -130,7 +151,8 @@ def parse_map(data: dict) -> MidiMap:
     for d in data.get("mappings") or []:
         d = dict(d)
         try:
-            m = Mapping(d.pop("type"), int(d.pop("channel")), int(d.pop("number")), d.pop("action"), d)
+            m = Mapping(d.pop("type"), int(d.pop("channel")), int(d.pop("number")), d.pop("action"),
+                        port=d.pop("port", None), params=d)
         except KeyError as e:
             raise ConfigError(f"mapping {d} missing {e}") from e
         out.append(m)
