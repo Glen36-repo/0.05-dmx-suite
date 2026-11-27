@@ -10,7 +10,14 @@ Strobe limits unchanged throughout. Every hard rule keeps its tests under both p
 | Beat sync (R5): kick average, `timeout_s` then fixed timers | Comb tracker, freewheel at last good BPM, never timers | Rewrite row; `timeout_s` only for `midi_clock` source |
 | Set steps: "tap tempo never changes step length" | `step_beats` follow the beat clock | Rewrite row (code already does this) |
 | Named inputs: kick role else rig `kick_note` | Kit is the one map | Kit supersedes both; `kick_note` migrated, then ignored |
-| Rule 5 / setup tools refuse haze | Test "all full" includes haze "if ticked" | See question 3 |
+| Rule 5 / setup tools refuse haze | Test "all full" includes haze "if ticked" | Decided: haze always excluded from test patterns (rule 5) |
+
+## Decisions (28/11/2026)
+1. D2XX: loaded via ctypes if installed, no new package, offered only when present. SCOPE: "D2XX optional, loaded if installed (v5)".
+2. Per-layer key is `lit:` (not `fill:`, which means drum fills in Part B). Code: `lit` / `effective_lit`. `set_autopilot {darkness}` unchanged.
+3. Haze always excluded from test patterns.
+4. Darkness applies to Autopilot looks only. Hand-programmed scenes and shows play as authored. Override never affected.
+5. Kit owns drum flash targets. `midi/default.yaml` backed up before the first-load migration.
 
 ## Part 1 (v5): DMX output diagnostics
 Built in dependency order (test patterns before the cycle test that uses them). One commit per step, with tests.
@@ -47,20 +54,20 @@ Built in dependency order (test patterns before the cycle test that uses them). 
 
 Limits in this environment: no Windows, FTDI or D2XX here. Driver code is tested against fake serial/D2XX/registry objects, so timings and the cycle test need a real check on the gig laptop with COM3.
 
-## Part A (v6): Darkness (effect fill)
-1. `fill` (0–1, YAML 0–100 %) as a layer common key (beside `shift`), carried into `Run`. Each colour effect shapes its own black:
-   - Sweeps/chases (linear_wave, radial, bars, colour_chase incl. middle-out, pixel_chase, dir_sweep, comet): lit band = fill × pattern length
+## Part A (v6): Darkness (effect `lit`)
+1. `lit` (0–1, YAML 0–100 %) as a layer common key (beside `shift`), carried into `Run`. Each colour effect shapes its own black:
+   - Sweeps/chases (linear_wave, radial, bars, colour_chase incl. middle-out, pixel_chase, dir_sweep, comet): lit band = lit × pattern length
    - Palette / colour cycles (palette, colour_chase, colour_fade, gradient cycle): black slots interleaved evenly
-   - Gradients / rainbow: gaps between segments totalling (1 − fill)
+   - Gradients / rainbow: gaps between segments totalling (1 − lit)
    - Static colour (palette static, split): regular black pattern across units, moving with `shift`
    - Default 100 % leaves both goldens (v1, v3 FX) bit-identical
-2. Darkness: effective fill = look fill × (1 − darkness), applied where looks render, so Override sits above it untouched. Kick (rig `exempt`) skipped. Black = colour 0, never dimmer. Movers keep moving dark.
+2. Darkness: effective_lit = look lit × (1 − darkness), applied to Autopilot looks only (where `ride_play` builds them), so scenes, shows and Override are untouched. Kick (rig `exempt`) skipped. Black = colour 0, never dimmer. Movers keep moving dark.
 3. Soft edges from the look's `fade`. Slider moves ease over the same fade.
 4. Rig `autopilot:` block gains `darkness` and `set_darkness {low, mid, high}`, loaded on mood change. A live move overrides until the next change.
 5. Control:
    - Autopilot › Feel › Darkness slider (large target)
    - MIDI action `darkness` (CC/OSC continuous). Input role `darkness` in inputs.yaml with `range` and `curve`
-6. Step editor and `preview_look` take fill and a preview darkness. `validate_scene` warns on dimmer-made black under `0.05_band`.
+6. Step editor and `preview_look` take lit and a preview darkness. `validate_scene` warns on dimmer-made black under `0.05_band`.
 7. MCP:
    - `set_autopilot {darkness}` and `set_set_darkness` (new)
    - `autopilot_status` adds darkness, its source and the CC

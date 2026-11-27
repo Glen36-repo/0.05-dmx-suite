@@ -415,12 +415,15 @@ class DmxTools:
                           "note": "the engine isn't running: no live stats"})
 
     def set_output(self, index: int, driver: str = "", port: str = "", universe: int | None = None, mac: str = "",
-                   alias: str = "") -> str:
+                   alias: str = "", break_method: str = "", break_us: float | None = None, mab_us: float | None = None,
+                   fps: float | None = None, channels: str = "") -> str:
         if mac:  # a wireless node: its universe is set on the node itself
             if universe is None:
                 raise StoreError("a node needs universe")
             return self.assign_node(mac, alias or mac, universe)
-        given = (("driver", driver), ("port", port), ("universe", universe), ("alias", alias))
+        ch: int | str | None = int(channels) if channels.isdigit() else (channels or None)
+        given = (("driver", driver), ("port", port), ("universe", universe), ("alias", alias),
+                 ("break_method", break_method), ("break_us", break_us), ("mab_us", mab_us), ("fps", fps), ("channels", ch))
         changes = {k: v for k, v in given if v not in ("", None)}
         r = self._live("POST", "/api/routing/output", {"index": index, "set": changes})
         notes = "; ".join(r.get("notes") or [])  # outputs are rebuilt live
@@ -532,7 +535,9 @@ class DmxTools:
 
     def node_health(self) -> str:
         s = self._live("GET", "/api/state")
-        return _dump({"nodes": s["nodes"], "recent_alerts": s["alerts"]})
+        outs = [{k: r.get(k) for k in ("output", "universe", "interface", "port", "state", "detail", "timing")}
+                for r in self._live("GET", "/api/routing")["rows"] if r.get("timing")]
+        return _dump({"nodes": s["nodes"], "usb_dmx": outs, "recent_alerts": s["alerts"]})
 
     # ------------------------------------------------------------------ validate (dry run)
 

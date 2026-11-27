@@ -316,16 +316,21 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         """The routing table: which universe goes out which interface (USB DMX, Art-Net/sACN, the 0.05 node
         link, each wireless node), with state, fps, frames, errors, last frame age and whether the last frame
         sent was all zeros. Plus routing problems (a universe with lights but no output, an output with no
-        lights, an output with no universe: given). Use it first when the software runs but the rig is dark."""
+        lights, an output with no universe: given). Open DMX rows add `timing`: break method, target and
+        measured break / MAB / fps / write time / jitter, and warnings. Use it first when the software runs
+        but the rig is dark."""
         return t.list_outputs()
 
     @tool
     def set_output(index: int, driver: str = "", port: str = "", universe: int | None = None, mac: str = "",
-                   alias: str = "") -> str:
+                   alias: str = "", break_method: str = "", break_us: float | None = None, mab_us: float | None = None,
+                   fps: float | None = None, channels: str = "") -> str:
         """Change output `index` (from list_outputs; -1 adds one): driver (usb_dmx_open, usb_dmx_pro, node,
         artnet, sacn), port (COM3), universe (0-15), alias (e.g. Stage DMX). With mac: set a wireless node's
-        universe instead. Not during gig lock. Applied live: the outputs are rebuilt between frames."""
-        return t.set_output(index, driver, port, universe, mac, alias)
+        universe instead. Open DMX (usb_dmx_open) timing: break_method (auto, d2xx, serial_break, baud_drop),
+        break_us 88-1000 (176), mab_us 8-100 (12), fps 1-44 (40), channels 24-512 or 'patched' (512).
+        Not during gig lock. Applied live: the outputs are rebuilt between frames."""
+        return t.set_output(index, driver, port, universe, mac, alias, break_method, break_us, mab_us, fps, channels)
 
     @tool
     def monitor_dmx(universe: int = 0, output: str = "", channels: str = "") -> str:
@@ -367,7 +372,8 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
 
     @tool
     def node_health() -> str:
-        """0.05 nodes and receivers: state, signal, packet loss, last data, recent drop-outs."""
+        """0.05 nodes and receivers: state, signal, packet loss, last data, recent drop-outs. Plus each USB DMX
+        (Open) interface's break method, target and measured timings."""
         return t.node_health()
 
     @tool

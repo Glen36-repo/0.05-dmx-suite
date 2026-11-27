@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from typing import Any
 
+from . import d2xx
 from .base import OutputDriver, SenderThread
 from .timer import high_res
 
@@ -19,11 +21,10 @@ log = logging.getLogger(__name__)
 
 DMX_BAUD = 250000
 SLOTS = 512
-BREAK_S = 0.000120  # >= 88 us (the spin is a floor: on a Windows VCP the USB request makes it ~1-2 ms)
-MAB_S = 0.000016  # >= 8 us (likewise ~1 ms in practice)
+BREAK_S = 0.000176  # default break floor (v5: per output `break_us`); on a Windows VCP the USB request makes it ~1-2 ms
+MAB_S = 0.000012  # default MAB floor (`mab_us`); likewise ~1 ms in practice
 WIRE_S = (1 + SLOTS) * 11 / DMX_BAUD  # start code + 512 slots, 11 bits each: ~22.6 ms on the wire
 WIRE_MARGIN_S = 0.001
-REFRESH_S = 0.025  # idle refresh; with break, MAB and wire time a frame takes ~26-27 ms (~37-38 fps)
 REOPEN_S = 2.0
 FRESH_S = 1.0  # a write this recent counts as connected
 
@@ -140,15 +141,79 @@ def _open_dmx_serial(port: str, baudrate: int, stopbits: float) -> Any:
     return _serial(port, baudrate, stopbits, rts=False)
 
 
+BREAK_METHODS = ("auto", "d2xx", "serial_break", "baud_drop")
+METHOD_NAMES = {"d2xx": "D2XX break", "serial_break": "Serial break", "baud_drop": "Baud drop"}
+BREAK_US = (88, 1000, 176)  # min, max, default
+MAB_US = (8, 100, 12)
+FPS = (1, 44, 40)
+MIN_SLOTS = 24  # DMX: shorter packets are padded to 24 slots
+WINDOW = 40  # frames kept for the measured timing
+TIMING_NOTE = ("Measured on the laptop, best effort: an Open DMX interface has no processor, so what "
+               "actually reached the DMX line can't be checked from here.")
+
+
+def wire_s(slots: int) -> float:
+    """Time a frame (start code + slots, 11 bits each at 250 kbaud) takes on the line."""
+    return (1 + slots) * 11 / DMX_BAUD
+
+
+def parse_slots(v: Any) -> int | str:
+    if v in (None, "", 512):
+        return SLOTS
+    if v == "patched":
+        return "patched"
+    if isinstance(v, bool) or not isinstance(v, int) or not MIN_SLOTS <= v <= SLOTS:
+        raise ValueError(f"channels: {MIN_SLOTS}-{SLOTS} or 'patched'")
+    return v
+
+
+def check_timing(break_method: Any = "auto", break_us: Any = None, mab_us: Any = None, fps: Any = None,
+                 channels: Any = None) -> dict[str, Any]:
+    """An output's timing settings, checked, defaults filled in (rig `outputs:` and set_output)."""
+    if break_method in (None, ""):
+        break_method = "auto"
+    if break_method not in BREAK_METHODS:
+        raise ValueError(f"break_method: one of {', '.join(BREAK_METHODS)}")
+    out: dict[str, Any] = {"break_method": break_method}
+    for key, v, (lo, hi, dflt) in (("break_us", break_us, BREAK_US), ("mab_us", mab_us, MAB_US), ("fps", fps, FPS)):
+        if v is None:
+            v = dflt
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
+            raise ValueError(f"{key}: {lo}-{hi}")
+        out[key] = v
+    out["channels"] = parse_slots(channels)
+    return out
+
+
+def _serial_number_for(port: str) -> str | None:
+    try:
+        from serial.tools import list_ports
+
+        for p in list_ports.comports():
+            if p.device == port:
+                return (p.serial_number or "").strip() or None
+    except Exception:  # noqa: BLE001 - no port listing here
+        pass
+    return None
+
+
 class EnttecOpenDriver(OutputDriver):
     """FTDI-based Open DMX: the PC makes break, MAB and the stream, continuously, on its own thread.
 
-    Break and MAB come from pyserial's break_condition (Windows: SetCommBreak / ClearCommBreak, which the
-    FTDI VCP driver turns into the same USB request as D2XX FT_SetBreakOn/Off). Each takes a USB round
-    trip, so the break is ~1-2 ms and the MAB ~1 ms: inside DMX's limits (88 us to 1 s, 8 us to 1 s).
-    flush() returns when the chip has the data, not when it is on the wire, so the next break waits for
-    the previous frame's wire time (WIRE_S); a new frame still goes as soon as the line is free.
-    Steady rate ~37-38 fps. On Windows set the FTDI latency timer to 1 ms (Device Manager > port > Advanced).
+    Break methods (v5, per output, `break_method:`):
+
+    - `serial_break`: pyserial `break_condition` on the COM port (Windows: SetCommBreak / ClearCommBreak,
+      which the FTDI VCP driver turns into the same USB request as FT_SetBreakOn/Off). Each is a USB
+      round trip, so on Windows the break is ~1-2 ms and the MAB ~1 ms: legal (88 us-1 s, 8 us-1 s).
+    - `baud_drop`: one 0x00 at a low baud fakes the break (start + 8 zero bits = 9 bit times low, the
+      stop bits are the MAB), then back to 250k for the frame. Works where break requests don't.
+    - `d2xx`: FTDI's D2XX library, FT_SetBreakOn/Off and FT_Write, when it's installed.
+    - `auto`: d2xx when D2XX is installed and sees this interface, else serial_break.
+
+    `break_us` / `mab_us` are floors the driver waits for; what the laptop measured is in `timing()`.
+    The next break waits for the previous frame's wire time, since flush() returns when the chip has
+    the data, not when it is on the wire. A new frame (drum hit) goes as soon as the line is free,
+    otherwise frames repeat at `fps`. `channels: patched` sends only up to the last patched channel.
 
     "ok" means the FTDI chip is taking frames. An Open DMX can't report the DMX line itself: a missing
     DMX cable or a dead RS-485 driver still counts frames.
@@ -156,19 +221,78 @@ class EnttecOpenDriver(OutputDriver):
 
     name = "enttec_open"
 
-    def __init__(self, port: str, universe: int = 0, serial_factory: Callable[..., Any] = _open_dmx_serial) -> None:
+    def __init__(self, port: str, universe: int = 0, serial_factory: Callable[..., Any] = _open_dmx_serial,
+                 break_method: str = "auto", break_us: float = BREAK_US[2], mab_us: float = MAB_US[2],
+                 fps: float = FPS[2], channels: int | str = SLOTS, serial_number: str | None = None,
+                 d2xx_factory: Callable[[str], Any] | None = None, d2xx_available: Callable[[], bool] | None = None) -> None:
         self.port = port
         self.universe: int = universe
+        self.serial_number = serial_number
+        self._serial_factory = serial_factory
+        self._d2xx_factory = d2xx_factory or (lambda sn: d2xx.D2xxPort(sn))
+        self._d2xx_available = d2xx_available or d2xx.available
+        self._cfg_lock = threading.Lock()
+        self.settings = check_timing(break_method, break_us, mab_us, fps, channels)
+        self.patched_slots: dict[int, int] = {}  # engine: last patched channel per universe
+        self.method = self._resolve(self.settings["break_method"])
         # opened on the driver's thread, never on the one building the rig
-        self._p = _Port(port, serial_factory, DMX_BAUD, 2, open_now=False, on_open=_open_dmx_setup)
+        self._p = _Port(port, self._open, DMX_BAUD, 2, open_now=False, on_open=_open_dmx_setup)
         self._frame = bytes(SLOTS)
         self._sent_at = -1e9  # when the last frame was handed to the chip
+        self._sent_slots = SLOTS
         self._timer_done = high_res()  # Windows: 1 ms waits, or the wire wait and refresh oversleep by ~15 ms
         self._new = threading.Event()
         self._stop = threading.Event()
         self.packets = 0
+        self._meas: deque[tuple[float, float, float, float]] = deque(maxlen=WINDOW)  # start, break, mab, write
+        self._basis = "measured"
         self._thread = threading.Thread(target=self._run, name="enttec-open", daemon=True)
         self._thread.start()
+
+    # ------------------------------------------------------------------ settings
+
+    def d2xx_ok(self) -> bool:
+        try:
+            return bool(self._d2xx_available()) and bool(self.serial_number or _serial_number_for(self.port))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _resolve(self, method: str) -> str:
+        if method == "auto":
+            return "d2xx" if self.d2xx_ok() else "serial_break"
+        return method
+
+    def _open(self, port: str, baud: int, stopbits: float) -> Any:
+        if self.method == "d2xx":
+            sn = self.serial_number or _serial_number_for(port)
+            if not sn:
+                raise OSError("D2XX needs the interface's serial number (not found for this port)")
+            return self._d2xx_factory(sn)
+        return self._serial_factory(port, baud, stopbits)
+
+    def configure(self, **changes: Any) -> dict[str, Any]:
+        """Change break method / timings live (cycle test, set_output). A switch between the COM port
+        and D2XX reopens the interface on the driver's thread."""
+        with self._cfg_lock:
+            merged = {**self.settings, **{k: v for k, v in changes.items() if v is not None}}
+            self.settings = check_timing(**merged)
+            method = self._resolve(self.settings["break_method"])
+            reopen = (method == "d2xx") != (self.method == "d2xx")
+            self.method = method
+            self._meas.clear()
+        if reopen:
+            self._p.close()
+            self._p.last_try = -1e9
+        self._new.set()
+        return dict(self.settings)
+
+    def slots(self) -> int:
+        n = self.settings["channels"]
+        if n == "patched":
+            return max(MIN_SLOTS, min(SLOTS, self.patched_slots.get(self.universe, SLOTS)))
+        return int(n)
+
+    # ------------------------------------------------------------------ sending
 
     @property
     def errors(self) -> int:
@@ -186,13 +310,41 @@ class EnttecOpenDriver(OutputDriver):
 
     def _wait_for_wire(self) -> None:
         """Don't break into the previous frame: wait until it has left the chip."""
-        free_at = self._sent_at + WIRE_S + WIRE_MARGIN_S
-        left = free_at - time.perf_counter()
+        free_at = self._sent_at + wire_s(self._sent_slots) + WIRE_MARGIN_S
+        self._wait_until(free_at)
+
+    def _wait_until(self, t: float) -> None:
+        left = t - time.perf_counter()
         if left > 0.002:
             self._stop.wait(left - 0.002)
-        left = free_at - time.perf_counter()
+        left = t - time.perf_counter()
         if left > 0:
             _spin(left)
+
+    def _break_mab(self, ser: Any, break_s: float, mab_s: float) -> tuple[float, float, float]:
+        """Make break and MAB; returns (break, MAB, MAB end) as the laptop saw them."""
+        if self.method == "baud_drop":
+            low = max(300, round(9 / break_s))  # 9 bit times low = the break
+            ser.baudrate = low
+            t0 = time.perf_counter()
+            ser.write(b"\x00")
+            ser.flush()
+            _spin(max(0.0, t0 + 11 / low - time.perf_counter()))  # start, 8 zeros, 2 stop bits on the line
+            t1 = time.perf_counter()
+            ser.baudrate = DMX_BAUD
+            _spin(max(0.0, mab_s - 2 / low - (time.perf_counter() - t1)))
+            end = time.perf_counter()
+            self._basis = "computed"  # the break length is set by the baud rate, not timed
+            return 9 / low, 2 / low + (end - t1), end
+        ser.break_condition = True
+        t_on = time.perf_counter()
+        _spin(break_s)
+        ser.break_condition = False
+        t_off = time.perf_counter()
+        _spin(mab_s)
+        end = time.perf_counter()
+        self._basis = "measured"
+        return t_off - t_on, end - t_off, end
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -202,25 +354,29 @@ class EnttecOpenDriver(OutputDriver):
                 continue
             ser = self._p.ser
             self._wait_for_wire()
+            st = self.settings
+            n = self.slots()
+            start = time.perf_counter()
             try:
-                ser.break_condition = True
-                _spin(BREAK_S)
-                ser.break_condition = False
-                _spin(MAB_S)
+                brk, mab, t_data = self._break_mab(ser, st["break_us"] / 1e6, st["mab_us"] / 1e6)
                 frame = self._frame
-                data = b"\x00" + frame  # start code, then channel 1 at index 1
-                self._sent_at = time.perf_counter()
-                n = ser.write(data)  # the whole frame in one write
-                if n is not None and n != len(data):
-                    raise OSError(f"short write: {n} of {len(data)} bytes")
+                data = b"\x00" + frame[:n]  # start code, then channel 1 at index 1
+                self._sent_at = t_data
+                self._sent_slots = n
+                w = ser.write(data)  # the whole frame in one write
+                if w is not None and w != len(data):
+                    raise OSError(f"short write: {w} of {len(data)} bytes")
                 ser.flush()
+                self._meas.append((start, brk, mab, time.perf_counter() - t_data))
                 self.packets += 1
                 self._p.wrote()
                 self.wire.record(self.universe, frame)
             except Exception as e:
                 self._p.failed(e)
+                self._meas.clear()  # an outage isn't a slow frame rate
                 continue
-            self._new.wait(REFRESH_S)  # wake early for a new frame (drum hits)
+            # wake early for a new frame (drum hits), else repeat at the target rate
+            self._new.wait(max(0.0, start + 1 / st["fps"] - time.perf_counter()))
 
     def close(self) -> None:
         self._stop.set()
@@ -230,12 +386,46 @@ class EnttecOpenDriver(OutputDriver):
         self._timer_done()
         self._timer_done = lambda: None
 
+    # ------------------------------------------------------------------ reporting
+
+    def timing(self) -> dict[str, Any]:
+        """Targets beside what the laptop measured, with warnings (break < 88 us, MAB < 8 us, fps < 80 %)."""
+        st = dict(self.settings)
+        meas = list(self._meas)
+        m: dict[str, Any] = {"break_us": None, "mab_us": None, "fps": None, "write_ms": None, "jitter_ms": None,
+                             "basis": self._basis}
+        warn: list[str] = []
+        if meas:
+            m["break_us"] = round(min(x[1] for x in meas) * 1e6)
+            m["mab_us"] = round(min(x[2] for x in meas) * 1e6)
+            m["write_ms"] = round(sum(x[3] for x in meas) / len(meas) * 1000, 2)
+            fresh = time.perf_counter() - meas[-1][0] < 2
+            if len(meas) >= 3 and fresh:
+                dts = [b[0] - a[0] for a, b in zip(meas, meas[1:])]
+                avg = sum(dts) / len(dts)
+                m["fps"] = round(1 / avg, 1) if avg > 0 else None
+                m["jitter_ms"] = round((sum((d - avg) ** 2 for d in dts) / len(dts)) ** 0.5 * 1000, 2)
+            if m["break_us"] < 88:
+                warn.append(f"break {m['break_us']} µs, under 88")
+            if m["mab_us"] < 8:
+                warn.append(f"MAB {m['mab_us']} µs, under 8")
+            if m["fps"] is not None and m["fps"] < 0.8 * st["fps"]:
+                warn.append(f"{m['fps']} fps, under 80 % of {st['fps']}")
+        return {"method": self.method, "method_name": METHOD_NAMES.get(self.method, self.method),
+                "backend": "d2xx" if self.method == "d2xx" else "com", "d2xx_available": self.d2xx_ok(),
+                "target": {**st, "slots": self.slots()}, "measured": m, "warnings": warn, "note": TIMING_NOTE}
+
     def status(self) -> dict[str, Any]:
         return {"driver": self.name, "port": self.port, "packets": self.packets, "errors": self.errors,
-                "last_error": self._p.last_error, "reconnects": self._p.reconnects}
+                "last_error": self._p.last_error, "reconnects": self._p.reconnects, "timing": self.timing()}
 
     def state(self) -> dict[str, Any]:
-        return self._p.state("USB DMX (Open)", self.universe)
+        s = self._p.state("USB DMX (Open)", self.universe)
+        if s["state"] == "ok":
+            warn = self.timing()["warnings"]
+            if warn:
+                s["state"], s["detail"] = "warn", f"{s['detail']} · {warn[0]}"
+        return s
 
 
 SOM, EOM, LABEL_SEND_DMX = 0x7E, 0xE7, 6

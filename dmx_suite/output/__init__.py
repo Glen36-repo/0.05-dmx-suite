@@ -2,7 +2,7 @@
 
     outputs:
       - {driver: node, port: COM5, universe: 0}
-      - {driver: usb_dmx_open, port: COM7, universe: 0}
+      - {driver: usb_dmx_open, port: COM7, universe: 0}   # v5: break_method, break_us, mab_us, fps, channels
       - {driver: artnet, host: 2.255.255.255}
       - {driver: sacn}
 
@@ -43,9 +43,12 @@ def make_driver(cfg: dict[str, Any]) -> OutputDriver:
     name = driver_id(cfg.pop("driver", None))
     if name not in DRIVERS:
         raise ValueError(f"unknown output driver {name!r}; one of {sorted(DRIVERS)}")
-    for k in ("device", "alias"):  # identity, not driver settings
-        cfg.pop(k, None)
-    if "universe" in cfg and "universe" not in inspect.signature(DRIVERS[name]).parameters:
+    dev = cfg.pop("device", None)
+    cfg.pop("alias", None)  # identity, not a driver setting
+    takes = inspect.signature(DRIVERS[name]).parameters
+    if "serial_number" in takes and isinstance(dev, str) and dev.startswith("usb:") and dev.count(":") >= 3:
+        cfg.setdefault("serial_number", dev.split(":", 3)[3] or None)  # D2XX opens it by serial number
+    if "universe" in cfg and "universe" not in takes:
         cfg.pop("universe")  # drivers that send every universe (node, log, null) or map them (Art-Net, sACN)
     drv = DRIVERS[name](**cfg)
     drv.cfg = {**asked, "driver": name}  # what the rig asked for, alias and device included (routing table)

@@ -405,6 +405,7 @@ class App:
                 d.on_connect = self.setup_node
         with self.engine.lock:
             old, self.engine.drivers = self.engine.drivers, new
+            self.engine.hint_drivers()
         for d in old:
             try:
                 d.close()
@@ -518,7 +519,8 @@ class App:
                              "interface": cfg.get("alias") or st["name"], "driver": cfg.get("driver", d.name),
                              "port": cfg.get("port") or getattr(d, "port", None), "device": cfg.get("device"),
                              "state": st["state"], "detail": st["detail"],
-                             "packets": st_d.get("packets", st_d.get("frames")), "errors": st_d.get("errors", 0), **w})
+                             "packets": st_d.get("packets", st_d.get("frames")), "errors": st_d.get("errors", 0),
+                             "timing": st_d.get("timing"), **w})
         for n in self.nodes():
             if n.get("mac"):
                 rows.append({"universe": n.get("universe"), "output": None, "kind": "node",
@@ -636,9 +638,12 @@ class App:
             index = len(outs) - 1
         if not 0 <= index < len(outs):
             raise ValueError(f"no output {index}; the rig has {len(outs)} (index from 0, -1 adds one)")
-        bad = set(changes) - {"driver", "port", "universe", "alias", "device", "host", "universes"}
+        from .rig import TIMING_KEYS
+
+        bad = set(changes) - {"driver", "port", "universe", "alias", "device", "host", "universes", *TIMING_KEYS}
         if bad:
-            raise ValueError(f"an output takes driver, port, universe, alias, device (not {sorted(bad)})")
+            raise ValueError(f"an output takes driver, port, universe, alias, device, {', '.join(TIMING_KEYS)} "
+                             f"(not {sorted(bad)})")
         outs[index] = {**outs[index], **{k: v for k, v in changes.items() if v is not None}}
         parse_outputs(outs)  # checked before writing
         data["outputs"] = outs

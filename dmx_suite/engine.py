@@ -41,6 +41,7 @@ class Engine:
     ) -> None:
         self.rig = rig
         self.drivers = drivers
+        self.hint_drivers()
         self.clock = clock
         self.lock = threading.RLock()
         now = clock()
@@ -104,7 +105,17 @@ class Engine:
             for d in self.drivers:
                 if isinstance(d, NodeSerialDriver):
                     d.link.health.expect(rig.nodes)
+            self.hint_drivers()
         self._wake.set()
+
+    def hint_drivers(self) -> None:
+        """Tell drivers that can send short frames (`channels: patched`) the last patched channel per universe."""
+        last: dict[int, int] = {}
+        for fx in self.rig.fixtures:
+            last[fx.universe] = max(last.get(fx.universe, 0), fx.address + fx.type.footprint - 1)
+        for d in self.drivers:
+            if hasattr(d, "patched_slots"):
+                d.patched_slots = dict(last)
 
     # ------------------------------------------------------------------ output
 

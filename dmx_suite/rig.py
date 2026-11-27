@@ -436,6 +436,9 @@ def routing_problems(rig: Rig) -> list[str]:
     return out
 
 
+TIMING_KEYS = ("break_method", "break_us", "mab_us", "fps", "channels")
+
+
 def parse_outputs(d: Any) -> tuple[list[dict[str, Any]], list[str]]:
     """The rig's `outputs:`, checked: known driver (v3 ids read), `universe:` 0-15 for interfaces that
     carry one universe (missing -> 0, with a warning so the routing is confirmed, not guessed)."""
@@ -465,6 +468,16 @@ def parse_outputs(d: Any) -> tuple[list[dict[str, Any]], list[str]]:
             u = o["universe"]
             if isinstance(u, bool) or not isinstance(u, int) or not 0 <= u <= 15:
                 raise ConfigError(f"outputs {i + 1}: universe 0-15")
+        timing = {k: o[k] for k in TIMING_KEYS if k in o}
+        if timing:  # v5: open-style USB DMX only; missing ones take the defaults, no warning
+            if o["driver"] != "usb_dmx_open":
+                raise ConfigError(f"outputs {i + 1}: {', '.join(sorted(timing))} only apply to usb_dmx_open")
+            from .output.enttec import check_timing
+
+            try:
+                check_timing(**timing)
+            except ValueError as e:
+                raise ConfigError(f"outputs {i + 1}: {e}") from None
         out.append(o)
     return out, warn
 
