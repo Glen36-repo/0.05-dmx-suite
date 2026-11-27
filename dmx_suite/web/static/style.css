@@ -609,3 +609,23 @@ table.mon-log tr.unmapped td { color: var(--muted); }
 .record-row { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 6px; }
 .step-yaml .yaml-text { width: 100%; font: 12px/1.4 ui-monospace, monospace; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
 .warn-note { font-size: 12px; color: var(--warn); }
+
+/* ---------------------------------------------------------------- v4.1 ⓘ information buttons */
+button.info { min-height: var(--hit-min); min-width: var(--hit-min); height: var(--hit-min); width: var(--hit-min); padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; border: none; background: none;
+  color: var(--muted); font-size: 15px; line-height: 1; border-radius: 50%; text-transform: none; letter-spacing: 0; font-weight: 400; }
+button.info:hover, button.info.open { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+h2 button.info, summary button.info { margin-left: 2px; }
+.stage-over { position: relative; min-width: 0; }
+button.info.on-stage { position: absolute; top: 6px; left: 6px; z-index: 2; background: color-mix(in srgb, var(--bg) 70%, transparent); }
+.info-pop { position: fixed; z-index: 11; width: min(320px, calc(100vw - 16px)); background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; box-shadow: 0 6px 24px rgb(0 0 0 / .45);
+  font-size: 13px; line-height: 1.4; }
+.info-pop-title { font-weight: 700; margin-bottom: 2px; }
+.info-pop-text { color: var(--text); }
+.info-pop-more { display: inline-block; margin-top: 6px; color: var(--accent); }
+.manual-panel { position: fixed; top: 60px; right: 0; bottom: 0; width: min(560px, 100vw); z-index: 10; display: flex; flex-direction: column;
+  background: var(--bg); border-left: 1px solid var(--line); box-shadow: -6px 0 24px rgb(0 0 0 / .5); }
+.manual-panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.manual-frame { flex: 1; width: 100%; border: none; background: var(--bg); }
+@media print { .info, .info-pop, .manual-panel { display: none !important; } }

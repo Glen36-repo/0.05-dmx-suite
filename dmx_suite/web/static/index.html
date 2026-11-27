@@ -59,13 +59,13 @@
     <!-- LIVE -->
     <section id="page-live" class="page on">
       <div class="grid-host live" id="live-grid"></div>
-      <h2 data-i18n="live.shows"></h2>
+      <h2><span data-i18n="live.shows"></span> <button type="button" class="info" data-info="live.shows" aria-expanded="false">ⓘ</button></h2>
       <div class="btn-grid" id="shows" data-order="shows"></div>
       <div class="btn-grid sets" id="sets"></div>
       <h2 data-i18n="live.scenes"></h2>
       <div class="btn-grid" id="scenes" data-order="scenes"></div>
       <details class="section" id="generated-section" data-remember="live.generated">
-        <summary data-i18n="live.generated"></summary>
+        <summary><span data-i18n="live.generated"></span> <button type="button" class="info" data-info="live.generated" aria-expanded="false">ⓘ</button></summary>
         <div class="btn-grid" id="generated" data-order="generated"></div>
       </details>
       <ol class="steps" id="steps"></ol>
@@ -99,7 +99,7 @@
       </div>
       <div class="muted" id="haze"></div>
       <details class="section haze-settings" id="haze-settings">
-        <summary><span data-i18n="haze.settings"></span> <span class="sum muted" id="haze-rig"></span></summary>
+        <summary><span data-i18n="haze.settings"></span> <button type="button" class="info" data-info="live.haze" aria-expanded="false">ⓘ</button> <span class="sum muted" id="haze-rig"></span></summary>
         <div class="hz-blocks" id="hz-blocks"></div>
         <div class="row wrap">
           <button id="hz-save" class="primary" data-i18n="haze.save" disabled></button>
@@ -210,7 +210,8 @@
         <label class="check"><input type="checkbox" id="show-beams"><span data-i18n="layout.beams"></span></label>
       </div>
       <div class="stage-wrap">
-      <div class="grid-host edit" id="layout-grid"></div>
+      <div class="stage-over"><div class="grid-host edit" id="layout-grid"></div>
+        <button type="button" class="info on-stage" data-info="layout.stage" aria-expanded="false">ⓘ</button></div>
       <div class="arrange" id="arrange" role="toolbar" aria-orientation="vertical">
         <div class="ar-group" data-group="align"><div class="ar-h" data-i18n="layout.g_align"></div>
           <div class="seg seg3">

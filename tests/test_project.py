@@ -150,6 +150,11 @@ def test_every_ui_text_key_exists():
     # v4
     used |= {f"layout.need_{n}" for n in ("one", "two", "three", "pixels")}
     used |= {f"haze.b_{b}" for b in ("manual", "pulse", "boost", "safety")}
+    # v4.1: ⓘ buttons name info.<key>.title / .text
+    info = set(re.findall(r'data-info="([^"]+)"', (static / "index.html").read_text(encoding="utf-8")))
+    for js in (static / "js").rglob("*.js"):
+        info |= set(re.findall(r'infoButton\("([a-z0-9_]+\.[a-z0-9_]+)"\)', js.read_text(encoding="utf-8")))
+    used |= {f"info.{k}.{part}" for k in info for part in ("title", "text")}
     used |= {f"haze.u_{u}" for u in ("pct", "s", "min")}
     used |= {f"haze.f_{k}" for k in ("level", "pulse_level", "pulse_on_s", "pulse_every_s", "boost_level", "boost_s",
                                      "boost_cooldown_s", "max_on_s", "rest_s", "auto_off_min", "default_mode")}

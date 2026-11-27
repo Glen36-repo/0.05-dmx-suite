@@ -93,6 +93,14 @@ class Bridge:
     def __init__(self, desktop: Desktop) -> None:
         self._desktop = desktop
 
+    def open_url(self, url: str) -> bool:
+        """A web link from the manual: the system browser, never the app's own window. http(s) only."""
+        import webbrowser
+
+        if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
+            return False
+        return bool(webbrowser.open(url))
+
     def pick(self, mode: str, suggested: str = "") -> str | None:
         import webview
 
