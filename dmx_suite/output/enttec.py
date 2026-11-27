@@ -13,6 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .base import OutputDriver, SenderThread
+from .timer import high_res
 
 log = logging.getLogger(__name__)
 
@@ -162,6 +163,7 @@ class EnttecOpenDriver(OutputDriver):
         self._p = _Port(port, serial_factory, DMX_BAUD, 2, open_now=False, on_open=_open_dmx_setup)
         self._frame = bytes(SLOTS)
         self._sent_at = -1e9  # when the last frame was handed to the chip
+        self._timer_done = high_res()  # Windows: 1 ms waits, or the wire wait and refresh oversleep by ~15 ms
         self._new = threading.Event()
         self._stop = threading.Event()
         self.packets = 0
@@ -225,6 +227,8 @@ class EnttecOpenDriver(OutputDriver):
         self._new.set()
         self._thread.join(timeout=1)
         self._p.close()
+        self._timer_done()
+        self._timer_done = lambda: None
 
     def status(self) -> dict[str, Any]:
         return {"driver": self.name, "port": self.port, "packets": self.packets, "errors": self.errors,
