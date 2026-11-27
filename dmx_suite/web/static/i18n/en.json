@@ -1283,5 +1283,6 @@
  "info.files.history.title": "History",
  "info.files.history.text": "Every change since the app started, newest first (Ctrl+Z / Ctrl+Y). Older changes: the backups below.",
  "info.files.backups.title": "Backups",
- "info.files.backups.text": "Every change from here or from Claude keeps the previous file. Restore puts one file back."
+ "info.files.backups.text": "Every change from here or from Claude keeps the previous file. Restore puts one file back.",
+ "layout.unsaved_leave": "Layout not saved: Live and Autopilot show the saved one. Save layout to use it."
 }

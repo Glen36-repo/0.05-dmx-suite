@@ -192,7 +192,10 @@ export function init() {
     clearInterval(routingTimer);
     routingTimer = setInterval(() => (shown() ? loadRouting() : null), 1000);
   });
-  onLeave("layout", () => { clearInterval(routingTimer); stopFeeds.forEach((s) => s()); stopFeeds = []; });
+  onLeave("layout", () => {
+    clearInterval(routingTimer); stopFeeds.forEach((s) => s()); stopFeeds = [];
+    if (grid.dirty) toast(t("layout.unsaved_leave")); // kept, never discarded; Live isn't held up
+  });
 
   onCatalogue(buildCatalogue);
   onState((s) => grid.update(s.fixtures, s.haze));

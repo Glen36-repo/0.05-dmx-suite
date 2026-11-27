@@ -2,6 +2,7 @@
 import { get } from "./api.js";
 
 export const live = { state: null, cat: null, midiSeq: 0 };
+let filesRev = null; // the files the catalogue was fetched for; another screen or Claude changing them bumps it
 const stateListeners = [];
 const catListeners = [];
 const midiListeners = [];
@@ -13,7 +14,9 @@ export const onMidi = (fn) => midiListeners.push(fn);
 export const onConnection = (fn) => connListeners.push(fn);
 
 export async function refreshCatalogue() {
+  const rev = live.state?.files_rev;
   live.cat = await get("/api/catalogue");
+  if (rev !== undefined && (filesRev === null || rev > filesRev)) filesRev = rev;
   for (const fn of catListeners) fn(live.cat);
 }
 
@@ -42,6 +45,11 @@ export function connect() {
     last = Date.now();
     const d = JSON.parse(ev.data);
     if (d.state) live.state = d.state;
+    // the show files changed (any screen, Claude, undo, a restore): every open screen fetches them again
+    if (d.state && filesRev !== null && d.state.files_rev !== undefined && d.state.files_rev !== filesRev) {
+      filesRev = d.state.files_rev;
+      refreshCatalogue().catch(() => {});
+    }
     if (first && live.state) {
       first = false;
       for (const fn of connListeners) fn(true);
@@ -68,8 +76,9 @@ export function connect() {
 }
 
 export async function start() {
-  await refreshCatalogue();
   live.state = await get("/api/state");
+  await refreshCatalogue();
+  filesRev = live.state.files_rev ?? 0;
   emitState();
   connect();
 }
