@@ -283,9 +283,15 @@ def test_enttec_setup_on_open():
 @pytest.mark.parametrize("kind", ["fail", "short"])
 def test_errors_counted_not_packets(kind):
     ser = RecordingSerial(**{kind: True})
-    d, _ = driver(ser)
+
+    def factory(*args):  # like a real unplug: once dropped, the port can't be opened again
+        if ser.closed:
+            raise OSError("could not open port COM9")
+        return ser
+
+    d = EnttecOpenDriver("COM9", serial_factory=factory)
     try:
-        end = time.monotonic() + 1
+        end = time.monotonic() + 2
         while d.errors == 0:
             assert time.monotonic() < end
             time.sleep(0.005)
