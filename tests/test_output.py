@@ -30,6 +30,14 @@ class FakeSerial:
     def flush(self):
         pass
 
+    rts = dtr = True  # what pyserial does on open
+
+    def reset_input_buffer(self):
+        pass
+
+    def reset_output_buffer(self):
+        pass
+
     def close(self):
         self.closed = True
 

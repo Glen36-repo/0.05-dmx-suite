@@ -25,7 +25,7 @@ Every alert is kept in the gig log (`logs/alerts-YYYY-MM-DD.jsonl` in app data),
 
 | What you see | What it means | What to do |
 | --- | --- | --- |
-| The software runs but **the rig is dark** | | Monitor page, DMX out: **No frames** = nothing goes out that interface (check the routing table and the device); **every channel is 0** = MASTER, blackout, grand master or the look; values going out = the cable, the fixture's DMX mode or its address. See [Monitor](monitor.md) |
+| The software runs but **the rig is dark** | | Monitor page, DMX out: **No frames** = nothing goes out that interface (check the routing table and the device); **every channel is 0** = MASTER, blackout, grand master or the look; values going out = the cable, the fixture's DMX mode or its address. See [Monitor](monitor.md). A USB DMX (Open DMX) interface can't report the DMX line itself: "ok" means the USB side is taking frames. Set its FTDI latency timer to 1 ms (Device Manager > the COM port > Advanced) |
 | A pedal or pad **does nothing** | | Monitor page, MIDI in: no event = the port or cable; *unmapped* = map the named input (Learn); an action listed = check what that action does |
 | Amber **missing: Stage DMX (…)** | A USB interface the rig uses isn't plugged in | Plug it in, or Setup > Plugged in: **Use this instead** on another one (works under gig lock) |
 | **Layout: … in the same place** | Lights share a spot, so spatial effects show them the same | Layout page: move them apart |

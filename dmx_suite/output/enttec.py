@@ -6,6 +6,7 @@ status bar shows it as unplugged, and the port is reopened every couple of secon
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -13,18 +14,33 @@ from typing import Any
 
 from .base import OutputDriver, SenderThread
 
+log = logging.getLogger(__name__)
+
 DMX_BAUD = 250000
-BREAK_S = 0.000120  # >= 88 us
-MAB_S = 0.000016  # >= 8 us
-REFRESH_S = 0.025  # 40 Hz
+SLOTS = 512
+BREAK_S = 0.000120  # >= 88 us (the spin is a floor: on a Windows VCP the USB request makes it ~1-2 ms)
+MAB_S = 0.000016  # >= 8 us (likewise ~1 ms in practice)
+WIRE_S = (1 + SLOTS) * 11 / DMX_BAUD  # start code + 512 slots, 11 bits each: ~22.6 ms on the wire
+WIRE_MARGIN_S = 0.001
+REFRESH_S = 0.025  # idle refresh; with break, MAB and wire time a frame takes ~26-27 ms (~37-38 fps)
 REOPEN_S = 2.0
 FRESH_S = 1.0  # a write this recent counts as connected
 
 
-def _serial(port: str, baudrate: int, stopbits: float) -> Any:
+def _serial(port: str, baudrate: int, stopbits: float, rts: bool | None = None) -> Any:
+    """Open the port with flow control off; `rts=False` keeps RTS (and DTR) low from the moment it opens."""
     import serial
 
-    return serial.Serial(port, baudrate=baudrate, bytesize=8, parity="N", stopbits=stopbits, write_timeout=1)
+    ser = serial.Serial()  # not opened yet, so RTS/DTR can be set before pyserial raises them on open
+    ser.port = port
+    ser.baudrate, ser.bytesize, ser.parity, ser.stopbits = baudrate, 8, "N", stopbits
+    ser.rtscts = ser.xonxoff = ser.dsrdtr = False
+    ser.write_timeout = 1
+    if rts is not None:
+        ser.rts = rts
+        ser.dtr = rts
+    ser.open()
+    return ser
 
 
 def _spin(seconds: float) -> None:
@@ -36,15 +52,19 @@ def _spin(seconds: float) -> None:
 class _Port:
     """Serial port that can go away and come back."""
 
-    def __init__(self, port: str, factory: Callable[..., Any], baud: int, stopbits: float) -> None:
+    def __init__(self, port: str, factory: Callable[..., Any], baud: int, stopbits: float, *,
+                 open_now: bool = True, on_open: Callable[[Any], None] | None = None) -> None:
         self.port, self.factory, self.baud, self.stopbits = port, factory, baud, stopbits
+        self.on_open = on_open
         self.ser: Any = None
         self.last_try = -1e9
         self.ok_at: float | None = None
         self.errors = 0
         self.last_error = ""
         self.reconnects = 0
-        self.ensure()
+        self._failing = False
+        if open_now:
+            self.ensure()
 
     def ensure(self) -> bool:
         if self.ser is not None:
@@ -54,9 +74,13 @@ class _Port:
             return False
         self.last_try = now
         try:
-            self.ser = self.factory(self.port, self.baud, self.stopbits)
+            ser = self.factory(self.port, self.baud, self.stopbits)
+            if self.on_open is not None:
+                self.on_open(ser)
+            self.ser = ser
             if self.ok_at is not None:
                 self.reconnects += 1
+                log.info("%s reopened", self.port)
             return True
         except Exception as e:
             self.last_error = str(e) or type(e).__name__
@@ -65,14 +89,19 @@ class _Port:
     def failed(self, e: Exception) -> None:
         self.errors += 1
         self.last_error = str(e) or type(e).__name__
+        if not self._failing:  # once per outage, never per frame
+            log.warning("%s: write failed (%s), reopening", self.port, self.last_error)
+            self._failing = True
         try:
-            self.ser.close()
+            if self.ser is not None:
+                self.ser.close()
         except Exception:
             pass
         self.ser = None
 
     def wrote(self) -> None:
         self.ok_at = time.monotonic()
+        self._failing = False
 
     def close(self) -> None:
         if self.ser is not None:
@@ -89,23 +118,50 @@ class _Port:
         if self.ser is not None:
             return {"kind": "output", "name": label, "state": "warn", "detail": f"{self.port} · no frames yet"}
         why = "not found" if self.ok_at is None else "unplugged"
-        return {"kind": "output", "name": label, "state": "bad", "detail": f"{self.port} {why}, retrying"}
+        err = f" ({self.last_error})" if self.last_error else ""
+        return {"kind": "output", "name": label, "state": "bad", "detail": f"{self.port} {why}, retrying{err}"}
+
+
+def _open_dmx_setup(ser: Any) -> None:
+    """Enttec's Open DMX sample: flow control off (done in _serial), clear RTS, purge both buffers.
+    Some FTDI clones use RTS as the RS-485 transmit enable, so RTS raised on open can leave the line dead."""
+    steps: tuple[tuple[str, Callable[[], Any]], ...] = (
+        ("clear RTS", lambda: setattr(ser, "rts", False)), ("clear DTR", lambda: setattr(ser, "dtr", False)),
+        ("purge input", lambda: ser.reset_input_buffer()), ("purge output", lambda: ser.reset_output_buffer()))
+    for what, step in steps:  # best effort: a port that refuses one of these may still send DMX
+        try:
+            step()
+        except Exception as e:
+            log.warning("%s: couldn't %s (%s)", getattr(ser, "port", "?"), what, e)
+
+
+def _open_dmx_serial(port: str, baudrate: int, stopbits: float) -> Any:
+    return _serial(port, baudrate, stopbits, rts=False)
 
 
 class EnttecOpenDriver(OutputDriver):
-    """FTDI-based Open DMX: we bit-bang break/MAB and stream the packet continuously.
+    """FTDI-based Open DMX: the PC makes break, MAB and the stream, continuously, on its own thread.
 
-    On Windows set the FTDI latency timer to 1 ms (Device Manager > port > Advanced). A new frame
-    is sent as soon as the packet on the wire finishes, not on the next refresh tick.
+    Break and MAB come from pyserial's break_condition (Windows: SetCommBreak / ClearCommBreak, which the
+    FTDI VCP driver turns into the same USB request as D2XX FT_SetBreakOn/Off). Each takes a USB round
+    trip, so the break is ~1-2 ms and the MAB ~1 ms: inside DMX's limits (88 us to 1 s, 8 us to 1 s).
+    flush() returns when the chip has the data, not when it is on the wire, so the next break waits for
+    the previous frame's wire time (WIRE_S); a new frame still goes as soon as the line is free.
+    Steady rate ~37-38 fps. On Windows set the FTDI latency timer to 1 ms (Device Manager > port > Advanced).
+
+    "ok" means the FTDI chip is taking frames. An Open DMX can't report the DMX line itself: a missing
+    DMX cable or a dead RS-485 driver still counts frames.
     """
 
     name = "enttec_open"
 
-    def __init__(self, port: str, universe: int = 0, serial_factory: Callable[..., Any] = _serial) -> None:
+    def __init__(self, port: str, universe: int = 0, serial_factory: Callable[..., Any] = _open_dmx_serial) -> None:
         self.port = port
         self.universe: int = universe
-        self._p = _Port(port, serial_factory, DMX_BAUD, 2)
-        self._frame = bytes(512)
+        # opened on the driver's thread, never on the one building the rig
+        self._p = _Port(port, serial_factory, DMX_BAUD, 2, open_now=False, on_open=_open_dmx_setup)
+        self._frame = bytes(SLOTS)
+        self._sent_at = -1e9  # when the last frame was handed to the chip
         self._new = threading.Event()
         self._stop = threading.Event()
         self.packets = 0
@@ -123,8 +179,18 @@ class EnttecOpenDriver(OutputDriver):
     def send(self, universe: int, frame: bytes) -> None:
         if universe != self.universe:
             return
-        self._frame = bytes(frame)
+        self._frame = bytes(frame[:SLOTS]).ljust(SLOTS, b"\x00")  # always 512 slots
         self._new.set()
+
+    def _wait_for_wire(self) -> None:
+        """Don't break into the previous frame: wait until it has left the chip."""
+        free_at = self._sent_at + WIRE_S + WIRE_MARGIN_S
+        left = free_at - time.perf_counter()
+        if left > 0.002:
+            self._stop.wait(left - 0.002)
+        left = free_at - time.perf_counter()
+        if left > 0:
+            _spin(left)
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -133,13 +199,18 @@ class EnttecOpenDriver(OutputDriver):
                 self._stop.wait(0.25)
                 continue
             ser = self._p.ser
+            self._wait_for_wire()
             try:
                 ser.break_condition = True
                 _spin(BREAK_S)
                 ser.break_condition = False
                 _spin(MAB_S)
                 frame = self._frame
-                ser.write(b"\x00" + frame)
+                data = b"\x00" + frame  # start code, then channel 1 at index 1
+                self._sent_at = time.perf_counter()
+                n = ser.write(data)  # the whole frame in one write
+                if n is not None and n != len(data):
+                    raise OSError(f"short write: {n} of {len(data)} bytes")
                 ser.flush()
                 self.packets += 1
                 self._p.wrote()
@@ -156,7 +227,8 @@ class EnttecOpenDriver(OutputDriver):
         self._p.close()
 
     def status(self) -> dict[str, Any]:
-        return {"driver": self.name, "port": self.port, "packets": self.packets, "errors": self.errors}
+        return {"driver": self.name, "port": self.port, "packets": self.packets, "errors": self.errors,
+                "last_error": self._p.last_error, "reconnects": self._p.reconnects}
 
     def state(self) -> dict[str, Any]:
         return self._p.state("USB DMX (Open)", self.universe)
@@ -220,7 +292,8 @@ class EnttecProDriver(OutputDriver):
 
     def status(self) -> dict[str, Any]:
         return {"driver": self.name, "port": self.port, "packets": self.packets, "errors": self.errors,
-                "dropped": self._sender.dropped if self._sender else 0}
+                "dropped": self._sender.dropped if self._sender else 0, "last_error": self._p.last_error,
+                "reconnects": self._p.reconnects}
 
     def state(self) -> dict[str, Any]:
         return self._p.state("USB DMX Pro", self.universe)
