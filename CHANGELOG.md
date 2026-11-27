@@ -2,6 +2,15 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v4.1: information buttons)
+
+### Added
+- ⓘ buttons by every section and tricky control (61 of them): tap for a few lines on what it is and what it does to the lights, and **More in the manual** for the right section. A tap elsewhere closes it and still reaches the button under it; Esc closes only the popover; shortcuts, MIDI and MASTER / BLACKOUT keep working with one open; works under gig lock.
+- The user manual inside the app, offline (`/manual`): in a browser it opens in a new tab, in the desktop window in a side panel over the page, so Live never navigates away. Web links in it open in the system browser. The installer now includes it.
+
+### Changed
+- The grey help paragraphs on most pages are now ⓘ popovers, so pages are shorter. Warnings stay where they are.
+
 ## Unreleased (v4: stage view, Layout / Patch, routing, Monitor, step editor)
 
 Scope and decisions: `docs/V4-SCOPE.md`. Show file format 6 (old files upgrade once, with backups).

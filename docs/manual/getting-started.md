@@ -25,6 +25,8 @@ Type `help` at the `dmx>` prompt, or open http://localhost:8505/ for the screens
 
 The menu on the left is grouped: **Perform** (Live, Autopilot, Override), **Build** (Scenes, Shows, Review, Palettes), **Rig** (Layout, Fixtures, Heads, MIDI) and **System** (Monitor, Setup, Files). ☰ folds it to icons. On a phone it's a bar along the bottom with Live, Autopilot, Override, Scenes and Shows; **More** opens the rest. Folding sections (Addresses, the MIDI mapping table, the generator) stay as you last left them on that screen.
 
+**ⓘ** next to a heading or control explains it in a few lines; tap it again, tap anywhere else or press Esc to close it. **More in the manual** opens the right part of this manual inside the app (a new tab in a browser, a side panel in the desktop window), and works without internet.
+
 ## Phones and the PIN
 
 The app only answers the laptop until you allow phones. On the **Setup** page:
