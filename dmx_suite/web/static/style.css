@@ -629,3 +629,12 @@ button.info.on-stage { position: absolute; top: 6px; left: 6px; z-index: 2; back
 .manual-panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid var(--line); }
 .manual-frame { flex: 1; width: 100%; border: none; background: var(--bg); }
 @media print { .info, .info-pop, .manual-panel { display: none !important; } }
+/* the in-app manual page (/manual/…) */
+body.manual { max-width: 820px; margin: 0 auto; padding: 12px 16px 40px; line-height: 1.5; }
+.manual-nav { margin-bottom: 8px; }
+.manual-body a { color: var(--accent); }
+.manual-body h1 { font-size: 22px; } .manual-body h2 { font-size: 18px; margin-top: 22px; } .manual-body h3 { font-size: 15px; }
+.manual-body pre { overflow-x: auto; padding: 8px 10px; background: var(--panel-2); border-radius: var(--radius); }
+.manual-body code { font-size: 12.5px; }
+.manual-body table { border-collapse: collapse; display: block; overflow-x: auto; }
+.manual-body th, .manual-body td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }

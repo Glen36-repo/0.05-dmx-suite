@@ -38,6 +38,13 @@ def bundled_shows() -> Path:
     return Path(__file__).resolve().parents[1] / "shows"
 
 
+def manual_dir() -> Path:
+    """The user manual (docs/manual), bundled with the packaged app."""
+    if frozen():
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "docs" / "manual"
+    return Path(__file__).resolve().parents[1] / "docs" / "manual"
+
+
 def documents_dir() -> Path:
     """The user's Documents folder (falls back to the home folder)."""
     home = Path(os.environ.get("USERPROFILE") or Path.home())

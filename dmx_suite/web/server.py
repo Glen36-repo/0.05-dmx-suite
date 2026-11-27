@@ -336,6 +336,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._page(page)
             if who is None:
                 return self._error(401, "sign in with the PIN")
+            if path == "/manual" or path.startswith("/manual/"):  # read-only: fine under gig lock
+                return self._manual(path[len("/manual/"):] or "README.md")
             if who == "claude" and path.startswith("/api/access"):
                 return self._error(403, "not available to Claude")
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
@@ -467,6 +469,17 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             for k, v in (("__TOKEN__", self._page_token()), ("__THEME__", key), ("__DENSITY__", density),
                          ("__APP_NAME__", html_escape(meta["app_name"]))):
                 html = html.replace(k, v)
+            self._send(200, html.encode(), TYPES[".html"])
+
+        def _manual(self, name: str) -> None:
+            from .. import manual
+
+            f = manual.page_path(name)
+            if f is None:
+                return self._error(404, "no such manual page")
+            strings = json.loads((STATIC / "i18n" / "en.json").read_text(encoding="utf-8"))
+            html = manual.page(name, f.read_text(encoding="utf-8"), settings.theme()[0],
+                               title=strings["info.manual"], back=strings["info.contents"])
             self._send(200, html.encode(), TYPES[".html"])
 
         def _access_status(self) -> dict[str, Any]:

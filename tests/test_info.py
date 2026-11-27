@@ -7,10 +7,14 @@ import re
 from pathlib import Path
 
 import pytest
+from test_access import call, remote, server  # noqa: F401 - pytest fixture
 from test_ui import browser, go, ui  # noqa: F401 - pytest fixtures
+
+from dmx_suite import manual
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "dmx_suite" / "web" / "static"
+MANUAL = ROOT / "docs" / "manual"
 
 
 def strings():
@@ -165,3 +169,122 @@ def test_manual_link_points_at_a_page(ui, key):
     page.click(f"button.info[data-info='{key}']")
     href = page.get_attribute("#info-pop .info-pop-more", "href")
     assert href.startswith("/manual/") and ".md" in href
+
+
+# ---------------------------------------------------------------- the in-app manual
+
+
+def info_manual():
+    js = (STATIC / "js" / "info.js").read_text(encoding="utf-8")
+    block = js[js.index("INFO_MANUAL"):]
+    return dict(re.findall(r'"([a-z0-9_.]+)":\s*"([a-z0-9-]+\.md(?:#[a-z0-9_-]+)?)"', block[:block.index("};")]))
+
+
+def test_every_manual_link_goes_to_a_real_section():
+    targets = info_manual()
+    assert len(targets) > 10
+    for key, target in targets.items():
+        name, _, anchor = target.partition("#")
+        f = MANUAL / name
+        assert f.is_file(), (key, target)
+        if anchor:
+            assert f'id="{anchor}"' in manual.render(f.read_text(encoding="utf-8")), (key, target)
+
+
+def test_manual_dir_is_the_repo_docs():
+    assert manual.manual_dir() == MANUAL and (MANUAL / "README.md").is_file()
+
+
+def test_render_blocks():
+    html = manual.render("""# Title
+
+Some *words* and **bold** with `a <b>` code.
+
+## Outputs: which universe goes where
+
+- one
+- two
+  - nested
+1. first
+2. second
+
+| A | B |
+| --- | --- |
+| `x` | y |
+
+```yaml
+key: <value>
+```
+""")
+    assert '<h1 id="title">Title</h1>' in html
+    assert '<h2 id="outputs-which-universe-goes-where">' in html
+    assert "<em>words</em>" in html and "<strong>bold</strong>" in html and "<code>a &lt;b&gt;</code>" in html
+    assert "<ul><li>one</li><li>two<ul><li>nested</li></ul></li></ul>" in html
+    assert "<ol><li>first</li><li>second</li></ol>" in html
+    assert "<th>A</th>" in html and "<td><code>x</code></td>" in html
+    assert '<pre><code class="lang-yaml">key: &lt;value&gt;</code></pre>' in html
+
+
+def test_render_escapes_html():
+    html = manual.render('<script>alert(1)</script>\n\n# <img src=x onerror=alert(1)>\n\n| <b> |\n| - |\n| <i> |')
+    assert "<script" not in html and "<img" not in html and "<b>" not in html and "<i>" not in html
+    assert "&lt;script&gt;" in html
+
+
+@pytest.mark.parametrize("md, want", [
+    ("[Layout](layout.md)", '<a href="/manual/layout.md">Layout</a>'),
+    ("[Addr](layout.md#addresses)", '<a href="/manual/layout.md#addresses">Addr</a>'),
+    ("[Up](#stage)", '<a href="#stage">Up</a>'),
+    ("[Site](https://example.com/a?b=1&c=2)",
+     '<a href="https://example.com/a?b=1&amp;c=2" target="_blank" rel="noopener" data-external>Site</a>'),
+    ("[x](javascript:alert(1))", "x"),
+    ("[x](JavaScript:alert(1))", "x"),
+    ("[x](data:text/html,hi)", "x"),
+    ("[x](mailto:someone@example.com)", "x"),
+    ("[x](../SCOPE.md)", "x"),
+    ("[x](/etc/passwd)", "x"),
+    ('[x](layout.md"onmouseover="alert(1))', "x"),
+])
+def test_link_rules(md, want):
+    html = manual.render(md)
+    assert html.startswith("<p>") and want in html
+    if "<a" not in want:
+        assert "<a" not in html
+
+
+@pytest.mark.parametrize("name", ["../README.md", "..%2FREADME.md", "README", "x.md", "/etc/passwd", "Layout.md", "readme.md",
+                                  "sub/layout.md", ""])
+def test_page_path_refuses_anything_outside(name):
+    assert manual.page_path(name) is None
+
+
+def test_manual_route(server):
+    app, web, *_ = server
+    status, html, headers = call(web, "/manual/layout.md", raw=True)
+    assert status == 200 and headers["Content-Type"].startswith("text/html")
+    assert '/static/themes/' in html and "/theme.css" in html and "/static/style.css" in html
+    assert 'id="addresses"' in html and 'href="/manual/README.md"' in html
+    assert call(web, "/manual", raw=True)[0] == 200  # the contents
+    for bad in ("/manual/../pyproject.toml", "/manual/..%2Fpyproject.toml", "/manual/nope.md",
+                "/manual/README.md/x"):
+        assert call(web, bad, raw=True)[0] == 404, bad
+
+
+def test_manual_works_under_gig_lock_and_needs_the_pin_on_the_network(server):
+    app, web, access, _ = server
+    app.set_gig_lock(True)
+    assert call(web, "/manual/shows.md", raw=True)[0] == 200
+    access.set_pin("2468")
+    access.configure(lan=True)
+    remote(web)  # a phone on the network that hasn't signed in
+    assert call(web, "/manual/shows.md", raw=True)[0] == 401
+
+
+def test_manual_page_in_the_browser(ui):
+    page, *_ = ui
+    base = page.url.split("/?")[0]
+    page.goto(f"{base}/manual/layout.md#addresses")
+    assert page.is_visible("h2#addresses")
+    page.click("a[href='/manual/README.md']")
+    page.wait_for_selector("h1")
+    assert "manual" in page.inner_text("h1").lower()

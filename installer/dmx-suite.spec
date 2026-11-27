@@ -13,6 +13,7 @@ datas = [
     (str(ROOT / "dmx_suite" / "web" / "static"), "dmx_suite/web/static"),
     (str(ROOT / "dmx_suite" / "midi" / "devices"), "dmx_suite/midi/devices"),
     (str(ROOT / "shows"), "shows"),
+    (str(ROOT / "docs" / "manual"), "docs/manual"),  # the in-app manual (v4.1)
 ]
 binaries = []
 hiddenimports = collect_submodules("dmx_suite") + collect_submodules("mido.backends") + collect_submodules("ruamel.yaml")
