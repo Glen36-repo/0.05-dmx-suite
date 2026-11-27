@@ -6,13 +6,15 @@ import { api, attempt, cmd, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
 import { t } from "../i18n.js";
-import { go, onShow } from "../nav.js";
+import { go, onLeave, onShow } from "../nav.js";
 import { review } from "./review.js";
 import { live, onCatalogue, onState } from "../state.js";
 
 let fx = null; // /api/fx
 let grid = null;
 let learning = false;
+let excluding = false; // Exclude mode: a tap on a type leaves it out of the autopilot (or puts it back)
+const HOLD_MS = 600; // long-press on a type does the same, any time
 let bank = ""; // fader tab: "" = everything, or move / colour / drum
 const FADERS = ["speed", "fade", "fan", "size", "shift"];
 const CLASSES = ["head", "wash", "pixel", "strobe", "effect"];
@@ -26,8 +28,53 @@ function act(action, params = {}, level) {
   return attempt(() => api("POST", "/api/autopilot/action", { action, ...params, ...(level !== undefined ? { level } : {}) }));
 }
 
+function fxTitle(item) {
+  return `${item.label} · ${t("autopilot.busy", { n: Math.round(item.busy * 100) })}` + (item.excluded ? ` · ${t("autopilot.excluded_tip")}` : "");
+}
+
+// a type button: tap plays it (or, in Exclude mode, leaves it out / puts it back); hold to exclude any time
 function fxButton(item, onClick) {
-  return el("button", { class: "ride-fx", "data-fx": item.id, title: `${item.label} · ${t("autopilot.busy", { n: Math.round(item.busy * 100) })}`, onclick: onClick }, item.label);
+  const b = el("button", { class: "ride-fx" + (item.excluded ? " excluded" : ""), "data-fx": item.id, title: fxTitle(item) }, item.label);
+  let timer = null, held = false;
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  b.addEventListener("pointerdown", (e) => {
+    if (e.button > 0) return;
+    held = false;
+    cancel();
+    timer = setTimeout(() => { held = true; timer = null; navigator.vibrate?.(15); toggleExcluded(item, b); }, HOLD_MS);
+  });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, cancel);
+  b.addEventListener("contextmenu", (e) => e.preventDefault()); // a long touch mustn't open the browser's menu
+  b.addEventListener("click", (e) => {
+    if (held) { held = false; e.preventDefault(); return; } // the long-press already did its job
+    if (excluding && !learning) return toggleExcluded(item, b);
+    onClick();
+  });
+  return b;
+}
+
+async function toggleExcluded(item, b) {
+  const want = !item.excluded;
+  item.excluded = want; // shown at once; put back if the laptop says no
+  b.classList.toggle("excluded", want);
+  b.title = fxTitle(item);
+  try {
+    await api("POST", "/api/autopilot/exclude", { item: item.id, excluded: want });
+    toast(t(want ? "autopilot.excluded_toast" : "autopilot.included_toast", { name: item.label }));
+  } catch (err) {
+    item.excluded = !want;
+    b.classList.toggle("excluded", !want);
+    b.title = fxTitle(item);
+    toast(err.message, true);
+  }
+}
+
+function setExcluding(on) {
+  excluding = on;
+  $("#ride-exclude").classList.toggle("on", on);
+  $("#ride-exclude").textContent = t(on ? "autopilot.exclude_done" : "autopilot.exclude");
+  $("#page-autopilot").classList.toggle("excluding", on);
+  if (on) toast(t("autopilot.exclude_help"));
 }
 
 function flashButton(item) {
@@ -69,12 +116,12 @@ function render() {
   const pick = live.state?.ride?.pick || fx.pick;
   const byBank = (b) => ok.filter((i) => i.bank === b);
   $("#ride-move").replaceChildren(
-    el("button", { class: "ride-fx" + (!pick.move ? " sel" : ""), onclick: () => act("autopilot_fx", { bank: "move", item: "" }) }, t("autopilot.no_move")),
+    el("button", { class: "ride-fx" + (!pick.move ? " sel" : ""), "data-fx": "", onclick: () => act("autopilot_fx", { bank: "move", item: "" }) }, t("autopilot.no_move")),
     ...byBank("move").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "move", item: i.id }))));
   $("#ride-colour").replaceChildren(...byBank("colour").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "colour", item: i.id }))));
   $("#ride-flash").replaceChildren(...byBank("flash").map(flashButton));
   $("#ride-drum").replaceChildren(
-    el("button", { class: "ride-fx" + (!pick.drum ? " sel" : ""), onclick: () => act("autopilot_fx", { bank: "drum", item: "" }) }, t("autopilot.no_drum")),
+    el("button", { class: "ride-fx" + (!pick.drum ? " sel" : ""), "data-fx": "", onclick: () => act("autopilot_fx", { bank: "drum", item: "" }) }, t("autopilot.no_drum")),
     ...byBank("drum").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "drum", item: i.id }))));
   $("#ride-palettes").replaceChildren(...Object.entries(fx.palettes).map(([k, p]) => el("button", {
     class: "ride-pal", "data-palette": k, onclick: () => act("autopilot_palette", { palette: k }) }, p.name)));
@@ -144,9 +191,10 @@ function update(s) {
     ap.paused ? t("autopilot.paused") : ap.between ? t("autopilot.between") : ap.next_change_s != null ? t("autopilot.next_in", { s: Math.round(ap.next_change_s) }) : "",
     t("autopilot.priority_" + s.priority.top)].filter(Boolean).join(" · ");
   const now = ap.pick || pick;
-  document.querySelectorAll("#ride-move [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === now.move));
+  // one green button per bank: the type running now ("No movement" / "No drum FX" when there's none)
+  document.querySelectorAll("#ride-move [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === (now.move || "")));
   document.querySelectorAll("#ride-colour [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === now.colour));
-  document.querySelectorAll("#ride-drum [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === now.drum));
+  document.querySelectorAll("#ride-drum [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === (now.drum || "")));
   document.querySelectorAll("#ride-palettes [data-palette]").forEach((b) => b.classList.toggle("sel", b.dataset.palette === now.palette));
   $("#ride-lock").classList.toggle("on", s.ride.palette_lock);
   if (grid) grid.update(s.fixtures, s.haze);
@@ -196,5 +244,7 @@ export function init() {
     grid.build(cat);
   });
   onState(update);
+  $("#ride-exclude").onclick = () => setExcluding(!excluding);
+  onLeave("autopilot", () => { if (excluding) setExcluding(false); });
   onShow("autopilot", load);
 }

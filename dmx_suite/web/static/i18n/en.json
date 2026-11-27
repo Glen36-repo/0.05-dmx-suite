@@ -1183,7 +1183,7 @@
  "info.autopilot.autopilot.title": "Autopilot",
  "info.autopilot.autopilot.text": "Turns the autopilot on: it picks looks from the FX banks to suit the mood, LOW, MID, HIGH, or Auto to follow the drums. Hold keeps the look; Previous and Next step through looks. It never touches haze.",
  "info.autopilot.fx.title": "FX banks",
- "info.autopilot.fx.text": "The Move, Flash and Colour FX the autopilot chooses from; only what this rig can do is offered. Tap one to use it now. Flash FX play over everything below them while held.",
+ "info.autopilot.fx.text": "The Move, Flash and Colour FX the autopilot chooses from; only what this rig can do is offered. Tap one to use it now (green: running). Exclude… or holding a type down leaves it out of the autopilot: it turns red and stays here to play by hand. Flash FX play over everything while held.",
  "info.autopilot.palette.title": "Palette",
  "info.autopilot.palette.text": "The colours the autopilot uses. Lock keeps this palette, so the autopilot stops changing it.",
  "info.autopilot.feel.title": "Feel",
@@ -1284,5 +1284,12 @@
  "info.files.history.text": "Every change since the app started, newest first (Ctrl+Z / Ctrl+Y). Older changes: the backups below.",
  "info.files.backups.title": "Backups",
  "info.files.backups.text": "Every change from here or from Claude keeps the previous file. Restore puts one file back.",
- "layout.unsaved_leave": "Layout not saved: Live and Autopilot show the saved one. Save layout to use it."
+ "layout.unsaved_leave": "Layout not saved: Live and Autopilot show the saved one. Save layout to use it.",
+ "autopilot.exclude": "Exclude…",
+ "autopilot.exclude_done": "Done excluding",
+ "autopilot.exclude_tip": "Leave types out of the autopilot: they turn red and it never picks them (you can still play them)",
+ "autopilot.exclude_help": "Tap a type to leave it out of the autopilot (red), or to put it back. Tap Done when finished. Holding a type down does the same at any time.",
+ "autopilot.excluded_tip": "left out of the autopilot",
+ "autopilot.excluded_toast": "{name}: left out of the autopilot",
+ "autopilot.included_toast": "{name}: back in the autopilot"
 }

@@ -515,5 +515,101 @@ class VelocityColour(Effect):
             run.set_colour(f, scale(c, lv))
 
 
+SWEEP_ORDERS = {"cycle": ("right", "left", "down", "up"), "left_right": ("right", "left"), "up_down": ("down", "up"),
+                "right": ("right",), "left": ("left",), "down": ("down",), "up": ("up",)}
+
+
+class DirSweep(Effect):
+    name = "dir_sweep"
+    label = "Directional sweep"
+    help = ("A band of colour crosses the rig by where the lights are, one direction per pass: left to right, "
+            "right to left, top to bottom (back to front), bottom to top. With a gap, the rig is dark between passes.")
+    per_pixel = True
+    params = [
+        Param("colour", "colour", "white"),
+        Param("background", "colour", "off"),
+        Param("period_s", "number", 2.5, lo=0.2, label="pass (s)", help="one pass across the rig, gap included"),
+        Param("width", "number", 0.25, lo=0.02, hi=1, help="the band, as a share of the rig"),
+        Param("gap", "number", 0.0, lo=0, hi=0.9, help="share of each pass with the rig dark (background) after the band"),
+        Param("directions", "choice", "cycle", choices=tuple(SWEEP_ORDERS),
+              help="cycle: right, left, down, up in turn; or one axis, or one direction"),
+    ]
+
+    @staticmethod
+    def position(units: list[Unit], direction: str) -> list[float]:
+        """0-1 across the lights in the direction of travel (by where they are on the layout)."""
+        horizontal = direction in ("right", "left")
+        vals = [un.x if horizontal else un.y for un in units]
+        lo, hi = (min(vals), max(vals)) if vals else (0.0, 0.0)
+        out = [(v - lo) / (hi - lo) if hi > lo else 0.5 for v in vals]
+        return [1 - v for v in out] if direction in ("left", "up") else out
+
+    def render(self, p: dict[str, Any], run: Run) -> None:
+        units = run.units(True)
+        x = run.t / p["period_s"]
+        order = SWEEP_ORDERS[p["directions"]]
+        direction = order[math.floor(x) % len(order)]
+        f = x % 1.0
+        lit_part = 1.0 - p["gap"]
+        w = p["width"] / 2
+        centre = -w + (f / lit_part) * (1 + 2 * w) if f < lit_part else None  # None: the dark gap
+        for un, pos in zip(units, self.position(units, direction)):
+            d = abs(pos - centre) if centre is not None else w
+            lv = 0.5 * (1 + math.cos(math.pi * d / w)) if d < w else 0.0
+            run.put(un, mix(p["background"], p["colour"], lv))
+        run.flush()
+
+
+class RandomFlash(Effect):
+    name = "random_flash"
+    label = "Random flash"
+    help = ("Pulses of light through random bits of the rig, several at once, each fading out with a tail. "
+            "On a pixel bar a flash is a few pixels; anything not flashing is the background (off by default).")
+    per_pixel = True
+    params = [
+        Param("colour", "colour", "white"),
+        Param("background", "colour", "off"),
+        Param("rate_hz", "number", 6.0, lo=0.2, hi=25, label="flashes (/s)"),
+        Param("count", "int", 1, lo=1, hi=8, help="flashes started at a time"),
+        Param("tail_s", "number", 0.8, lo=0.05, hi=4, label="tail (s)", help="how long a flash takes to fade out"),
+        Param("bit", "int", 3, lo=1, hi=64, help="pixels in one flash on a pixel bar"),
+        Param("seed", "text", lambda ctx: ctx.what),
+    ]
+
+    def period(self, p: dict[str, Any]) -> float | None:
+        return 1.0 / float(p["rate_hz"])
+
+    def render(self, p: dict[str, Any], run: Run) -> None:
+        units = run.units(True)
+        fids = list(dict.fromkeys(un.fid for un in units))
+        if not fids:
+            return
+        dt = 1.0 / p["rate_hz"]
+        now = math.floor(run.t / dt)
+        back = math.ceil(p["tail_s"] / dt) + 1
+        lit: dict[tuple[str, int | None], float] = {}
+        for k in range(max(0, now - back), now + 1):
+            age = run.t - k * dt
+            if age < 0 or age > p["tail_s"]:
+                continue
+            lv = (1 - age / p["tail_s"]) ** 2  # bright at once, then a soft tail
+            for j in range(p["count"]):
+                rng = random.Random(seed(p["seed"], k, j))
+                fid = fids[rng.randrange(len(fids))]
+                n = run.pixels(fid)
+                if n > 1:
+                    b = min(p["bit"], n)
+                    start = rng.randrange(n - b + 1)
+                    keys: list[tuple[str, int | None]] = [(fid, i) for i in range(start, start + b)]
+                else:
+                    keys = [(fid, None)]
+                for key in keys:
+                    lit[key] = max(lit.get(key, 0.0), lv)
+        for un in units:
+            lv = lit.get((un.fid, un.pixel), lit.get((un.fid, None), 0.0))
+            run.put(un, mix(p["background"], p["colour"], lv))
+        run.flush()
+
+
 RIDE = [Move, Palette, ColourFade, Split, Pulse, Twinkle, Comet, Bounce, Fill, Fire, Lightning, Police,
-        KickPump, SnareHit, TomRoll, CymbalShimmer, FillBuild, VelocityColour]
+        KickPump, SnareHit, TomRoll, CymbalShimmer, FillBuild, VelocityColour, DirSweep, RandomFlash]

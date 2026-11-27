@@ -663,3 +663,92 @@ def test_leaving_layout_unsaved_says_so_and_save_reaches_live(ui):
     page.wait_for_selector("#layout-save:disabled")
     go(page, "live")
     wait_wash_right_of(page, "#live-grid", before)
+
+
+# ---------------------------------------------------------------- Autopilot: excluded types (v4.1)
+
+
+def rig_exclude_fx(app, want=None, page=None):
+    """The rig file's excluded types; with `want`, waits for the save (the button turns red at once)."""
+    import yaml as _yaml
+
+    for _ in range(80):
+        data = _yaml.safe_load((app.files.root / "rigs" / f"{app.names[0]}.yaml").read_text(encoding="utf-8"))
+        got = (data.get("auto") or {}).get("exclude_fx") or []
+        if want is None or got == want:
+            return got
+        page.wait_for_timeout(25)
+    return got
+
+
+def test_exclude_mode_turns_types_red_and_keeps_them(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-colour [data-fx=rainbow]")
+    before = app.ride_pick.colour
+    page.click("#ride-exclude")
+    assert "on" in page.get_attribute("#ride-exclude", "class")
+    page.click("#ride-colour [data-fx=rainbow]")
+    page.wait_for_selector("#ride-colour [data-fx=rainbow].excluded")
+    assert rig_exclude_fx(app, ["rainbow"], page) == ["rainbow"] and app.ride_pick.colour == before  # not played
+    page.click("#ride-flash [data-flash=strobe]", force=True)  # Flash FX can't be excluded
+    page.wait_for_timeout(200)
+    assert rig_exclude_fx(app) == ["rainbow"]
+    page.click("#ride-exclude")  # Done
+    page.click("#ride-colour [data-fx=rainbow]")  # a tap plays it again, excluded or not
+    page.wait_for_selector("#ride-colour [data-fx=rainbow].excluded.sel")
+    assert app.ride_pick.colour == "rainbow"
+    go(page, "live")
+    go(page, "autopilot")  # still there, still red, after leaving the page
+    page.wait_for_selector("#ride-colour [data-fx=rainbow].excluded")
+    page.click("#ride-exclude")
+    page.click("#ride-colour [data-fx=rainbow]")  # put back
+    page.wait_for_selector("#ride-colour [data-fx=rainbow]:not(.excluded)")
+    assert rig_exclude_fx(app, [], page) == []
+
+
+def test_long_press_excludes_without_playing(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-move [data-fx=circle]")
+    before = app.ride_pick.move
+    x, y = centre(page, "#ride-move [data-fx=circle]")
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.wait_for_timeout(750)
+    page.mouse.up()
+    page.wait_for_selector("#ride-move [data-fx=circle].excluded")
+    assert rig_exclude_fx(app, ["circle"], page) == ["circle"] and app.ride_pick.move == before
+
+
+def test_running_type_is_green_and_excluded_red(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-colour [data-fx=pulse]")
+    page.click("#ride-colour [data-fx=pulse]")
+    page.wait_for_selector("#ride-colour [data-fx=pulse].sel")  # the pointer stays on it, like a finger on a touch screen
+    ok, bad = page.evaluate("""() => { const s = getComputedStyle(document.documentElement);
+        return [s.getPropertyValue('--ok').trim(), s.getPropertyValue('--bad').trim()]; }""")
+    border = page.eval_on_selector("#ride-colour [data-fx=pulse]", "b => getComputedStyle(b).borderTopColor")
+    probe = page.evaluate("c => { const d = document.createElement('div'); d.style.color = c; document.body.append(d); "
+                          "const v = getComputedStyle(d).color; d.remove(); return v; }", ok)
+    assert border == probe  # green: running now
+    app.exclude_fx("twinkle", True)
+    go(page, "live")
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-colour [data-fx=twinkle].excluded")
+    bg = page.eval_on_selector("#ride-colour [data-fx=twinkle]", "b => getComputedStyle(b).backgroundColor")
+    assert bg != page.eval_on_selector("#ride-colour [data-fx=static]", "b => getComputedStyle(b).backgroundColor")
+    assert bad
+
+
+def test_one_green_button_per_bank(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-move [data-fx=swim]")
+    page.click("#ride-move [data-fx=swim]")
+    page.wait_for_selector("#ride-move [data-fx=swim].sel")
+    page.wait_for_function("document.querySelectorAll('#ride-move .ride-fx.sel').length === 1")  # not "No movement" too
+    page.click("#ride-move [data-fx='']")
+    page.wait_for_function("document.querySelector(\"#ride-move [data-fx='']\").classList.contains('sel')")
+    assert page.locator("#ride-move .ride-fx.sel").count() == 1

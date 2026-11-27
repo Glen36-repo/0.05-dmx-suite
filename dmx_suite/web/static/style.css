@@ -395,7 +395,13 @@ button.big { min-height: var(--perform-h); padding: 0 18px; font-size: 16px; fon
 .pair { display: flex; flex-wrap: wrap; gap: 0 28px; }
 .pair > * { min-width: 0; max-width: 100%; }
 .sep-v { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
-.ride-fx.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+/* the type running now is green; a type left out of the autopilot is red and stays on the page (v4.1) */
+button.ride-fx.sel { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 34%, var(--panel)); }
+button.ride-fx.excluded { border-color: color-mix(in srgb, var(--bad) 70%, var(--line)); background: color-mix(in srgb, var(--bad) 26%, var(--panel)); }
+button.ride-fx.excluded.sel { background: color-mix(in srgb, var(--ok) 34%, var(--panel)); border: 2px dashed var(--bad); } /* played by hand */
+#page-autopilot.excluding .ride-fx:not(.flash) { outline: 1px dashed color-mix(in srgb, var(--bad) 60%, transparent); outline-offset: 1px; }
+#page-autopilot.excluding .ride-fx.flash { opacity: .45; pointer-events: none; } /* Flash FX are played by hand only */
+#ride-exclude.on { background: var(--bad); border-color: var(--bad); color: #fff; }
 .ride-fx.flash { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
 .ride-fx.flash.on { background: #fff; color: #000; }
 .ride-pal { min-height: 42px; }

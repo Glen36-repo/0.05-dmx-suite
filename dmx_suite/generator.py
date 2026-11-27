@@ -57,15 +57,16 @@ class Context:
 
 
 class Generator:
-    def __init__(self, ctx: Context, seed: str = "gen") -> None:
+    def __init__(self, ctx: Context, seed: str = "gen", autopilot: bool = False) -> None:
         self.ctx = ctx
+        self.autopilot = autopilot  # re-roll / more like this on the Autopilot page: skip excluded types
         self.seed = str(seed)
         self.rng = random.Random(zlib.crc32(self.seed.encode()))
 
     # ------------------------------------------------------------------ picking
 
     def _items(self, bank: str, mood: str, style: dict[str, Any] | None) -> list[str | None]:
-        ok: list[str | None] = [i.id for i in available(self.ctx.ar, bank, mood)]
+        ok: list[str | None] = [i.id for i in available(self.ctx.ar, bank, mood, skip_excluded=self.autopilot)]
         allow = (style or {}).get(bank)
         if allow is not None:
             ok = [x for x in ok if x in allow] or ([] if bank == "drum" else ok)

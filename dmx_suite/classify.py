@@ -16,6 +16,7 @@ Override per rig config (`auto:` in the rig file):
     auto:
       classes: {uk_a: head, wash_3: strobe}     # the class to treat a light as
       exclude: [smoke_2, wash_4]                # leave out of the auto show
+      exclude_fx: [static, police]              # FX types the autopilot never picks (still playable by hand)
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ def natural_class(fx: Fixture) -> str | None:
 class AutoConfig:
     classes: dict[str, str] = field(default_factory=dict)  # fixture id -> class (override)
     exclude: list[str] = field(default_factory=list)
+    exclude_fx: list[str] = field(default_factory=list)  # FX bank item ids the autopilot leaves out
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {}
@@ -57,14 +59,16 @@ class AutoConfig:
             d["classes"] = dict(self.classes)
         if self.exclude:
             d["exclude"] = list(self.exclude)
+        if self.exclude_fx:
+            d["exclude_fx"] = list(self.exclude_fx)
         return d
 
 
 def parse_auto(d: Any, patch: Patch) -> AutoConfig:
     if d is None:
         return AutoConfig()
-    if not isinstance(d, dict) or set(d) - {"classes", "exclude"}:
-        raise ConfigError("auto: classes {light: class} and exclude [lights]")
+    if not isinstance(d, dict) or set(d) - {"classes", "exclude", "exclude_fx"}:
+        raise ConfigError("auto: classes {light: class}, exclude [lights] and exclude_fx [FX types]")
     classes = d.get("classes") or {}
     if not isinstance(classes, dict):
         raise ConfigError("auto classes: {light: class}")
@@ -86,7 +90,19 @@ def parse_auto(d: Any, patch: Patch) -> AutoConfig:
     for fid in excl:
         if fid not in patch.fixtures:
             raise ConfigError(f"auto exclude: unknown fixture {fid!r}")
-    return AutoConfig({str(k): str(v) for k, v in classes.items()}, [str(x) for x in excl])
+    xfx = d.get("exclude_fx") or []
+    if not isinstance(xfx, list):
+        raise ConfigError("auto exclude_fx: a list of FX types")
+    from .fxbanks import BY_ID  # fxbanks imports this module
+
+    for k in xfx:
+        item = BY_ID.get(str(k))
+        if item is None:
+            raise ConfigError(f"auto exclude_fx: unknown FX type {k!r}")
+        if item.bank == "flash":
+            raise ConfigError(f"auto exclude_fx: {k} is a Flash FX (played by hand, never by the autopilot)")
+    return AutoConfig({str(k): str(v) for k, v in classes.items()}, [str(x) for x in excl],
+                      list(dict.fromkeys(str(x) for x in xfx)))
 
 
 @dataclass
@@ -100,6 +116,7 @@ class AutoRig:
     right: list[str]
     pixels: int = 0  # pixel cells across the pixel lights
     has_layout: bool = False
+    excluded_fx: frozenset[str] = frozenset()  # FX types the autopilot leaves out (auto: exclude_fx)
 
     def ids(self, *classes: str) -> list[str]:
         out: list[str] = []
@@ -117,7 +134,7 @@ class AutoRig:
 
     def summary(self) -> dict[str, Any]:
         return {"classes": {c: list(v) for c, v in self.classes.items() if v}, "excluded": self.excluded,
-                "pixels": self.pixels, "left": self.left, "right": self.right}
+                "pixels": self.pixels, "left": self.left, "right": self.right, "excluded_fx": sorted(self.excluded_fx)}
 
 
 def auto_rig(rig: Any) -> AutoRig:
@@ -144,4 +161,5 @@ def auto_rig(rig: Any) -> AutoRig:
     left = [f for f in placed if xs[f] < mid] or [f for i, f in enumerate(placed) if i % 2 == 0]
     right = [f for f in placed if f not in left]
     pixels = sum(rig.patch.fixtures[f].type.pixels for f in classes["pixel"])
-    return AutoRig(classes, of, excluded, left, right, pixels, True)  # full_layout always places every light
+    # full_layout always places every light
+    return AutoRig(classes, of, excluded, left, right, pixels, True, frozenset(cfg.exclude_fx))

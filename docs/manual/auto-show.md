@@ -6,7 +6,8 @@ The auto show builds looks from **FX banks** for whatever rig you have, with no 
 
 - along the top: **Autopilot** on/off, mood **LOW / MID / HIGH** (or **Auto mood**: it follows the energy), **Hold**, **◀ Previous**, **Next look ▶**, and the energy bar
 - the layout strip shows what the lights are doing
-- **Move FX** on the left, **Flash FX** in the middle (held while your finger is on them), **Colour FX** on the right, **Drum FX** below; tap one to use it now
+- **Move FX** on the left, **Flash FX** in the middle (held while your finger is on them), **Colour FX** on the right, **Drum FX** below; tap one to use it now. The type running now is **green**
+- **Exclude…** leaves types out of the autopilot: tap Exclude…, tap the types (they turn **red**), then **Done excluding**. Holding a type down for about half a second does the same at any time. Tap a red type again in Exclude mode, or hold it, to put it back. Excluded types stay on the page and still play when you tap them; the autopilot, **Re-roll** and **More like this** never pick them. They're saved in the rig file, so they stay out for every show on that rig, and this works under gig lock. Flash FX are only played by hand, so they can't be excluded
 - **Palette**, with **Lock palette** so the autopilot keeps it
 - **Feel controls**: speed, fade, fan, size, shift, for everything or per bank
 - the **Haze** controls are here too, but they're separate: the auto show never touches haze
@@ -94,13 +95,14 @@ Haze is never part of the auto show. A new light joins as soon as it's patched. 
 auto:
   classes: {wash_3: strobe}
   exclude: [wash_4]
+  exclude_fx: [static, police]   # types the autopilot never picks (the Exclude… button writes this)
 ```
 
 ## The banks
 
 **Move FX** (heads, inside the head limits): pan sweep, tilt sweep, circle, figure 8, fan out/in, swim, float, centre/kit (a head point tagged `band`), random positions (head points tagged `safe`, moving dark), crossfire, audience sweep, ballyhoo, mirror sweep.
 
-**Colour FX:** static palette, rainbow, colour chase, chase in, chase out, carousel, sparkle, twinkle, colour fade, split, wave, pulse; pixel bars: bounce, comet, fill/unfill; across the layout: gradient sweep, radial, plasma, bars; themed: fire, lightning, police.
+**Colour FX:** static palette, rainbow, colour chase, chase in, chase out, carousel, sparkle, twinkle, colour fade, split, wave, pulse, random flash (pulses of light through random bits of the rig, several at once, each fading out); pixel bars: bounce, comet, fill/unfill; across the layout: gradient sweep, radial, plasma, bars, directional sweep (a band of colour crossing the rig, one direction per pass: left to right, right to left, top to bottom, bottom to top), sweep with dark between (the same over black, with the rig dark between passes); themed: fire, lightning, police.
 
 **Drum-reactive** (from your named inputs' roles, MIDI only): kick pump, snare hit, tom roll, cymbal shimmer, fill build, velocity colour.
 
@@ -108,7 +110,7 @@ auto:
 
 There's no strobe rate limit: strobe and lightning run at the rate set.
 
-All of these are also ordinary effects in the scene builder (`move`, `palette`, `colour_fade`, `split`, `pulse`, `twinkle`, `comet`, `bounce`, `fill`, `fire`, `lightning`, `police`, `kick_pump`, `snare_hit`, `tom_roll`, `cymbal_shimmer`, `fill_build`, `velocity_colour`).
+All of these are also ordinary effects in the scene builder (`move`, `palette`, `colour_fade`, `split`, `pulse`, `twinkle`, `comet`, `bounce`, `fill`, `fire`, `lightning`, `police`, `kick_pump`, `snare_hit`, `tom_roll`, `cymbal_shimmer`, `fill_build`, `velocity_colour`, `dir_sweep`, `random_flash`). In the scene builder, `dir_sweep` has **directions** (cycle, left_right, up_down, or one direction) and **gap** (the dark share of each pass); `random_flash` has flashes a second, **count** (started at a time), **tail** and **bit** (pixels per flash on a bar).
 
 ## Rig size
 
