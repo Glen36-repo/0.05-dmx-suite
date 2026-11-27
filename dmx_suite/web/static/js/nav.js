@@ -1,5 +1,6 @@
 // Left-hand page menu (a bottom bar on phones). Views register what to do when shown.
 import { $, $$, remember } from "./dom.js";
+import { closeInfo } from "./info.js";
 
 const shown = {};
 const left = {};
@@ -9,6 +10,7 @@ export let current = "live";
 
 export function go(page) {
   if (page !== current) for (const fn of left[current] || []) fn();
+  closeInfo(false);
   current = page;
   $$("#menu [data-page]").forEach((b) => {
     b.classList.toggle("on", b.dataset.page === page);

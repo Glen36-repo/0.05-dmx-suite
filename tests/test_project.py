@@ -154,6 +154,7 @@ def test_every_ui_text_key_exists():
     info = set(re.findall(r'data-info="([^"]+)"', (static / "index.html").read_text(encoding="utf-8")))
     for js in (static / "js").rglob("*.js"):
         info |= set(re.findall(r'infoButton\("([a-z0-9_]+\.[a-z0-9_]+)"\)', js.read_text(encoding="utf-8")))
+    info |= {f"haze.{m}" for m in ("manual", "pulse", "boost", "safety")}  # hazepanel.js: infoButton(`haze.${mode}`)
     used |= {f"info.{k}.{part}" for k in info for part in ("title", "text")} | {"info.contents"}  # manual page (server)
     used |= {f"haze.u_{u}" for u in ("pct", "s", "min")}
     used |= {f"haze.f_{k}" for k in ("level", "pulse_level", "pulse_on_s", "pulse_every_s", "boost_level", "boost_s",

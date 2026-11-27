@@ -31,6 +31,9 @@ body.offline .top { border-bottom-color: var(--bad); }
 body.offline main { opacity: .55; pointer-events: none; }
 
 .health { display: flex; gap: 6px; padding: 6px 14px; overflow-x: auto; border-bottom: 1px solid var(--line); min-height: 34px; }
+.health-row { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.health-row .health { flex: 1; min-width: 0; border-bottom: none; }
+.health-row > button.info { flex: none; margin-right: 8px; }
 .tile { display: flex; gap: 6px; align-items: center; padding: 2px 8px; border-radius: 6px; background: var(--panel); white-space: nowrap; font-size: 13px; }
 .tile.sep { margin-left: 6px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }

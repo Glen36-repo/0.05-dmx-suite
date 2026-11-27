@@ -25,6 +25,7 @@ def used_info_keys():
     keys = set(re.findall(r'data-info="([^"]+)"', (STATIC / "index.html").read_text(encoding="utf-8")))
     for js in (STATIC / "js").rglob("*.js"):
         keys |= set(re.findall(r'infoButton\("([a-z0-9_]+\.[a-z0-9_]+)"\)', js.read_text(encoding="utf-8")))
+    keys |= {f"haze.{m}" for m in ("manual", "pulse", "boost", "safety")}  # hazepanel.js: infoButton(`haze.${mode}`)
     return keys
 
 
@@ -54,7 +55,7 @@ def test_open_close_by_second_tap_outside_tap_and_esc(ui):
     page.wait_for_selector(POP, state="hidden")
     page.click(btn)
     page.wait_for_selector(POP)
-    page.click("#page-live h2[data-i18n='live.setlist']")  # anywhere else
+    page.click("#page-live h2 span[data-i18n='live.setlist']")  # anywhere else
     page.wait_for_selector(POP, state="hidden")
     page.click(btn)
     page.keyboard.press("Escape")
@@ -69,6 +70,9 @@ def test_info_in_summary_doesnt_fold_the_section(ui):
     page.wait_for_selector(POP)
     assert page.get_attribute("#haze-settings", "open") is None  # still folded
     assert "rule 5" in page.inner_text("#info-pop")
+    page.click("#haze-settings summary span[data-i18n='haze.settings']")  # the rest of the summary still folds
+    page.wait_for_selector(POP, state="hidden")
+    assert page.get_attribute("#haze-settings", "open") is not None
 
 
 def test_info_on_the_stage_doesnt_select_lights(ui):
@@ -288,3 +292,98 @@ def test_manual_page_in_the_browser(ui):
     page.click("a[href='/manual/README.md']")
     page.wait_for_selector("h1")
     assert "manual" in page.inner_text("h1").lower()
+
+
+# ---------------------------------------------------------------- every button on every page
+
+
+def test_every_manual_link_has_a_button():
+    assert set(info_manual()) <= used_info_keys()
+
+
+def check_visible_buttons(page, scope):
+    """Every visible ⓘ in `scope` opens its own text and closes again; returns the keys seen."""
+    s = strings()
+    seen = set()
+    for i in range(page.locator(f"{scope} button.info").count()):
+        btn = page.locator(f"{scope} button.info").nth(i)
+        if not btn.is_visible():
+            continue
+        key = btn.get_attribute("data-info")
+        btn.click()
+        page.wait_for_selector(f"#info-pop:not(.hidden)[data-key='{key}']")
+        assert page.inner_text("#info-pop .info-pop-title") == s[f"info.{key}.title"]
+        assert page.inner_text("#info-pop .info-pop-text") == s[f"info.{key}.text"]
+        more = page.locator("#info-pop .info-pop-more")
+        if more.count():
+            assert more.get_attribute("data-manual") == info_manual()[key]
+        page.keyboard.press("Escape")
+        page.wait_for_selector(POP, state="hidden")
+        seen.add(key)
+    return seen
+
+
+def test_every_button_on_every_page(ui):
+    page, *_ = ui
+    from test_ui import PAGES
+
+    seen = check_visible_buttons(page, ".health-row")
+    go(page, "live")
+    page.evaluate("document.querySelector('#generated-section').classList.remove('hidden')")  # only with generated shows
+    for name in PAGES:
+        go(page, name)
+        page.wait_for_timeout(150)
+        page.eval_on_selector_all(f"#page-{name} details", "ds => ds.forEach((d) => { d.open = true; })")  # folded too
+        page.wait_for_timeout(150)
+        seen |= check_visible_buttons(page, f"#page-{name}")
+    page.click("#bell")
+    seen |= check_visible_buttons(page, "#alerts-panel")
+    page.click("#alerts-close")
+    go(page, "layout")
+    page.click("#lp-views [data-view=addresses]")
+    seen |= check_visible_buttons(page, "#page-layout")
+    for tab in ("rig",):
+        go(page, "fixtures")
+        page.click(f"#fx-tabs [data-tab={tab}]")
+        seen |= check_visible_buttons(page, "#page-fixtures")
+    go(page, "scenes")  # a layer's own, once one is picked
+    page.select_option("#scene-pick", "blue_chase")
+    page.wait_for_function("document.querySelectorAll('#layers li').length === 5")
+    page.click("#layers li >> nth=0")
+    seen |= check_visible_buttons(page, "#page-scenes")
+    # the step editor's own: bar, list, programmer, record, live, pixels
+    from test_ui_v4 import open_steps
+
+    open_steps(page)
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#step-programmer [data-tab=pixels]")
+    seen |= check_visible_buttons(page, "#page-scenes")
+    missing = used_info_keys() - seen
+    assert missing == set(), "never shown: " + ", ".join(sorted(missing))
+
+
+def test_more_in_the_manual_opens_the_right_section(ui):
+    page, *_ = ui
+    go(page, "layout")
+    page.click("#lp-views [data-view=addresses]")
+    page.click("button.info[data-info='layout.addresses']")
+    with page.context.expect_page() as new:
+        page.click("#info-pop .info-pop-more")
+    tab = new.value
+    tab.wait_for_load_state()
+    assert tab.url.endswith("/manual/layout.md#addresses") and tab.is_visible("h2#addresses")
+    assert page.is_visible("#page-layout.on")  # the app stays where it was
+    tab.close()
+
+
+def test_desktop_window_opens_the_manual_in_a_panel(ui):
+    page, *_ = ui
+    page.evaluate("window.pywebview = { api: {} }")
+    go(page, "live")
+    page.click("button.info[data-info='live.shows']")
+    page.click("#info-pop .info-pop-more")
+    page.wait_for_selector("#manual-panel:not(.hidden) iframe")
+    assert page.get_attribute("#manual-panel iframe", "src") == "/manual/shows.md"
+    assert page.is_visible("#page-live.on") and page.is_visible("#master")  # Live is still there, MASTER too
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#manual-panel", state="hidden")

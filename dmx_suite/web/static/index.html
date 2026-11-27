@@ -21,13 +21,12 @@
   <button class="lock" id="giglock" data-i18n="top.giglock" data-i18n-title="top.giglock_tip"></button>
   <button class="bell" id="bell" data-i18n-title="alerts.bell_tip"><span aria-hidden="true">🔔</span><span id="bell-count"></span></button>
 </header>
-<div class="health" id="health" data-i18n-title="top.health_tip"></div>
+<div class="health-row"><div class="health" id="health" data-i18n-title="top.health_tip"></div><button type="button" class="info" data-info="top.status" aria-expanded="false">ⓘ</button></div>
 <div class="banners" id="banners" aria-live="assertive"></div>
 <div class="alerts-panel hidden" id="alerts-panel">
-  <div class="row"><h2 data-i18n="alerts.title"></h2><span class="grow"></span>
+  <div class="row"><h2><span data-i18n="alerts.title"></span> <button type="button" class="info" data-info="top.alerts" aria-expanded="false">ⓘ</button></h2><span class="grow"></span>
     <label class="row"><input type="checkbox" id="alerts-quiet"><span data-i18n="alerts.quiet"></span></label>
     <button id="alerts-close" class="mini">✕</button></div>
-  <p class="muted" data-i18n="alerts.help"></p>
   <ul class="alerts-list" id="alerts-list"></ul>
 </div>
 
@@ -62,7 +61,7 @@
       <h2><span data-i18n="live.shows"></span> <button type="button" class="info" data-info="live.shows" aria-expanded="false">ⓘ</button></h2>
       <div class="btn-grid" id="shows" data-order="shows"></div>
       <div class="btn-grid sets" id="sets"></div>
-      <h2 data-i18n="live.scenes"></h2>
+      <h2><span data-i18n="live.scenes"></span> <button type="button" class="info" data-info="live.scenes" aria-expanded="false">ⓘ</button></h2>
       <div class="btn-grid" id="scenes" data-order="scenes"></div>
       <details class="section" id="generated-section" data-remember="live.generated">
         <summary><span data-i18n="live.generated"></span> <button type="button" class="info" data-info="live.generated" aria-expanded="false">ⓘ</button></summary>
@@ -79,7 +78,7 @@
         <button data-cmd="tempo" data-bpm="off" data-i18n="live.tempo_off"></button>
         <span class="muted" id="preview"></span>
       </div>
-      <h2 data-i18n="live.setlist"></h2>
+      <h2><span data-i18n="live.setlist"></span> <button type="button" class="info" data-info="live.setlist" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <select id="setlist"></select>
         <button id="setlist-go" data-i18n="live.start"></button>
@@ -87,7 +86,7 @@
         <button data-cmd="song" data-song="next" data-i18n="live.next_song"></button>
       </div>
       <ol class="songs" id="songs"></ol>
-      <h2 data-i18n="live.masters"></h2>
+      <h2><span data-i18n="live.masters"></span> <button type="button" class="info" data-info="live.masters" aria-expanded="false">ⓘ</button></h2>
       <div class="faders" id="faders"></div>
       <h2 data-i18n="live.haze"></h2>
       <div class="row wrap">
@@ -113,7 +112,7 @@
     <section id="page-monitor" class="page wide">
       <div class="mon-panes" id="mon-panes">
         <div class="mon-pane" id="mon-dmx" data-pane="dmx">
-          <div class="mon-head"><h2 data-i18n="monitor.dmx"></h2><span class="grow"></span>
+          <div class="mon-head"><h2><span data-i18n="monitor.dmx"></span> <button type="button" class="info" data-info="monitor.dmx" aria-expanded="false">ⓘ</button></h2><span class="grow"></span>
             <select id="mon-uni" data-i18n-title="monitor.universe"></select>
             <select id="mon-out" data-i18n-title="monitor.interface"></select>
             <div class="seg-row" id="mon-dmx-view">
@@ -131,7 +130,7 @@
           <div class="mon-body" id="mon-dmx-body"></div>
         </div>
         <div class="mon-pane" id="mon-midi-in" data-pane="midi-in">
-          <div class="mon-head"><h2 data-i18n="monitor.midi_in"></h2><span class="grow"></span>
+          <div class="mon-head"><h2><span data-i18n="monitor.midi_in"></span> <button type="button" class="info" data-info="monitor.midi_in" aria-expanded="false">ⓘ</button></h2><span class="grow"></span>
             <input id="mon-in-port" class="mini" data-i18n-placeholder="monitor.f_port">
             <input id="mon-in-ch" class="mini num" type="number" min="0" max="16" data-i18n-placeholder="monitor.f_channel">
             <select id="mon-in-type"><option value="" data-i18n="monitor.f_all_types"></option>
@@ -151,7 +150,7 @@
             <tbody id="mon-in-log"></tbody></table></div>
         </div>
         <div class="mon-pane" id="mon-midi-out" data-pane="midi-out">
-          <div class="mon-head"><h2 data-i18n="monitor.midi_out"></h2><span class="grow"></span>
+          <div class="mon-head"><h2><span data-i18n="monitor.midi_out"></span> <button type="button" class="info" data-info="monitor.midi_out" aria-expanded="false">ⓘ</button></h2><span class="grow"></span>
             <button class="mini" data-act="pause" data-i18n="monitor.pause"></button>
             <button class="mini" data-act="clear" data-i18n="monitor.clear"></button>
             <button class="mini" data-act="csv" data-i18n="monitor.csv"></button>
@@ -178,7 +177,7 @@
     <section id="page-layout" class="page wide">
       <div class="lp-head">
         <div class="tabs uni-tabs" id="lp-uni" role="tablist" data-i18n-title="layout.uni_tip"></div>
-        <div class="lp-status" id="lp-status"></div>
+        <div class="lp-status" id="lp-status"></div><button type="button" class="info" data-info="layout.universes" aria-expanded="false">ⓘ</button>
         <span class="grow"></span>
         <div class="lp-actions">
           <span class="dirty-dot hidden" id="layout-dirty" data-i18n-title="layout.unsaved"></span>
@@ -213,7 +212,7 @@
       <div class="stage-over"><div class="grid-host edit" id="layout-grid"></div>
         <button type="button" class="info on-stage" data-info="layout.stage" aria-expanded="false">ⓘ</button></div>
       <div class="arrange" id="arrange" role="toolbar" aria-orientation="vertical">
-        <div class="ar-group" data-group="align"><div class="ar-h" data-i18n="layout.g_align"></div>
+        <div class="ar-group" data-group="align"><div class="ar-h"><span data-i18n="layout.g_align"></span> <button type="button" class="info" data-info="layout.arrange" aria-expanded="false">ⓘ</button></div>
           <div class="seg seg3">
             <button class="icon" data-align="left" data-icon="align-left" data-key="Alt+←" data-tip="layout.align_left"></button>
             <button class="icon" data-align="hcentre" data-icon="align-hcentre" data-tip="layout.align_hcentre"></button>
@@ -261,7 +260,7 @@
       <div class="muted" id="layout-sel"></div>
       <div id="layout-problems-head" class="error hidden"><span data-i18n="layout.problems_help"></span>
         <ul class="layout-problems" id="layout-problems"></ul></div>
-      <h2 data-i18n="groups.title"></h2>
+      <h2><span data-i18n="groups.title"></span> <button type="button" class="info" data-info="layout.groups" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <input id="group-name" maxlength="40" data-i18n-placeholder="groups.name_placeholder">
         <button id="group-new" data-i18n="groups.new"></button>
@@ -269,16 +268,15 @@
         <button id="group-rename" data-i18n="groups.rename"></button>
         <button id="group-delete" class="danger-text" data-i18n="groups.delete"></button>
       </div>
-      <p class="muted" data-i18n="groups.help"></p>
           </div>
           <div id="lp-addresses" class="lp-pane hidden">
-            <div class="row wrap"><span class="muted" data-i18n="layout.addr_help"></span><span class="grow"></span>
+            <div class="row wrap"><button type="button" class="info" data-info="layout.addresses" aria-expanded="false">ⓘ</button><span class="grow"></span>
               <label class="muted" for="lp-out" data-i18n="layout.addr_source"></label><select id="lp-out"></select></div>
             <div id="addr-maps"></div>
           </div>
         </div>
         <aside class="lp-side">
-          <h2 data-i18n="layout.fixture_list"></h2>
+          <h2><span data-i18n="layout.fixture_list"></span> <button type="button" class="info" data-info="layout.fixtures" aria-expanded="false">ⓘ</button></h2>
           <div class="table-scroll"><table class="lp-fixtures">
             <thead><tr><th data-i18n="layout.col_id"></th><th data-i18n="layout.col_type"></th><th data-i18n="layout.col_ch"></th>
               <th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_addr"></th><th data-i18n="layout.col_range"></th>
@@ -287,7 +285,7 @@
           <div class="error hidden" id="lp-clash"></div>
           <div class="row"><button id="lp-patch-save" class="primary" data-i18n="layout.patch_save" disabled></button>
             <button id="lp-patch-revert" data-i18n="layout.patch_revert" disabled></button></div>
-          <h2 data-i18n="layout.routing"></h2>
+          <h2><span data-i18n="layout.routing"></span> <button type="button" class="info" data-info="layout.routing" aria-expanded="false">ⓘ</button></h2>
           <div class="table-scroll"><table class="lp-routing">
             <thead><tr><th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_interface"></th><th data-i18n="layout.col_state"></th>
               <th data-i18n="layout.col_fps"></th><th data-i18n="layout.col_frames"></th><th data-i18n="layout.col_errors"></th><th data-i18n="layout.col_last"></th></tr></thead>
@@ -326,7 +324,7 @@
         </div>
         <div class="builder-right">
           <div id="steps-editor" class="hidden"></div>
-          <h2 id="layers-title" data-i18n="scenes.layers"></h2>
+          <h2><span id="layers-title" data-i18n="scenes.layers"></span> <button type="button" class="info" data-info="scenes.layers" aria-expanded="false">ⓘ</button></h2>
           <ol class="layers" id="layers"></ol>
           <div class="row wrap">
             <button id="layer-add" data-i18n="scenes.add_layer"></button>
@@ -334,10 +332,10 @@
             <button id="look-paste" data-i18n="scenes.paste" data-i18n-title="scenes.paste_tip"></button>
           </div>
           <div class="error hidden" id="scene-error" role="alert"></div>
-          <h2 id="layer-title" data-i18n="scenes.layer"></h2>
+          <h2 id="layer-title"><span data-i18n="scenes.layer"></span> <button type="button" class="info" data-info="scenes.layer" aria-expanded="false">ⓘ</button></h2>
           <div id="layer-form" class="form"></div>
           <details class="scene-more">
-            <summary data-i18n="scenes.scene_settings"></summary>
+            <summary><span data-i18n="scenes.scene_settings"></span> <button type="button" class="info" data-info="scenes.settings" aria-expanded="false">ⓘ</button></summary>
             <div class="form">
               <label class="field"><span data-i18n="scenes.show_colour"></span><span id="scene-show-colour"></span></label>
               <label class="field"><span data-i18n="scenes.length"></span><input id="scene-length" type="number" min="0" step="0.5" class="narrow"></label>
@@ -349,7 +347,7 @@
 
     <!-- SHOWS -->
     <section id="page-shows" class="page">
-      <h2 data-i18n="shows.title"></h2>
+      <h2><span data-i18n="shows.title"></span> <button type="button" class="info" data-info="shows.shows" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <select id="show-pick"></select>
         <button id="show-new" data-i18n="shows.new"></button>
@@ -366,7 +364,7 @@
       </div>
       <div id="set-form" class="form"></div>
 
-      <h2 data-i18n="setlists.title"></h2>
+      <h2><span data-i18n="setlists.title"></span> <button type="button" class="info" data-info="shows.setlists" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <select id="setlist-pick"></select>
         <button id="setlist-new" data-i18n="setlists.new"></button>
@@ -385,6 +383,7 @@
         <select id="panel-pick"></select>
         <button id="override-release" class="danger" data-i18n="override.release_all"></button>
         <label class="check"><input type="checkbox" id="override-edit"><span data-i18n="override.edit"></span></label>
+        <button type="button" class="info" data-info="override.panels" aria-expanded="false">ⓘ</button>
       </div>
       <div class="override-pads" id="override"></div>
       <div id="override-editor" class="hidden">
@@ -407,14 +406,13 @@
 
     <!-- HEADS -->
     <section id="page-heads" class="page">
-      <p class="muted" data-i18n="heads.help"></p>
       <div class="row wrap">
         <button id="fine" data-i18n="heads.fine" data-i18n-title="heads.fine_tip"></button>
         <button data-cmd="release_positions" data-i18n="heads.release_all"></button>
       </div>
       <div class="focus-bar row wrap hidden" id="focus"></div>
       <div class="heads" id="heads"></div>
-      <h2 data-i18n="heads.store_title"></h2>
+      <h2><span data-i18n="heads.store_title"></span> <button type="button" class="info" data-info="heads.store" aria-expanded="false">ⓘ</button></h2>
       <div class="cols c150">
         <input id="point-name" maxlength="40" data-i18n-placeholder="heads.position_placeholder">
         <input id="point-desc" class="span2" data-i18n-placeholder="heads.desc_placeholder">
@@ -422,7 +420,7 @@
         <select id="point-x"></select><select id="point-y"></select><select id="point-z"></select>
         <button id="point-store" data-i18n="heads.save_position"></button>
       </div>
-      <h2 data-i18n="heads.points"></h2>
+      <h2><span data-i18n="heads.points"></span> <button type="button" class="info" data-info="heads.points" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap"><button id="point-walk" data-i18n="heads.walk"></button></div>
       <div id="point-problems"></div>
       <ul class="point-list" id="point-list"></ul>
@@ -442,26 +440,27 @@
         <button id="ap-prev" class="big" data-i18n="autopilot.prev"></button>
         <button id="ap-next" class="big" data-i18n="autopilot.next"></button>
         <button id="ride-learn" data-i18n="autopilot.learn" data-i18n-title="autopilot.learn_help"></button>
+        <button type="button" class="info" data-info="autopilot.autopilot" aria-expanded="false">ⓘ</button>
       </div>
       <div class="row wrap">
         <div class="energy" data-i18n-title="autopilot.energy"><i id="ap-energy"></i></div>
-        <span class="muted" id="ap-state"></span>
+        <span class="muted" id="ap-state"></span><button type="button" class="info" data-info="autopilot.priority" aria-expanded="false">ⓘ</button>
       </div>
       <div class="grid-host strip" id="ride-grid"></div>
       <div class="ride-banks">
-        <div><h2 data-i18n="autopilot.move_fx"></h2><div class="ride-col" id="ride-move"></div></div>
+        <div><h2><span data-i18n="autopilot.move_fx"></span> <button type="button" class="info" data-info="autopilot.fx" aria-expanded="false">ⓘ</button></h2><div class="ride-col" id="ride-move"></div></div>
         <div><h2 data-i18n="autopilot.flash_fx"></h2><div class="ride-col" id="ride-flash"></div></div>
         <div><h2 data-i18n="autopilot.colour_fx"></h2><div class="ride-col" id="ride-colour"></div></div>
       </div>
       <div class="pair">
         <div><h2 data-i18n="autopilot.drum_fx"></h2><div class="row wrap" id="ride-drum"></div></div>
-        <div><h2 data-i18n="autopilot.palette"></h2>
+        <div><h2><span data-i18n="autopilot.palette"></span> <button type="button" class="info" data-info="autopilot.palette" aria-expanded="false">ⓘ</button></h2>
           <div class="row wrap"><span id="ride-palettes" class="row wrap"></span><button id="ride-lock" class="toggle" data-i18n="autopilot.lock"></button></div></div>
       </div>
-      <h2 data-i18n="autopilot.controls"></h2>
+      <h2><span data-i18n="autopilot.controls"></span> <button type="button" class="info" data-info="autopilot.feel" aria-expanded="false">ⓘ</button></h2>
       <div class="tabs" id="ride-tabs" role="tablist"></div>
       <div class="ride-faders" id="ride-faders"></div>
-      <h2 data-i18n="autopilot.presets"></h2>
+      <h2><span data-i18n="autopilot.presets"></span> <button type="button" class="info" data-info="autopilot.presets" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap ride-presets" id="ride-presets"></div>
       <div class="row wrap">
         <button id="ride-save-preset" data-i18n="autopilot.save_preset"></button>
@@ -486,23 +485,21 @@
         <button id="ride-walk-on" data-i18n="autopilot.walk_on"></button>
         <button id="ride-walk-off" data-i18n="autopilot.walk_off"></button>
       </div>
-      <h2 data-i18n="autopilot.why"></h2>
+      <h2><span data-i18n="autopilot.why"></span> <button type="button" class="info" data-info="autopilot.why" aria-expanded="false">ⓘ</button></h2>
       <ul class="ride-why" id="ride-why"></ul>
       <details class="scene-more">
-        <summary data-i18n="autopilot.lights"></summary>
-        <p class="muted" data-i18n="autopilot.lights_help"></p>
+        <summary><span data-i18n="autopilot.lights"></span> <button type="button" class="info" data-info="autopilot.lights" aria-expanded="false">ⓘ</button></summary>
         <ul class="point-list" id="ride-lights"></ul>
       </details>
     </section>
 
     <!-- REVIEW -->
     <section id="page-review" class="page">
-      <p class="muted" data-i18n="review.help"></p>
       <div class="row wrap">
         <select id="rv-mood"><option value="" data-i18n="review.all_moods"></option><option value="low" data-i18n="autopilot.mood_low"></option><option value="mid" data-i18n="autopilot.mood_mid"></option><option value="high" data-i18n="autopilot.mood_high"></option></select>
         <select id="rv-bank"><option value="" data-i18n="review.both_banks"></option><option value="move" data-i18n="autopilot.move_fx"></option><option value="colour" data-i18n="autopilot.colour_fx"></option></select>
         <select id="rv-palette"></select>
-        <span class="muted" id="rv-count"></span>
+        <span class="muted" id="rv-count"></span><button type="button" class="info" data-info="review.review" aria-expanded="false">ⓘ</button>
       </div>
       <div class="row wrap">
         <button id="rv-prev" class="big" data-i18n="autopilot.prev"></button>
@@ -513,12 +510,12 @@
         <button id="rv-next" class="big" data-i18n="autopilot.next"></button>
         <button id="rv-auto" data-i18n="review.auto"></button>
         <input id="rv-every" type="number" min="2" max="60" value="8" class="narrow" data-i18n-title="review.every">
+        <button type="button" class="info" data-info="review.rating" aria-expanded="false">ⓘ</button>
       </div>
       <h2 id="rv-now"></h2>
       <ol class="rv-list" id="rv-list"></ol>
       <details class="section" open data-remember="review.generator">
-      <summary data-i18n="review.generator"></summary>
-      <p class="muted" data-i18n="review.generator_help"></p>
+      <summary><span data-i18n="review.generator"></span> <button type="button" class="info" data-info="review.generator" aria-expanded="false">ⓘ</button></summary>
       <div class="row wrap">
         <select id="gen-mood"><option value="low" data-i18n="autopilot.mood_low"></option><option value="mid" selected data-i18n="autopilot.mood_mid"></option><option value="high" data-i18n="autopilot.mood_high"></option></select>
         <select id="gen-style"><option value="" data-i18n="review.any_style"></option><option value="rock" data-i18n="review.style_rock"></option><option value="ballad" data-i18n="review.style_ballad"></option><option value="acoustic" data-i18n="review.style_acoustic"></option><option value="opera" data-i18n="review.style_opera"></option><option value="dance" data-i18n="review.style_dance"></option></select>
@@ -540,16 +537,14 @@
 
     <!-- PALETTES -->
     <section id="page-palettes" class="page">
-      <p class="muted" data-i18n="palettes.help"></p>
-      <h2 data-i18n="palettes.title"></h2>
+      <h2><span data-i18n="palettes.title"></span> <button type="button" class="info" data-info="palettes.palettes" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <input id="palette-new-name" maxlength="40" data-i18n-placeholder="palettes.new_placeholder">
         <button id="palette-new" data-i18n="palettes.new"></button>
         <label class="button-like"><span data-i18n="palettes.import"></span><input type="file" id="palette-import" accept=".json,application/json" class="hidden-file"></label>
       </div>
       <div id="palette-list"></div>
-      <h2 data-i18n="palettes.named"></h2>
-      <p class="muted" data-i18n="palettes.named_help"></p>
+      <h2><span data-i18n="palettes.named"></span> <button type="button" class="info" data-info="palettes.named" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <input id="colour-new-name" maxlength="40" data-i18n-placeholder="palettes.colour_placeholder">
         <button id="colour-new" data-i18n="palettes.new_colour"></button>
@@ -559,8 +554,7 @@
 
     <!-- MIDI -->
     <section id="page-midi" class="page">
-      <h2 data-i18n="midi.inputs"></h2>
-      <p class="muted" data-i18n="midi.inputs_help"></p>
+      <h2><span data-i18n="midi.inputs"></span> <button type="button" class="info" data-info="midi.inputs" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <input id="device-new-id" maxlength="40" data-i18n-placeholder="midi.device_placeholder">
         <button id="device-new" data-i18n="midi.add_device"></button>
@@ -568,7 +562,7 @@
       </div>
       <div id="input-edit"></div>
       <div id="inputs"></div>
-      <h2 data-i18n="midi.monitor"></h2>
+      <h2><span data-i18n="midi.monitor"></span> <button type="button" class="info" data-info="midi.monitor" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <button id="midi-pause" data-i18n="midi.pause"></button>
         <button id="midi-clear" data-i18n="midi.clear"></button>
@@ -578,7 +572,7 @@
         <th data-i18n="midi.col_time"></th><th data-i18n="midi.col_port"></th><th data-i18n="midi.col_ch"></th>
         <th data-i18n="midi.col_type"></th><th>#</th><th data-i18n="midi.col_value"></th><th data-i18n="midi.col_named"></th><th data-i18n="midi.col_triggered"></th>
       </tr></thead><tbody id="monitor"></tbody></table>
-      <h2 data-i18n="midi.learn"></h2>
+      <h2><span data-i18n="midi.learn"></span> <button type="button" class="info" data-info="midi.learn" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <select id="learn-action"></select>
         <input id="learn-params" data-i18n-placeholder="midi.params_placeholder">
@@ -587,7 +581,7 @@
         <span id="learn-state" class="muted"></span>
       </div>
       <details class="section" id="map-section" data-remember="midi.map">
-        <summary><span data-i18n="midi.mapping"></span><span class="sum muted" data-i18n="midi.mapping_sum"></span></summary>
+        <summary><span data-i18n="midi.mapping"></span> <button type="button" class="info" data-info="midi.mapping" aria-expanded="false">ⓘ</button><span class="sum muted" data-i18n="midi.mapping_sum"></span></summary>
         <table class="map"><thead><tr>
           <th data-i18n="midi.col_input"></th><th data-i18n="midi.col_message"></th><th>#</th><th data-i18n="midi.col_action"></th><th></th>
         </tr></thead><tbody id="map"></tbody></table>
@@ -597,9 +591,9 @@
 
     <!-- SETUP -->
     <section id="page-setup" class="page">
-      <h2 data-i18n="setup.find"></h2>
+      <h2><span data-i18n="setup.find"></span> <button type="button" class="info" data-info="setup.find" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap" id="find"></div>
-      <h2 data-i18n="setup.channel_tester"></h2>
+      <h2><span data-i18n="setup.channel_tester"></span> <button type="button" class="info" data-info="setup.tester" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <input id="chanuni" type="number" min="0" max="15" value="0" class="narrow" data-i18n-title="setup.universe">
         <input id="chan" type="number" min="1" max="512" class="narrow" data-i18n-placeholder="setup.channel">
@@ -618,8 +612,7 @@
           </tr></thead><tbody id="devices"></tbody></table>
         </div>
         <div>
-          <h2 data-i18n="setup.found"></h2>
-          <p class="muted" data-i18n="setup.found_help"></p>
+          <h2><span data-i18n="setup.found"></span> <button type="button" class="info" data-info="setup.found" aria-expanded="false">ⓘ</button></h2>
           <table class="devices"><thead><tr>
             <th data-i18n="setup.col_device"></th><th data-i18n="setup.col_id"></th><th data-i18n="setup.col_alias"></th>
             <th data-i18n="setup.col_use"></th><th></th>
@@ -627,7 +620,7 @@
           <ul class="layout-problems" id="found-missing"></ul>
         </div>
         <div>
-          <h2 data-i18n="setup.nodes"></h2>
+          <h2><span data-i18n="setup.nodes"></span> <button type="button" class="info" data-info="setup.nodes" aria-expanded="false">ⓘ</button></h2>
           <table class="nodes"><thead><tr>
             <th data-i18n="setup.col_name"></th><th>MAC</th><th data-i18n="setup.col_state"></th><th data-i18n="setup.col_signal"></th>
             <th data-i18n="setup.col_loss"></th><th data-i18n="setup.col_last_data"></th><th></th>
@@ -648,7 +641,7 @@
           <th data-i18n="setup.col_start"></th><th data-i18n="setup.col_end"></th><th data-i18n="setup.col_in_rig"></th><th data-i18n="setup.col_checked"></th>
         </tr></thead><tbody id="addr"></tbody></table>
       </details>
-      <h2 data-i18n="access.title"></h2>
+      <h2><span data-i18n="access.title"></span> <button type="button" class="info" data-info="setup.access" aria-expanded="false">ⓘ</button></h2>
       <div class="access" id="access">
         <p class="muted" id="access-state"></p>
         <div class="row wrap">
@@ -670,10 +663,10 @@
         <button id="logout" class="hidden" data-i18n="access.logout"></button>
       </div>
       <details class="section" id="claude-section">
-        <summary><span data-i18n="claude.title"></span><span class="sum muted" id="claude-sum"></span></summary>
+        <summary><span data-i18n="claude.title"></span> <button type="button" class="info" data-info="setup.claude" aria-expanded="false">ⓘ</button><span class="sum muted" id="claude-sum"></span></summary>
         <div id="claude-connect" class="claude-connect"></div>
       </details>
-      <h2 data-i18n="setup.appearance"></h2>
+      <h2><span data-i18n="setup.appearance"></span> <button type="button" class="info" data-info="setup.appearance" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <label class="muted" for="theme" data-i18n="setup.theme"></label>
         <select id="theme"></select>
@@ -698,7 +691,6 @@
         <span class="muted" id="fx-state"></span>
       </div>
       <div id="fx-tab-patch">
-        <p class="muted" data-i18n="fixtures.patch_help"></p>
         <table class="grid-table">
           <thead><tr><th data-i18n="fixtures.col_id"></th><th data-i18n="fixtures.col_type"></th><th data-i18n="fixtures.col_universe"></th>
             <th data-i18n="fixtures.col_address"></th><th data-i18n="fixtures.col_channels"></th><th data-i18n="fixtures.col_groups"></th>
@@ -713,6 +705,7 @@
           <button id="fx-add" data-i18n="fixtures.add"></button>
           <button id="fx-auto" data-i18n="fixtures.auto_patch" data-i18n-title="fixtures.auto_patch_tip"></button>
           <button id="fx-patch-save" data-i18n="fixtures.save_patch"></button>
+          <button type="button" class="info" data-info="fixtures.patch" aria-expanded="false">ⓘ</button>
         </div>
       </div>
       <div id="fx-tab-types" class="hidden">
@@ -731,16 +724,15 @@
           <select id="fx-rig-pick"></select>
           <button id="fx-rig-use" data-i18n="fixtures.use_rig"></button>
           <button id="fx-rig-save" data-i18n="fixtures.save_rig"></button>
-          <span class="muted" id="fx-rig-state"></span>
+          <span class="muted" id="fx-rig-state"></span><button type="button" class="info" data-info="fixtures.rig" aria-expanded="false">ⓘ</button>
         </div>
-        <p class="muted" data-i18n="fixtures.rig_help"></p>
         <div id="fx-rig"></div>
       </div>
     </section>
 
     <!-- FILES -->
     <section id="page-files" class="page">
-      <h2 data-i18n="project.title"></h2>
+      <h2><span data-i18n="project.title"></span> <button type="button" class="info" data-info="files.project" aria-expanded="false">ⓘ</button></h2>
       <p id="project-now"></p>
       <div class="row wrap">
         <button id="project-open" data-i18n="project.open"></button>
@@ -758,15 +750,13 @@
       <ul class="recent" id="project-recent"></ul>
       <h2 data-i18n="files.scenes"></h2>
       <div class="list" id="scenes"></div>
-      <h2 data-i18n="history.title"></h2>
-      <p class="muted" data-i18n="history.help"></p>
+      <h2><span data-i18n="history.title"></span> <button type="button" class="info" data-info="files.history" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <button id="undo" data-i18n="history.undo"></button>
         <button id="redo" data-i18n="history.redo"></button>
       </div>
       <ol class="history" id="history"></ol>
-      <h2 data-i18n="files.backups"></h2>
-      <p class="muted" data-i18n="files.backups_help"></p>
+      <h2><span data-i18n="files.backups"></span> <button type="button" class="info" data-info="files.backups" aria-expanded="false">ⓘ</button></h2>
       <div class="list" id="backups"></div>
     </section>
   </main>

@@ -119,7 +119,7 @@ function open(btn, fromKeyboard) {
     el("div", { class: "info-pop-title", id: "info-pop-title", text: t(`info.${key}.title`) }),
     el("div", { class: "info-pop-text", text: t(`info.${key}.text`) }),
     page ? el("a", { class: "info-pop-more", href: `/manual/${page}`, "data-manual": page,
-      onclick: (e) => { e.preventDefault(); openManual(page); } }, t("info.more")) : "");
+      onclick: (e) => { e.preventDefault(); closeInfo(false); openManual(page); } }, t("info.more")) : "");
   pop.dataset.key = key;
   pop.classList.remove("hidden");
   openFor = btn;

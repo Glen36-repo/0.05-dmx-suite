@@ -45,7 +45,7 @@ function updateSelection() {
                  pixels: px < 1 ? "layout.need_pixels" : null };
   for (const g of $$("#arrange .ar-group")) {
     const why = need[g.dataset.group];
-    g.querySelectorAll("button").forEach((b) => {
+    g.querySelectorAll("button:not(.info)").forEach((b) => { // the ⓘ always works
       b.disabled = !!why;
       b.title = tip(b) + (why ? ` - ${t(why)}` : "");
     });
