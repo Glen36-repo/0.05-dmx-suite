@@ -2,6 +2,13 @@
 
 Repo: Glen36-repo/0.05-dmx-suite. Saved as `docs/v9-brief.md` on branch `v9` (from `v8`). Builds on v8 — start once v8 is merged (needs the v8 Heads page pads, saved-point crosshairs, centrelines, point-based Move FX and the FX settings panel).
 
+**v8 interfaces (28/11, from `docs/v8-plan.md`)** — v8 and v9 are built in parallel: v9 branches from `v8-b-heads-move` once it's pushed (pure solver / geometry work can start from `v8-a-foundation`), and rebases onto the latest v8 part before each v9 PR. First: once `v8` is rebased onto `v7-e-files`, rebase `v9` onto it. v8 format is 8 (frozen after v8 Part A); v9 owns 8 → 9. What v9 builds on:
+- Centre: `rig.layout_centre()` / rig `layout: centre: {x, y}` (grid cells, auto when unset); `get_layout` / `set_layout` carry `centre`.
+- FX overrides: rig `autopilot: fx: {<id>: {params, darkness, moods, priority, min_s, max_s}}` and `autopilot: variants:`; params checked against the effect's `Param` list, so new Move FX params (`space`, `plane`, `size_m` …) only need adding there.
+- Aim: every Move FX writes pan / tilt through `Run.aim(un, pan, tilt)` (`effects/base.py`) — the stage-space branch goes there.
+- Points: every lookup goes through `Palettes.position` / `positions_for` (`palettes.py`) — stage points resolve there. `rig.Point.stage` already exists (rough place labels left / centre / right), so metre coordinates need another key.
+- Limits and zones still applied last in `rules._position` (rule 8). Heads page pad layers (bottom → top): out-of-limits shading, zones, point crosshairs, live dot.
+
 Scope: **moving-head calibration and stage space** — the software learns where each moving head is in the room and how it's mounted, by aiming every head at a few measured marks on the stage. Then points, zones and movement effects can be defined once in metres on the stage, for any number of heads. Plan before writing code (`docs/v9-plan.md`, same style as v7 / v8). Rules unchanged (colour only, never haze, MASTER owns on/off, head limits always enforced at output — rule 8).
 
 Background (from the code, 28/11):
