@@ -2,7 +2,7 @@
 
 Repo: Glen36-repo/0.05-dmx-suite. Saved as `docs/v8-brief.md` on branch `v8` (from `v7`). Builds on v7 — start once v7 Parts A–E are merged (needs the v7 Palette bank, Darkness modes and layer timing).
 
-Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
+Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review), plus adjustable stage centrelines (item 12). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
 
 Background (from the code, 28/11):
 - Colour FX that ignore the palette: `rainbow` (full hue wheel), `lightning` (hard-coded white), `fire` (fixed fire colours).
@@ -99,6 +99,20 @@ All respect head limits and v7 exclusion zones; positions from the rig's saved h
 - **Sky scan**: heads tilt up into the ceiling and sweep wide across it, crossing — for builds.
 - **Contrast**: one head runs a circle while the other runs a figure 8 at a different speed.
 - Beat-based ones (Theatre chase, Alternate, Beat stabs, Tilt nod) use the v6 e-drum tempo, else tap / set tempo.
+
+## 12. Stage centrelines on the Layout page
+- Today: "centre" is worked out per effect from the bounding box of whichever lights that layer runs on (`effects/base.py`, `centre_out` / `out_centre`: `cx, cy = (min + max) / 2`), and in order mapping from the middle index. So the centre moves depending on which lights an effect uses, and can't be set to where the band actually stands.
+- Change: two adjustable lines on the Layout stage grid, saved per rig:
+  - **Vertical centreline** (stage centre, left / right split) — default: middle of all placed lights.
+  - **Horizontal centreline** (top / bottom split) — default: middle of all placed lights.
+  - Drag on the grid or type a value; snap to the grid; "Reset to middle" button. Shown as dashed lines on Layout and on the live stage view (toggle).
+- Everything that uses a centre or a side reads these lines instead of its own bounding box:
+  - Directions `centre_out` / `out_centre` (chases, Chase in / out, Directional wave, Directional sweep), Radial, Split (sides), Collide horizontal (meets at the vertical line) and vertical (non-bar lights split by the horizontal line), Ripple / Stack where they use "centre" or "bottom".
+  - Left / right for mirrored effects and Autopilot left-vs-right looks (Split, Mirror sweep, Fan, Crossfire, Fly-out audience L / R, Converge / split sides).
+  - Pixel bars keep their own top / bottom for along-bar effects (Stack, Rain, Collide vertical on the bar itself) — the horizontal line is only for effects that work across the whole rig.
+- Lights exactly on a line count as centre (both sides / lit first in centre-out).
+- MCP / API: `get_layout` / `set_layout` include `centre: {x, y}`.
+- Rig file: `layout: centre: {x, y}` (grid cells); missing = auto middle, no warning; no format bump needed.
 
 ---
 
