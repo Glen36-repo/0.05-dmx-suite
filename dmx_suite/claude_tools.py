@@ -153,7 +153,8 @@ PRESETS AND GENERATOR (v3.5): presets.yaml {presets: {id: {name, tags, pick: {mo
   them like any scene. ratings.yaml holds look ratings from the review page (liked looks favoured).
 AUTOPILOT (v3.4): changes looks on a timer per mood (rig `autopilot:` moods {low, mid, high} seconds,
   variation, no_repeat, fade per mood, energy {window_s, full_rate}, fill {window_s, hits, crash_s},
-  gap_s and count_in for between songs, talking / walk_on / walk_off looks, palettes). Energy comes
+  between {on, gap_s, start first_hit|count_in, count_in, min_song_s, fade_in, fade_out, ignore [input ids],
+  look} for between songs (v7; look and walk_on / walk_off take a generated look or {scene: id}), palettes). Energy comes
   from named input roles. autopilot_status shows what it's doing and the decision log (why each look
   was chosen); save_autopilot_settings tunes it, e.g. "less movement, more blue in the verses" ->
   palettes: [cool, ice], and quality busy scores for the move items.

@@ -22,7 +22,7 @@ import yaml
 
 from .fixtures import ConfigError
 
-FORMAT = 6
+FORMAT = 7
 
 # show folder layout: single files, then one folder per kind
 FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes", "panels.yaml": "panels", "inputs.yaml": "inputs",
@@ -123,8 +123,20 @@ def _midi_5_to_6(d: dict[str, Any]) -> dict[str, Any]:
     return d
 
 
+# Format 6 -> 7 (v7): between songs gets its own block. Rig `autopilot:` gap_s / count_in / talking
+# move into `autopilot: between:` (talking is its `look`). Part D adds the flash steps here.
+
+def _rig_6_to_7(d: dict[str, Any]) -> dict[str, Any]:
+    from .autopilot import fold_between
+
+    ap = d.get("autopilot")
+    if isinstance(ap, dict):
+        d["autopilot"] = fold_between(ap)
+    return d
+
+
 STEPS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
-    "rig": {1: _rig_1_to_2, 2: _rig_2_to_3, 5: _rig_5_to_6},
+    "rig": {1: _rig_1_to_2, 2: _rig_2_to_3, 5: _rig_5_to_6, 6: _rig_6_to_7},
     "fixtures": {3: _fixtures_3_to_4},
     "presets": {5: _presets_5_to_6},
     "midi": {5: _midi_5_to_6},

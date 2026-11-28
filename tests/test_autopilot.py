@@ -59,7 +59,7 @@ def run(app, seconds, step=0.25, drums=None):
 
 def test_defaults_and_rig_settings():
     c = parse_config(None)
-    assert c["moods"] == {"low": 60.0, "mid": 40.0, "high": 20.0} and c["gap_s"] == 4.0
+    assert c["moods"] == {"low": 60.0, "mid": 40.0, "high": 20.0} and c["between"]["gap_s"] == 4.0
     c = parse_config({"moods": {"high": 15}, "no_repeat": 6})
     assert c["moods"]["high"] == 15 and c["moods"]["low"] == 60.0 and c["no_repeat"] == 6
 
@@ -70,6 +70,14 @@ def test_defaults_and_rig_settings():
     ({"variation": 2}, "0-0.9"),
     ({"count_in": 12}, "2-8"),
     ({"talking": {"move": "laser"}}, "unknown FX item"),
+    ({"between": {"gap_s": 0.5}}, "1 s or more"),
+    ({"between": {"start": "clap"}}, "first_hit or count_in"),
+    ({"between": {"min_song_s": -1}}, "0-600"),
+    ({"between": {"fade_in": 99}}, "0-30"),
+    ({"between": {"ignore": "pedal"}}, "list of input ids"),
+    ({"between": {"on": "yes"}}, "true or false"),
+    ({"between": {"look": {"scene": "x", "colour": "static"}}}, "on its own"),
+    ({"between": {"wait": 1}}, "between: settings are"),
 ])
 def test_bad_settings(bad, msg):
     with pytest.raises(ConfigError, match=msg):

@@ -1,5 +1,5 @@
 # Bars pixel chase, washes blue, heads chase blue/white on the kit.
-version: 6
+version: 7
 name: Blue chase
 show_colour: blue
 layers:

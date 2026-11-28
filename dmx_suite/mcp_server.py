@@ -182,7 +182,7 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     @tool
     def save_autopilot_settings(rig: str, yaml_text: str) -> str:
         """Tune the autopilot for a rig (merged into its `autopilot:` block), e.g.
-        '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6, gap_s: 5}'."""
+        '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6, between: {gap_s: 5}}'."""
         return t.save_autopilot_settings(rig, yaml_text)
 
     @tool

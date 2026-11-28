@@ -4,7 +4,7 @@
 # Roles tell the auto show what an input is: kick, snare, tom, cymbal, count_in, activity.
 # PLACEHOLDER numbers: the FCB1010 keeps its current program changes (SCOPE decision); copy them
 # from Daslight. Use the Inputs tab on the MIDI page (learn) to set them from the real gear.
-version: 6
+version: 7
 devices:
   fcb1010:
     name: FCB1010

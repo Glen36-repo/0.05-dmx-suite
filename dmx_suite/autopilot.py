@@ -28,10 +28,17 @@ Rig config (all optional):
       fade: {low: 4, mid: 2, high: 0.5}     # crossfade into a new look, seconds
       energy: {window_s: 4, full_rate: 6}   # hits a second for full energy
       fill: {window_s: 1.2, hits: 5, crash_s: 1.0}
-      gap_s: 4                              # silence that ends a song
-      count_in: 4                           # even hits that start one
-      talking: {colour: static, palette: white, move: kit, ride: {speed: 0.5}}
-      walk_on: {colour: colour_fade, palette: band, move: swim}
+      between:                              # v7 (format 6: gap_s / count_in / talking at the top)
+        on: true                            # off: never between songs (DJ-style sets)
+        gap_s: 4                            # silence that ends a song
+        start: first_hit                    # first_hit | count_in: what starts the next one
+        count_in: 4                         # even hits that make a count-in
+        min_song_s: 20                      # a gap this soon after a song starts doesn't end it
+        fade_in: null                       # null = the LOW fade
+        fade_out: null                      # null = the song's mood fade
+        ignore: [fcb_pedal]                 # inputs that don't count as activity
+        look: {colour: static, palette: white, move: kit, feel: {speed: 0.5}}   # or {scene: id}
+      walk_on: {colour: colour_fade, palette: band, move: swim}   # or {scene: id}
       walk_off: {colour: static, palette: warm}
       palettes: [warm, cool, band]          # only these (default: by mood tag)
       seed: gig-1
@@ -67,9 +74,18 @@ DEFAULTS: dict[str, Any] = {
     "fade": {"low": 4.0, "mid": 2.0, "high": 0.5},
     "energy": {"window_s": 4.0, "full_rate": 6.0},
     "fill": {"window_s": 1.2, "hits": 5, "crash_s": 1.0},
-    "gap_s": 4.0,
-    "count_in": 4,
-    "talking": {"colour": "static", "palette": "white", "move": "kit", "feel": {"speed": 0.5, "fade": 1.0}},
+    # v7: between songs in one block (format 6 had gap_s / count_in / talking at the top; still read)
+    "between": {
+        "on": True,
+        "gap_s": 4.0,  # no activity this long ends a song
+        "start": "first_hit",  # first_hit | count_in: what starts the next song
+        "count_in": 4,
+        "min_song_s": 20.0,  # a gap this soon after a song starts doesn't end it
+        "fade_in": None,  # None = the LOW fade
+        "fade_out": None,  # None = the song's mood fade
+        "ignore": [],  # named input / kit zone ids that don't count as activity
+        "look": {"colour": "static", "palette": "white", "move": "kit", "feel": {"speed": 0.5, "fade": 1.0}},
+    },
     "walk_on": {"colour": "colour_fade", "palette": "band", "move": "swim", "feel": {"speed": 0.6}},
     "walk_off": {"colour": "static", "palette": "warm", "feel": {"fade": 1.0}},
     "palettes": [],
@@ -87,12 +103,25 @@ def parse_config(d: Any) -> dict[str, Any]:
 
     if d is None:
         return copy.deepcopy(DEFAULTS)
-    if not isinstance(d, dict) or set(d) - set(DEFAULTS):
+    if not isinstance(d, dict):
+        raise ConfigError(f"autopilot: settings are {', '.join(DEFAULTS)}")
+    d = fold_between(d)
+    if set(d) - set(DEFAULTS):
         raise ConfigError(f"autopilot: settings are {', '.join(DEFAULTS)}")
     from .fxbanks import norm_pick
 
-    d = {k: (norm_pick(v, f"autopilot {k}") if k in ("talking", "walk_on", "walk_off") else v) for k, v in d.items()}
+    d = {k: (_norm_look(v, f"autopilot {k}", norm_pick) if k in ("walk_on", "walk_off") else v) for k, v in d.items()}
+    if isinstance(d.get("between"), dict) and set(d["between"]) - set(DEFAULTS["between"]):
+        raise ConfigError(f"autopilot between: settings are {', '.join(DEFAULTS['between'])}")
+    if isinstance(d.get("between"), dict) and "look" in d["between"]:
+        d["between"] = {**d["between"], "look": _norm_look(d["between"]["look"], "autopilot between look", norm_pick)}
     out = merge(DEFAULTS, d)
+    # a scene replaces the default look (a generated look still merges over it, as in v6)
+    if isinstance(d.get("between"), dict) and isinstance(d["between"].get("look"), dict) and "scene" in d["between"]["look"]:
+        out["between"]["look"] = d["between"]["look"]
+    for k in ("walk_on", "walk_off"):
+        if isinstance(d.get(k), dict) and "scene" in d[k]:
+            out[k] = d[k]
     for m in MOODS:
         for k in ("moods", "fade"):
             v = out[k].get(m)
@@ -109,18 +138,62 @@ def parse_config(d: Any) -> dict[str, Any]:
         raise ConfigError("autopilot variation: 0-0.9")
     if not isinstance(out["no_repeat"], int) or not 0 <= out["no_repeat"] <= 50:
         raise ConfigError("autopilot no_repeat: 0-50 looks")
-    if float(out["gap_s"]) < 1:
-        raise ConfigError("autopilot gap_s: 1 s or more")
-    if not isinstance(out["count_in"], int) or not 2 <= out["count_in"] <= 8:
-        raise ConfigError("autopilot count_in: 2-8 hits")
-    for k in ("talking", "walk_on", "walk_off"):
-        p = out[k]
+    b = out["between"]
+    if not isinstance(b["on"], bool):
+        raise ConfigError("autopilot between on: true or false")
+    if _num(b["gap_s"]) is None or b["gap_s"] < 1:
+        raise ConfigError("autopilot between gap_s: 1 s or more")
+    if b["start"] not in START_MODES:
+        raise ConfigError(f"autopilot between start: {' or '.join(START_MODES)}")
+    if isinstance(b["count_in"], bool) or not isinstance(b["count_in"], int) or not 2 <= b["count_in"] <= 8:
+        raise ConfigError("autopilot between count_in: 2-8 hits")
+    if _num(b["min_song_s"]) is None or not 0 <= b["min_song_s"] <= 600:
+        raise ConfigError("autopilot between min_song_s: 0-600 s")
+    for k in ("fade_in", "fade_out"):
+        if b[k] is not None and (_num(b[k]) is None or not 0 <= b[k] <= 30):
+            raise ConfigError(f"autopilot between {k}: 0-30 s, or empty for the default")
+    if not isinstance(b["ignore"], list) or not all(isinstance(x, str) and x for x in b["ignore"]):
+        raise ConfigError("autopilot between ignore: a list of input ids")
+    for k, p in (("between look", b["look"]), ("walk_on", out["walk_on"]), ("walk_off", out["walk_off"])):
         if not isinstance(p, dict):
-            raise ConfigError(f"autopilot {k}: a look {{colour, move, palette, feel}}")
+            raise ConfigError(f"autopilot {k}: a look {{colour, move, palette, feel}} or {{scene: id}}")
+        if "scene" in p:
+            if set(p) != {"scene"} or not isinstance(p["scene"], str) or not p["scene"]:
+                raise ConfigError(f"autopilot {k}: {{scene: <scene id>}} on its own")
+            continue
         for bank in ("move", "colour", "drum"):
             if p.get(bank) and p[bank] not in BY_ID:
                 raise ConfigError(f"autopilot {k}: unknown FX item {p[bank]!r}")
     return out
+
+
+START_MODES = ("first_hit", "count_in")
+OLD_BETWEEN = {"gap_s": "gap_s", "count_in": "count_in", "talking": "look"}  # format 6 top-level keys
+
+
+def fold_between(d: dict[str, Any]) -> dict[str, Any]:
+    """Format 6 kept gap_s / count_in / talking at the top of `autopilot:`; v7 keeps them in `between:`.
+    Old keys are moved in (a value already in `between:` wins). Used by the 6 -> 7 step and parse_config."""
+    if not any(k in d for k in OLD_BETWEEN):
+        return d
+    d = dict(d)
+    b = dict(d.get("between") or {}) if isinstance(d.get("between"), dict) else {}
+    for old, new in OLD_BETWEEN.items():
+        if old in d:
+            v = d.pop(old)
+            b.setdefault(new, v)
+    d["between"] = b
+    return d
+
+
+def _num(v: Any) -> float | None:
+    return None if isinstance(v, bool) or not isinstance(v, (int, float)) else float(v)
+
+
+def _norm_look(v: Any, where: str, norm_pick: Callable[[Any, str], Any]) -> Any:
+    if isinstance(v, dict) and "scene" in v:
+        return v  # a pre-built scene, played as authored
+    return norm_pick(v, where)
 
 
 # ---------------------------------------------------------------------- energy
@@ -170,7 +243,7 @@ class Energy:
 
     def count_in(self, now: float) -> bool:
         """`count_in` hits with the count_in role, evenly spaced (within 25 %), just now."""
-        n = int(self.cfg["count_in"])
+        n = int(self.cfg["between"]["count_in"])
         hits = self.bus.recent("count_in", now, 6.0)[-n:]
         if len(hits) < n:
             return False
@@ -324,12 +397,12 @@ class Autopilot:
                     st.between = False
                     why = "count-in" if self.energy.count_in(now) else "first hit after the gap"
                     return self.change(now, "song_start", extra=why)
-            if (not st.between and st.last_activity is not None and now - st.last_activity >= float(self.cfg["gap_s"])
+            if (not st.between and st.last_activity is not None and now - st.last_activity >= float(self.cfg["between"]["gap_s"])
                     and not st.hold):
                 st.between = True
                 from .fxbanks import Pick
 
-                return self._play(Pick.from_dict(self.cfg["talking"]), now, "song_end",
+                return self._play(Pick.from_dict(self.cfg["between"]["look"]), now, "song_end",
                                   f"no activity for {now - st.last_activity:.1f} s: talking look", 0, 0, 0.0,
                                   fade=self.cfg["fade"]["low"])
             if st.hold or st.between:
