@@ -1626,5 +1626,5 @@
  "fxp.deleted": "{name} deleted",
  "fxp.delete_confirm": "Delete {name}? Its settings go with it.",
  "info.autopilot.fx_settings.title": "FX settings",
- "info.autopilot.fx_settings.text": "Each FX type's own settings for this rig. Darkness: Follow takes the Darkness value, Exempt always plays fully lit, Reduced takes part of it. Settings: the effect's own (speed, size, spread …); empty = the default. Priority 0-5: how often the Autopilot picks it, a 5 about five times as often as a 1; 0 leaves it out (you can still play it by hand). Moods and min / max time on screen limit when and for how long it runs. Duplicate makes a variant with its own settings and tile; the Autopilot picks it as its own type but never straight after its original. Only changed values are saved; a dot on the tile shows it has some."
+ "info.autopilot.fx_settings.text": "This type's settings on this rig; only changes are saved. Darkness: Follow, Exempt (always fully lit) or Reduced (part of it). Settings: the effect's own; empty = default. Priority 0-5: a 5 is picked about five times as often as a 1; 0 leaves it out. Duplicate makes a variant with its own tile, never picked straight after its original."
 }

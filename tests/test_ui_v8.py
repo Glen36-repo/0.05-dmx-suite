@@ -29,11 +29,16 @@ def test_centrelines_type_drag_save_reset(ui):
     page.wait_for_selector("#layout-dirty.hidden", state="attached")
     assert rig_layout(root)["centre"]["x"] == 6.5
     assert app.engine.rig.centre[0] == 6.5
+    page.wait_for_load_state("networkidle")  # the catalogue refresh after Save rebuilds the grid: not mid-drag
+    page.wait_for_timeout(300)
     # drag the vertical line two cells right
-    box = page.locator("#layout-grid .cl-hit[data-centre=x]").bounding_box()
-    host = page.locator("#layout-grid").bounding_box()
     cell = page.evaluate("() => { const r = document.querySelector('#layout-grid svg').getScreenCTM(); return r.a * 24; }")
-    x, y = box["x"] + box["width"] / 2, host["y"] + 20  # on the line, inside the stage
+    # a spot on the line with nothing over it (no light, no corner button)
+    x, y = page.evaluate("""() => { const h = document.querySelector('#layout-grid').getBoundingClientRect();
+        const b = document.querySelector('#layout-grid .cl-hit[data-centre=x]').getBoundingClientRect(), x = b.x + b.width / 2;
+        for (let y = h.y + 40; y < h.bottom - 10; y += 4)
+          if (document.elementFromPoint(x, y)?.matches('.cl-hit[data-centre=x]')) return [x, y];
+        return [x, h.y + h.height / 2]; }""")
     page.mouse.move(x, y)
     page.mouse.down()
     page.mouse.move(x + 2 * cell, y, steps=6)

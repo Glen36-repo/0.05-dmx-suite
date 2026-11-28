@@ -9,13 +9,42 @@ The auto show builds looks from **FX banks** for whatever rig you have, with no 
 - **Move FX**, **Flash FX** (held while your finger is on them), **Colour FX** and the **Palette** bank across, **Drum FX** below; tap one to use it now. The type running now is **green**. Tiles are smaller than before (v7) so more fit on screen; on phones and touch screens they stay finger-sized
 - **Palette bank** (v7): a tile per palette (the seven built-ins and your own) with its colours and moods (LOW / MID / HIGH). Tap to play it now; it's excluded and kept just like FX types (below)
 - **Layers** (v7) under the energy bar: Move FX, Colour FX, Palette and Darkness, each with when it next changes. Tap one to **lock** it: it holds while the others keep changing (replaces Lock palette)
-- **Exclude…** leaves types and palettes out of the autopilot: tap Exclude…, tap the types (they turn **red**), then **Done excluding**. Holding a type down for about half a second does the same at any time. Tap a red type again in Exclude mode, or hold it, to put it back. Excluded types stay on the page and still play when you tap them; the autopilot, **Re-roll** and **More like this** never pick them. They're saved in the rig file, so they stay out for every show on that rig, and this works under gig lock. Flash FX are only played by hand, so they can't be excluded
+- **Exclude…** leaves types and palettes out of the autopilot: tap Exclude…, tap the types (they turn **red**, priority 0), then **Done excluding**. Tap a red type again in Exclude mode to put it back at the priority it had. Excluded types stay on the page and still play when you tap them; the autopilot, **Re-roll** and **More like this** never pick them. They're saved in the rig file, so they stay out for every show on that rig, and this works under gig lock. Flash FX are only played by hand, so they can't be excluded
+- **Hold a type down** (about half a second) **or right-click it** for its **settings** (v8, below). The small number on the right of each tile is its **priority**: tap the number to step it 1 → 2 → 3 → 4 → 5 → 1 (it doesn't play the tile). A dot top left means the tile has settings changed from the defaults
 - **Feel controls**: speed, fade, fan, size, shift, for everything or per bank
 - the **Haze** controls are here too, but they're separate: the auto show never touches haze
 - **Why did it do that?** lists the autopilot's last decisions with the reason for each
 - **Lights in the auto show**: how each light is used; change one or leave it out
 - **Learn**: tap Learn, tap any control, then hit a pad or press a pedal: it's mapped and saved
 - **Autopilot settings** (folded, v7): layer timing and between songs, saved with the rig
+
+## FX settings (v8)
+
+Hold or right-click a Move, Colour or Drum FX tile (or a palette) for its settings on this rig. Only what you change is saved; **Reset to defaults** clears it.
+
+- **Darkness**: **Follow** (the Darkness value, as before), **Exempt** (always plays fully lit, e.g. Static palette or Candle) or **Reduced** (only part of the Darkness value: at 50 %, Darkness 80 % darkens it like 40 %). A Move FX's setting applies to its heads' colour; a palette's to the whole look while it plays.
+- **Settings**: the effect's own (speed / period, size, spread, mirror, direction …). Empty = the bank's default, shown greyed in the box.
+- **Priority 0-5**: how often the autopilot picks it. Still random, but a 5 comes up about five times as often as a 1 (default 3). 0 = excluded (red). It applies after the look quality, contrast and no-repeat rules and your ratings, so a type can't follow itself and a 5 lands a little under five times a 1 in practice. While every tile in a bank is at the same priority the autopilot picks as before (best fit for the mood).
+- **Moods**: LOW / MID / HIGH it can run in. **Min / max time on screen**: how long a look with it stays (within the mood timer).
+- **Preview 10 s** plays the running look with this type (or palette) in it, then goes back. Not under gig lock.
+- **Duplicate** makes a **variant**: its own tile next to the original ("Fan out / in 2", rename it in the panel) with its own settings, priority and darkness, so a slow wide Fan and a fast tight Fan can both run. The autopilot picks it as its own type but never straight after its original (or the other way round). Variants can be played, mapped with Learn and deleted; the built-in types can only be excluded.
+- Under **gig lock** the panel shows the settings but can't change them; Exclude mode still works.
+
+In the rig file (format 8):
+
+```yaml
+autopilot:
+  fx:
+    fan: {priority: 4, darkness: exempt, moods: [mid, high], min_s: 20, params: {period_s: 8}}
+    police: {priority: 0, restore: 4}    # excluded; restore = the priority it goes back to
+  variants:
+    fan_v1: {of: fan, name: Fan slow, params: {period_s: 14, size: 0.4}}
+  palette_settings:
+    ice: {priority: 0}
+    white: {darkness: exempt}
+```
+
+Claude: `get_fx`, `save_fx`, `set_fx_priority`, `duplicate_fx`, `delete_fx`.
 
 ## The autopilot
 
@@ -84,11 +113,10 @@ autopilot:
     ignore: [fcb_pad_1]
     look: {colour: static, palette: white, move: kit, feel: {speed: 0.5}}   # or {scene: talking}
   walk_on: {scene: intro}               # a generated look or a scene
-auto:
-  exclude_palettes: [ice]               # v7: palettes the autopilot never picks
+  palette_settings: {ice: {priority: 0}}   # v8: palettes the autopilot never picks (see FX settings)
 ```
 
-Show file format 7 (v7) moves `gap_s`, `count_in` and `talking` into `between:` (`talking` is its `look`). Older shows upgrade once when opened, with a backup; a comment on those three lines doesn't move with them.
+Show file format 8 (v8) moves format 7's `auto: exclude_fx` / `exclude_palettes` to priority 0 under `autopilot: fx` / `palette_settings`, renames the bank ids `sweep` / `sweep_dark` to `dir_wave` / `dir_wave_dark` wherever a look, preset or rating names them, and moves MIDI / kit triggers for Chase hit and Rig split hit to Colour hit (with a note in the log). Show file format 7 (v7) moves `gap_s`, `count_in` and `talking` into `between:` (`talking` is its `look`). Older shows upgrade once when opened, with a backup; a comment on those three lines doesn't move with them.
 
 Every decision (time, energy, mood, look, why) is saved per gig in `logs/decisions-YYYY-MM-DD.jsonl` in app data; Claude reads it with `autopilot_status`.
 
@@ -135,18 +163,19 @@ Haze is never part of the auto show. A new light joins as soon as it's patched. 
 auto:
   classes: {wash_3: strobe}
   exclude: [wash_4]
-  exclude_fx: [static, police]   # types the autopilot never picks (the Exclude… button writes this)
 ```
+
+FX types the autopilot never picks are priority 0 in `autopilot: fx` (v8; the Exclude… button writes it).
 
 ## The banks
 
 **Move FX** (heads, inside the head limits): pan sweep, tilt sweep, circle, figure 8, fan out/in, swim, float, centre/kit (a head point tagged `band`), random positions (head points tagged `safe`, moving dark), crossfire, audience sweep, ballyhoo, mirror sweep.
 
-**Colour FX:** static palette, rainbow, colour chase, chase in, chase out, carousel, sparkle, twinkle, colour fade, split, wave, pulse, random flash (pulses of light through random bits of the rig, several at once, each fading out); pixel bars: bounce, comet, fill/unfill; across the layout: gradient sweep, radial, plasma, bars, directional sweep (a band of colour crossing the rig, one direction per pass: left to right, right to left, top to bottom, bottom to top), sweep with dark between (the same over black, with the rig dark between passes); themed: fire, lightning, police.
+**Colour FX:** static palette, rainbow, colour chase, chase in, chase out, carousel, sparkle, twinkle, colour fade, split, wave, pulse, random flash (pulses of light through random bits of the rig, several at once, each fading out); pixel bars: bounce, comet, fill/unfill; across the layout: gradient sweep, radial (from the stage centre, v8), plasma, bars, directional wave (v8: was "directional sweep"; a band of colour crossing the rig, one direction per pass: left to right, right to left, top to bottom, bottom to top), directional wave, dark between (the same over black, with the rig dark between passes); themed: fire, lightning, police.
 
 **Drum-reactive** (from your named inputs' roles, MIDI only): kick pump, snare hit, tom roll, cymbal shimmer, fill build, velocity colour.
 
-**Flash FX** (momentary): blinder, colour hit, strobe, blackout, freeze, flash and decay, chase hit, rig split hit. Map them to a pad or pedal with the MIDI action `flash_fx` (e.g. `{input: crash, action: flash_fx, fx: blinder}`): held while pressed, or for `length_ms`. They never touch the kick light or the haze, and the Flash FX blackout is not the BLACKOUT button: MASTER and haze carry on.
+**Flash FX** (momentary): blinder, colour hit, strobe, blackout, freeze, flash and decay (v8: chase hit and rig split hit are gone; pads that used them fire colour hit). Map them to a pad or pedal with the MIDI action `flash_fx` (e.g. `{input: crash, action: flash_fx, fx: blinder}`): held while pressed, or for `length_ms`. They never touch the kick light or the haze, and the Flash FX blackout is not the BLACKOUT button: MASTER and haze carry on.
 
 There's no strobe rate limit: strobe and lightning run at the rate set.
 

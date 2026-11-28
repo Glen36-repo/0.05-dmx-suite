@@ -356,6 +356,11 @@ def test_every_button_on_every_page(ui):
     page.click("#scene-group-tabs [data-group=bars]")
     page.click("#step-programmer [data-tab=pixels]")
     seen |= check_visible_buttons(page, "#page-scenes")
+    go(page, "autopilot")  # v8: the FX settings panel (hold or right-click a tile)
+    page.click("#ride-move [data-fx=fan] .lbl", button="right")
+    page.wait_for_selector("#fx-panel[open]")
+    seen |= check_visible_buttons(page, "#fx-panel")
+    page.click("#fxp-close")
     missing = used_info_keys() - seen
     assert missing == set(), "never shown: " + ", ".join(sorted(missing))
 

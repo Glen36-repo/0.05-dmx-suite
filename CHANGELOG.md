@@ -2,6 +2,22 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v8 Part A: FX settings and stage centrelines)
+
+### Added
+- **FX settings panel** on the Autopilot page: hold (or right-click) a Move, Colour, Drum or Palette tile. Darkness **Follow / Exempt / Reduced**, the effect's own settings, moods, **priority 0-5**, min / max time on screen, **Preview 10 s**, **Reset to defaults**. Read-only under gig lock.
+- **Priority** as pick weight: a 5 comes up about five times as often as a 1 (default 3; 0 = excluded). A **badge** on each tile shows it; tap the badge to step 1 → 5 → 1 without playing the tile. A dot marks tiles with changed settings.
+- **Variants**: **Duplicate** a type into its own tile with its own settings (e.g. a slow wide Fan and a fast tight Fan). The autopilot picks it as its own type but never straight after its original. Variants can be renamed and deleted.
+- **Stage centrelines** on the Layout page: drag the dashed lines or type X / Y; **Reset to middle**. Centre-out effects, Radial, Split's sides and the autopilot's left / right looks use them instead of the middle of each layer's lights. **Centrelines** toggle on the Live page.
+- Claude: `get_fx`, `save_fx`, `set_fx_priority`, `duplicate_fx`, `delete_fx`; `get_layout` / `set_layout` carry `centre`.
+
+### Changed
+- Holding a tile opens its settings instead of excluding it; **Exclude…** mode still excludes with a tap, and putting a type back restores its priority.
+- **Directional sweep** is now **Directional wave** (same look). A new fill-style Directional sweep comes in v8 Part D.
+- **Chase hit** and **Rig split hit** are removed from the Flash FX. Pads and pedals that used them fire **Colour hit**; the log says which.
+- **Radial** on the full rig runs from the rig's centre (it used the middle of the colour lights). Every other built-in look is unchanged.
+- Show file **format 8**: `auto: exclude_fx / exclude_palettes` become priority 0 under `autopilot: fx / palette_settings`; `sweep` / `sweep_dark` become `dir_wave` / `dir_wave_dark` in rigs, presets, ratings and MIDI maps. Older shows upgrade once when opened, with a backup.
+
 ## Unreleased (v7 Part E: files and start-up)
 
 ### Added

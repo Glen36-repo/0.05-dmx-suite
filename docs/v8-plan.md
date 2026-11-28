@@ -133,6 +133,19 @@ MIDI maps and `inputs.yaml` kit zones: `flash_fx {fx: chase_hit | split_hit}` �
 - Stack: `v7-e-files` → `v8` → `v8-a-foundation` → … → `v8-e-flash`; `v9` → `v9-*` from `v8-b-heads-move`. A v7 change ripples down by rebase only.
 - Merge order: #16 → v7 A–E → v8 A–E → v9.
 
+## Changes on build (Part A, 28/11/2026)
+1. Palette tiles' settings live under `autopilot: palette_settings:` — `autopilot: palettes:` is already the v3 list of allowed palettes. The format 7 → 8 step writes excluded palettes there.
+2. Exclude keeps the old priority: `{priority: 0, restore: 4}`; putting a tile back restores it (3 when `restore` is missing).
+3. Chase hit and Rig split hit are removed from the Flash FX bank in Part A, with the migration (not left until Part E), so no format 8 file can name them. Part E only does the Hit / Hold split and Blinder hit.
+4. Bank ids `sweep` / `sweep_dark` are renamed to `dir_wave` / `dir_wave_dark` in Part A (label "Directional wave"), so the migration and the bank match from format 8. Part D adds the new fill-style `dir_fill` "Directional sweep".
+5. Priority as pick weight: the scorer picks the best-fitting look almost every time, so weighting the candidate pool barely moved the result. Instead, for a layer whose tiles aren't all at one priority, the type is drawn by priority from those with a look that passed the rules, then the best-scoring look with it plays. Measured 5 vs 1 on chase_in / chase_out over 3000 changes: about 4.3× (a type can't follow itself under the contrast rules). A bank with every tile at one priority picks exactly as v7 (seeded tests unchanged).
+6. Darkness per FX is a new scene layer key `darkness:` (a share 0-1, or `{"*": share, <light>: share}`), set by compose; absent when every item follows, so composed looks are byte-identical. A Move FX's setting applies to its heads' colour; a palette's to the whole look.
+7. The panel hides params that aren't per-look settings: colours (from the palette), free text (tags, seed), positions (points arrive with Part B items 13 / 15) and a Move FX's own `pattern`.
+8. Centrelines: order-mapped centre_out keeps the middle of its list (layout-independent); only spatial mapping, Radial, Split sides and AutoRig left / right use the rig centre. A light on the vertical line goes to the right side in Split (as v7's `x < 0.5`). Only the `ref|radial` golden changed (separate commit).
+9. Layout page: centrelines are saved with the layout (Save / Ctrl+S) and aren't in the arrange undo history; Reset to middle is their undo. Live page has a Centrelines toggle (remembered per browser).
+10. The panel uses one endpoint, `POST /api/autopilot/fx` with `action` (get, save, reset, priority, duplicate, delete, preview).
+11. Python Playwright isn't in the cloud image; installed `playwright==1.63.0` against the preinstalled Chromium (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`) so the browser tests run here too.
+
 ## Delivery
 - `v8`: brief, this plan (old base, kept for reference; `v8-a-foundation` carries the same docs).
 - Stacked branches, one per part: `v8-a-foundation` (from `v7-e-files` + the v8 doc commits) → `v8-b-heads-move` → `v8-c-palette-darkness` → `v8-d-colour-fx` → `v8-e-flash`.

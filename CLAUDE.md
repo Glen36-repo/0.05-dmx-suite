@@ -77,4 +77,6 @@ v4 (one release; details in `docs/archive/V4-SCOPE.md`): stage view fixes (fit, 
 
 v7 (brief `docs/v7-brief.md`, plan `docs/v7-plan.md`; one branch and PR per part, stacked): A Autopilot (palette bank, layer timing, Darkness Auto, between songs), B Layout + Fixtures, C head exclusion zones, D drum flash gate, E files and start-up. Show file format 7.
 
+v8 (brief `docs/v8-brief.md`, plan `docs/v8-plan.md`; stacked on v7-e-files, built in parallel with v9): A foundation (format 8, FX settings panel / priority / variants, stage centrelines), B Heads + Move FX, C palette + Darkness, D new Colour FX, E Flash Hit / Hold. Show file format 8.
+
 Haze is never touched by the autopilot, presets, generator or Flash FX. Every v3 feature gets rule tests under both profiles (`tests/rulecheck.py`).

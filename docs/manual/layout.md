@@ -30,6 +30,17 @@ To arrange the lights:
 
 **Beams** shows where moving heads point; **Names** hides or shows the labels.
 
+### Stage centrelines (v8)
+
+Two dashed lines on the stage: the **vertical** one is stage centre (left / right), the **horizontal** one splits top from bottom. Effects that run from the centre out (or in), Radial, Split's two sides and the autopilot's left / right looks use these lines, whichever lights the effect runs on, so "centre" is where the band stands, not the middle of whatever lights a layer happens to use. A light on a line counts as centre (lit first going out).
+
+- Drag a line on the grid, or type **X** / **Y** (cells) beside **Centre**; both snap to half cells.
+- Until you set them they sit in the middle of all the lights (grey). **Reset to middle** goes back to that.
+- They're saved with the layout (**Save**, Ctrl+S), per rig: `layout: centre: {x: 12, y: 6}`.
+- The Live page shows them with **Centrelines** above the stage.
+- Effects in **order** mapping (not spatial) still run from the middle of their list.
+- Claude: `get_layout` shows `centre`; `set_layout` takes `centre: {x, y}` (or `centre: null` for the middle).
+
 ## Fixture list
 
 Each light's name and type. Tap a row to select it on the stage. **Find** lights it full white; **Test** flashes it and nods a moving head (tap again to stop). To change a light's universe, address or groups, use the [Fixtures](fixtures.md#the-fixtures-page) page.
