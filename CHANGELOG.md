@@ -2,6 +2,13 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v7 Part C: Heads)
+
+### Added
+- **Exclusion zones** on the Heads page: draw rectangles and circles / ellipses on a head's pad (several per head; move, resize, rename, delete), on one head or every head of that type, saved in the rig. A head that would point into one is held at its edge on the side it came from (no snapping across), slides round it no faster than the zone speed, and catches up when the way is clear; or, with **Colour off inside**, goes there dark. Part of rule 8 with the head limits.
+- Pads show the zones (red hatch) and when a head is held at one. Head points and scene positions inside a zone are flagged.
+- Claude: `list_head_zones`, `save_head_zone`, `delete_head_zone`.
+
 ## Unreleased (v7 Part B: Layout and Fixtures)
 
 ### Changed

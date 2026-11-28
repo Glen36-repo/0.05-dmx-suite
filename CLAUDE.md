@@ -24,7 +24,7 @@ Numbers are kept from v1 so tests and docs still match. From v2 R1, every rule i
 4. No background glow: any channel not in the active effect is fully off (0).
 5. HAZE is never set by scenes or auto shows; only the Haze controls.
 6. Grand master scales intensity only: never pan/tilt, colour choice or haze.
-8. Moving head pan/tilt limits from the active rig config are always enforced.
+8. Moving head pan/tilt limits and exclusion zones (v7) from the active rig config are always enforced.
 
 **Profile rules: settings in the rig config's profile. "0.05 band" turns all three on; "Generic" uses standard dimmer behaviour with no drum flash.**
 
