@@ -304,9 +304,25 @@ class Energy:
         self.cfg = cfg
         self.history: deque[tuple[float, float]] = deque(maxlen=400)  # (time, energy), for build/breakdown
 
+    def ignored(self) -> set[str]:
+        """v7: inputs that don't count as activity (Between songs › Ignore inputs)."""
+        return set((self.cfg.get("between") or {}).get("ignore") or ())
+
+    def recent(self, role: str, now: float, window_s: float) -> list[Any]:
+        hits = self.bus.recent(role, now, window_s)
+        out = self.ignored()
+        return [h for h in hits if h.input not in out] if out else hits
+
+    def last(self, role: str, now: float) -> Any:
+        out = self.ignored()
+        if not out:
+            return self.bus.last(role, now)
+        hits = [h for h in self.bus.recent(role, now, 1e9) if h.input not in out]
+        return hits[-1] if hits else None
+
     def level(self, now: float) -> float:
         w = float(self.cfg["energy"]["window_s"])
-        hits = self.bus.recent("activity", now, w)
+        hits = self.recent("activity", now, w)
         if not hits:
             return 0.0
         rate = len(hits) / w
@@ -341,7 +357,7 @@ class Energy:
     def count_in(self, now: float) -> bool:
         """`count_in` hits with the count_in role, evenly spaced (within 25 %), just now."""
         n = int(self.cfg["between"]["count_in"])
-        hits = self.bus.recent("count_in", now, 6.0)[-n:]
+        hits = self.recent("count_in", now, 6.0)[-n:]
         if len(hits) < n:
             return False
         gaps = [b.time - a.time for a, b in zip(hits, hits[1:])]
@@ -388,6 +404,7 @@ class State:
     allowed: list[str] | None = None  # preset ids the autopilot may use (V3.5 presets), None = any
     layer_next: dict[str, float] = field(default_factory=dict)  # v7 staggered: when each clocked layer changes
     locks: dict[str, bool] = field(default_factory=dict)  # v7: live lock per layer (over the rig's `locked`)
+    song_start: float | None = None  # v7: when this song started (min_song_s)
 
 
 class Autopilot:
@@ -399,7 +416,8 @@ class Autopilot:
                  ratings: Callable[[], dict[str, int]] | None = None,
                  presets: Callable[[], dict[str, Any]] | None = None,
                  darkness_step: Callable[[float, str], Any] | None = None,
-                 playing: Callable[[], Any] | None = None) -> None:
+                 playing: Callable[[], Any] | None = None,
+                 play_scene: Callable[[str, float], Any] | None = None) -> None:
         self.play = play
         self.rig_auto = rig_auto
         self.palettes = palettes  # key -> {name, tags, resolved}
@@ -414,6 +432,7 @@ class Autopilot:
         self.presets = presets or (lambda: {})  # preset id -> pick dict (V3.5)
         self.darkness_step = darkness_step  # v7: the Darkness layer's change (Auto darkness moves on it)
         self.playing = playing or (lambda: None)  # v7: the look on the page before the autopilot played one
+        self.play_scene = play_scene  # v7: a pre-built scene as the between-songs / walk look, played as authored
         self.st = State()
         self.decisions: deque[Decision] = deque(maxlen=500)
         self.rng = random.Random(zlib.crc32(str(self.cfg.get("seed") or "autopilot").encode()))
@@ -429,6 +448,7 @@ class Autopilot:
             if on and not self.st.on:
                 self.st.on = True
                 self.st.last_activity = None
+                self.st.song_start = now
                 self.change(now, "start")
             elif not on:
                 self.st.on = False
@@ -468,12 +488,33 @@ class Autopilot:
 
     def walk(self, which: str, now: float) -> None:
         """Walk-on or walk-off look (button, pedal, or setlist start/end)."""
+        with self._lock:
+            self.st.between = which == "walk_off"
+            self._play_look(self.cfg[which], now, which, f"{which.replace('_', '-')} look", self._fade_in())
+
+    def _fade_in(self) -> float:
+        v = self.cfg["between"].get("fade_in")
+        return float(self.cfg["fade"]["low"]) if v is None else float(v)
+
+    def _play_look(self, look: dict[str, Any], now: float, trigger: str, why: str, fade: float) -> Decision:
+        """A between-songs / walk look: generated ({colour, move, palette, feel}) or, v7, a pre-built scene
+        played as authored (no Darkness, no layer timing)."""
         from .fxbanks import Pick
 
-        with self._lock:
-            pick = Pick.from_dict(self.cfg[which])
-            self.st.between = which == "walk_off"
-            self._play(pick, now, which, f"{which.replace('_', '-')} look", 0, 0, 0.0, fade=self.cfg["fade"]["low"])
+        scene = look.get("scene") if isinstance(look, dict) else None
+        if scene and self.play_scene is not None:
+            try:
+                self.play_scene(str(scene), fade)
+                d = Decision(now, self.energy.level(now), self.st.mood, trigger, {"scene": scene}, f"{why}: scene {scene}")
+                self.st.last_change = now
+                self.decisions.append(d)
+                self._log(d)
+                return d
+            except Exception as e:  # a missing scene mustn't leave the rig on the last song's look
+                log.warning("autopilot %s scene %s refused: %s", trigger, scene, e)
+                why += f" (scene {scene} refused: {e})"
+                look = DEFAULTS["between"]["look"] if trigger == "song_end" else DEFAULTS[trigger]
+        return self._play(Pick.from_dict(look), now, trigger, why, 0, 0, 0.0, fade=fade)
 
     def locked(self, layer: str) -> bool:
         """v7: a layer held while the others change (live lock over the rig's `locked`)."""
@@ -502,7 +543,8 @@ class Autopilot:
             st = self.st
             if not st.on:
                 return None
-            last = self.bus.last("activity", now)
+            b = self.cfg["between"]
+            last = self.energy.last("activity", now)  # v7: ignored inputs don't count
             if not st.mood_manual and last is not None:
                 self._follow_energy(e)
             if self.master_off():  # MASTER off: drum flash owns the rig; the autopilot waits
@@ -517,17 +559,19 @@ class Autopilot:
                 new_activity = st.last_activity is None or last.time > st.last_activity
                 st.last_activity = last.time
                 if st.between and new_activity:  # song starting: count-in or first hit
-                    st.between = False
-                    why = "count-in" if self.energy.count_in(now) else "first hit after the gap"
-                    return self.change(now, "song_start", extra=why)
-            if (not st.between and st.last_activity is not None and now - st.last_activity >= float(self.cfg["between"]["gap_s"])
-                    and not st.hold):
+                    counted = self.energy.count_in(now)
+                    if b["start"] == "first_hit" or counted:  # v7: count_in mode waits for a count-in
+                        st.between = False
+                        st.song_start = now
+                        why = "count-in" if counted else "first hit after the gap"
+                        fo = b.get("fade_out")
+                        return self.change(now, "song_start", extra=why, fade=None if fo is None else float(fo))
+            if (b["on"] and not st.between and st.last_activity is not None
+                    and now - st.last_activity >= float(b["gap_s"]) and not st.hold
+                    and (st.song_start is None or now - st.song_start >= float(b["min_song_s"]))):
                 st.between = True
-                from .fxbanks import Pick
-
-                return self._play(Pick.from_dict(self.cfg["between"]["look"]), now, "song_end",
-                                  f"no activity for {now - st.last_activity:.1f} s: talking look", 0, 0, 0.0,
-                                  fade=self.cfg["fade"]["low"])
+                return self._play_look(b["look"], now, "song_end",
+                                       f"no activity for {now - st.last_activity:.1f} s: between-songs look", self._fade_in())
             if st.hold or st.between:
                 return None
             if self.energy.fill_then_crash(now, since):
@@ -729,7 +773,8 @@ class Autopilot:
             best = cands[0] if cands else Pick(colour="static", ride=ride)
         return best, seen, rejected, best_score
 
-    def change(self, now: float, trigger: str, extra: str = "", layers: tuple[str, ...] | None = None) -> Decision:
+    def change(self, now: float, trigger: str, extra: str = "", layers: tuple[str, ...] | None = None,
+               fade: float | None = None) -> Decision:
         """A new look. `layers` (v7): only these layers; None = what this trigger changes (see _event_layers)."""
         whole = layers is None
         if layers is None:
@@ -747,7 +792,7 @@ class Autopilot:
             why += f": {', '.join(part)} only"
         if "darkness" in layers:
             self._darkness(now, trigger)
-        d = self._play(pick, now, trigger, why, seen, rejected, score, layers=part)
+        d = self._play(pick, now, trigger, why, seen, rejected, score, fade=fade, layers=part)
         if self.staggered:
             if whole:
                 self._schedule_all(now, layers)
@@ -793,7 +838,9 @@ class Autopilot:
                 "energy": self.energy.level(now), "next_change_s": round(max(0.0, st.next_change - now), 1) if st.on else None,
                 "paused": st.on and self.master_off(), "pick": st.pick.to_dict() if st.pick else None,
                 "allowed": st.allowed, "last": self.decisions[-1].to_dict() if self.decisions else None,
-                "timing": self.cfg.get("timing", "together"), "layers": self._layer_status(now)}
+                "timing": self.cfg.get("timing", "together"), "layers": self._layer_status(now),
+                "since_hit_s": round(now - st.last_activity, 1) if st.last_activity is not None else None,
+                "between_on": bool(self.cfg["between"]["on"])}
 
     def _layer_status(self, now: float) -> dict[str, Any]:
         st, out = self.st, {}

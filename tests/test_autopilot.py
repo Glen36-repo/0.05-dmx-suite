@@ -225,6 +225,7 @@ def test_manual_mood_only_without_drums(app):
 
 def test_silence_then_count_in(app):
     ap = app.autopilot
+    ap.cfg["between"]["min_song_s"] = 0  # a 6 s "song" (v7 default: a gap in the first 20 s doesn't end one)
     ap.set_on(True, app.t.t)
     run(app, 6, drums=lambda t: app.bus.add("x", ["snare", "activity"], 0.8, t))
     t_last = app.t.t

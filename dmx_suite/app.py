@@ -66,7 +66,7 @@ class App:
             master_off=lambda: self.engine.rig.profile.master_gate and not self.engine.master,
             flash=lambda kind: self.flash_fx(kind, True, "show", length_ms=500),
             ratings=self.look_ratings, presets=self.preset_picks, playing=lambda: self.ride_pick,
-            darkness_step=lambda now, why: self.darkness.step(now, why))
+            darkness_step=lambda now, why: self.darkness.step(now, why), play_scene=self._autopilot_scene)
         self.router.ride = self.ride_action
         from .darkness import Darkness
 
@@ -1139,6 +1139,15 @@ class App:
         return {"ok": True, "playing": label, "issues": issues, "scene": data}
 
     # ------------------------------------------------------------------ autopilot and Ride controls (v3.4)
+
+    def _autopilot_scene(self, key: str, fade_s: float) -> None:
+        """v7: a pre-built scene as the between-songs / walk-on / walk-off look: played as authored (no
+        Darkness, no layer timing); the autopilot stays on and takes over again when the song starts."""
+        sc = self.files.scenes.get(key)
+        if sc is None:
+            raise ValueError(f"no scene {key!r}")
+        player = ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff)
+        self.ctl.select_ride(f"Autopilot: {sc.name}", player, sc, fade_s, manual=False)
 
     def _manual_pick(self) -> None:
         """The band picked a look, scene or show by hand: the autopilot steps aside."""
