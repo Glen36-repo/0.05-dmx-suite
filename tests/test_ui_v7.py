@@ -187,3 +187,47 @@ def test_settings_save_staggered_timing(ui):
     assert ap["layers"]["palette"] == {"on": "song", "spread": 25}
     assert ap["layers"]["move"] == {"every_s": 30, "spread": 10}
     assert app.autopilot.cfg["layers"]["move"] == {"every_s": 30, "spread": 10, "locked": False}
+
+
+# ------------------------------------------------------------------ A3 darkness Auto
+
+
+def test_darkness_auto_markers_and_back_to_manual(ui):
+    import yaml
+
+    page, app, root, _ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#dk-mode [data-dkmode=auto]")
+    assert not page.is_visible("#dk-min")  # Manual: no markers
+    page.click("#dk-mode [data-dkmode=auto]")
+    page.wait_for_selector("#ride-darkness.auto")
+    assert page.is_visible("#dk-mark-min") and page.is_visible("#dk-max")
+    slide = "(e, v) => { e.value = v; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); }"
+    page.eval_on_selector("#dk-max", slide, 80)
+    page.eval_on_selector("#dk-min", slide, 90)
+    for _ in range(40):
+        if app.darkness.status()["min"] == 90:
+            break
+        page.wait_for_timeout(50)
+    st = app.darkness.status()
+    assert st["mode"] == "auto" and st["min"] == 90 and st["max"] == 90  # markers can't cross
+    page.fill("#dk-tam", "45")
+    page.dispatch_event("#dk-tam", "change")
+    page.wait_for_function("() => true")
+    for _ in range(40):
+        if app.darkness.status()["time_at_max"] == 45:
+            break
+        page.wait_for_timeout(50)
+    assert app.darkness.status()["time_at_max"] == 45
+    page.click("#ride-darkness [data-dkset=high]")  # stores Auto with its markers for HIGH
+    sd = {}
+    for _ in range(40):
+        sd = (yaml.safe_load((root / "rigs" / "full.yaml").read_text()).get("autopilot") or {}).get("set_darkness") or {}
+        if isinstance(sd.get("high"), dict):
+            break
+        page.wait_for_timeout(50)
+    assert sd["high"] == {"mode": "auto", "min": 90, "max": 90, "time_at_max": 45}
+    page.eval_on_selector("#dk-slider", "e => { e.value = 20; e.dispatchEvent(new Event('input')); }")  # hands on
+    page.wait_for_selector("#ride-darkness:not(.auto)")
+    assert page.inner_text("#dk-note") == "Moved by hand: back to Manual"
+    assert app.darkness.status()["mode"] == "manual"

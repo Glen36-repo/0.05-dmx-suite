@@ -1659,9 +1659,8 @@ class App:
             old = sd.get(which)
             base = dict(old) if isinstance(old, dict) else ({"value": old} if old is not None else {})
             sd[which] = {**base, **value}
-        else:
-            old = sd.get(which)
-            sd[which] = {**old, "value": round(float(value), 1)} if isinstance(old, dict) else round(float(value), 1)
+        else:  # a plain number is that set's Manual value (v6 shape; any Auto markers for it go)
+            sd[which] = round(float(value), 1)
         ap["set_darkness"] = sd
         data["autopilot"] = ap
         bid = self.store.put("rig", rig_name, data, f"autopilot: {which} darkness on rig {rig_name}")

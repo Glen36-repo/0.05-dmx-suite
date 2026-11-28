@@ -524,7 +524,15 @@
       <div class="darkness" id="ride-darkness">
         <label class="darkness-fader"><span><span data-i18n="darkness.title"></span> <button type="button" class="info" data-info="darkness" aria-expanded="false">ⓘ</button>
           <b id="dk-val"></b> <span class="muted" id="dk-src"></span></span>
-          <input type="range" class="perform" id="dk-slider" min="0" max="100" step="1" value="0" data-i18n-title="darkness.title"></label>
+          <span class="dk-track"><input type="range" class="perform" id="dk-slider" min="0" max="100" step="1" value="0" data-i18n-title="darkness.title">
+            <i class="dk-mark" id="dk-mark-min"></i><i class="dk-mark" id="dk-mark-max"></i></span></label>
+        <div class="row wrap dk-auto">
+          <span class="seg-row" id="dk-mode"><button type="button" data-dkmode="manual" data-i18n="darkness.manual"></button><button type="button" data-dkmode="auto" data-i18n="darkness.auto"></button></span>
+          <label class="ap-field"><span data-i18n="darkness.min"></span><input type="range" id="dk-min" min="0" max="100" step="1" data-i18n-title="darkness.min"><b id="dk-min-v"></b></label>
+          <label class="ap-field"><span data-i18n="darkness.max"></span><input type="range" id="dk-max" min="0" max="100" step="1" data-i18n-title="darkness.max"><b id="dk-max-v"></b></label>
+          <label class="ap-field"><span data-i18n="darkness.time_at_max"></span><input type="number" class="num" id="dk-tam" min="0" max="100" step="1"> %</label>
+          <span class="muted" id="dk-note"></span>
+        </div>
         <div class="row wrap"><span class="muted" data-i18n="darkness.store"></span>
           <button class="mini" data-dkset="low"></button><button class="mini" data-dkset="mid"></button><button class="mini" data-dkset="high"></button></div>
       </div>

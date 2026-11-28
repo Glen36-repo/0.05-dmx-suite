@@ -1358,7 +1358,7 @@
  "darkness.src_cc": "pedal",
  "darkness.src_claude": "Claude",
  "info.darkness.title": "Darkness",
- "info.darkness.text": "Puts black into the Autopilot's effects: narrower bands, black slots in palettes, gaps between colours. Not a dimmer: MASTER, dimmers and haze are untouched, the kick light keeps its look, hand-made scenes play as made. Store for set: LOW / MID / HIGH load their own value.",
+ "info.darkness.text": "Black put into the Autopilot's effects, never a dimmer; the kick light keeps its own. Manual: the slider or the expression pedal sets it. Auto: it moves between the Min and Max markers on the Darkness layer, spending Time at Max of the time at Max and holding each marker at least one interval. Moving the slider or pedal goes back to Manual. Store for set saves what's shown for LOW, MID or HIGH.",
  "midi.role_darkness": "darkness (CC pedal)",
  "steps.lit": "Lit %",
  "steps.lit_tip": "How much of the colour is lit; the rest is black (colour off, never the dimmer): 50 = every other light / pixel",
@@ -1508,5 +1508,13 @@
  "info.autopilot.layers.title": "Layers",
  "info.autopilot.layers.text": "The four parts of a look: Move FX, Colour FX (with the drum FX), Palette and Darkness. Each shows when it next changes. Tap one to lock it: it holds while the rest keep changing. Set how they change in Autopilot settings.",
  "info.autopilot.settings.title": "Autopilot settings",
- "info.autopilot.settings.text": "Saved with this rig. Layer timing: Together (all at once, as before) or Staggered (each layer on its own clock, with a random spread so they don't line up)."
+ "info.autopilot.settings.text": "Saved with this rig. Layer timing: Together (all at once, as before) or Staggered (each layer on its own clock, with a random spread so they don't line up).",
+ "darkness.manual": "Manual",
+ "darkness.auto": "Auto",
+ "darkness.min": "Min",
+ "darkness.max": "Max",
+ "darkness.time_at_max": "Time at Max",
+ "darkness.auto_src": "Auto · at {marker} · {share} % of the time at Max",
+ "darkness.dropped": "Moved by hand: back to Manual",
+ "darkness.stored_auto": "{set}: Auto darkness stored (markers and time at Max)"
 }

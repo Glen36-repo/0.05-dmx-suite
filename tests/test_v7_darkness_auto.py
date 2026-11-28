@@ -173,9 +173,11 @@ def test_set_darkness_saved_per_set(running):
     assert status == 200
     sd = yaml.safe_load((root / "rigs" / "full.yaml").read_text())["autopilot"]["set_darkness"]
     assert sd["high"] == {"mode": "auto", "min": 20, "max": 90, "time_at_max": 25}
-    call(f"{url}/api/darkness/set", "POST", {"set": "high", "value": 40})  # a plain value keeps the markers
+    call(f"{url}/api/darkness/set", "POST", {"set": "high", "value": {"time_at_max": 60}})  # merged
     sd = yaml.safe_load((root / "rigs" / "full.yaml").read_text())["autopilot"]["set_darkness"]
-    assert sd["high"]["value"] == 40 and sd["high"]["mode"] == "auto"
+    assert sd["high"] == {"mode": "auto", "min": 20, "max": 90, "time_at_max": 60}
+    call(f"{url}/api/darkness/set", "POST", {"set": "high", "value": 40})  # a plain number: Manual for that set
+    assert yaml.safe_load((root / "rigs" / "full.yaml").read_text())["autopilot"]["set_darkness"]["high"] == 40
 
 
 def test_claude_set_darkness(running):

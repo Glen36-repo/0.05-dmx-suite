@@ -764,3 +764,12 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .ap-layer-row > b { min-width: 90px; }
 .ap-field { display: inline-flex; gap: 6px; align-items: center; }
 #ap-timing button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+
+/* v7 Darkness Auto: Min / Max markers on the slider bar */
+.dk-track { position: relative; display: block; }
+.dk-mark { position: absolute; top: 2px; bottom: 2px; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px;
+  pointer-events: none; display: none; }
+#ride-darkness.auto .dk-mark { display: block; }
+#ride-darkness:not(.auto) .dk-auto .ap-field { display: none; }
+#dk-mode button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+.dk-auto input[type=range] { width: 140px; }

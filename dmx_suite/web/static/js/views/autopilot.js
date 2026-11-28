@@ -301,15 +301,46 @@ function sendDarkness(v) {
   if (performance.now() - dkLast > 60) go(); else dkTimer = setTimeout(go, 60);
 }
 
+let dkEditing = false; // a marker or Time at Max being changed here: don't redraw it under the finger
+let dkSentAt = 0; // and not from a live frame made before our change landed
+let dkLastDk = null;
 function drawDarkness(dk) {
   if (!dk) return;
-  if (!dkHeld) $("#dk-slider").value = dk.darkness;
-  $("#dk-val").textContent = `${Math.round(dk.darkness)} %`;
-  $("#dk-src").textContent = t("darkness.src_" + dk.source) + (dk.cc ? ` · ${dk.cc.describe}` : "");
+  dkLastDk = dk;
+  const auto = dk.mode === "auto";
+  $("#ride-darkness").classList.toggle("auto", auto);
+  if (!dkHeld) $("#dk-slider").value = auto ? dk.now : dk.darkness;
+  $("#dk-val").textContent = `${Math.round(auto ? dk.now : dk.darkness)} %`;
+  $("#dk-src").textContent = (auto ? t("darkness.auto_src", { marker: t("darkness." + (dk.marker || "min")), share: Math.round(dk.share_at_max ?? 0) })
+    : t("darkness.src_" + dk.source)) + (dk.cc ? ` · ${dk.cc.describe}` : "");
+  document.querySelectorAll("#dk-mode [data-dkmode]").forEach((b) => b.classList.toggle("on", b.dataset.dkmode === dk.mode));
+  $("#dk-mark-min").style.left = dk.min + "%";
+  $("#dk-mark-max").style.left = dk.max + "%";
+  if (!dkEditing && performance.now() - dkSentAt > 1500) {
+    $("#dk-min").value = dk.min;
+    $("#dk-max").value = dk.max;
+    $("#dk-tam").value = dk.time_at_max;
+  }
+  $("#dk-min-v").textContent = `${Math.round(+$("#dk-min").value)} %`;
+  $("#dk-max-v").textContent = `${Math.round(+$("#dk-max").value)} %`;
+  $("#dk-note").textContent = dk.dropped ? t("darkness.dropped") : "";
   document.querySelectorAll("#ride-darkness [data-dkset]").forEach((b) => {
     const v = dk.set_darkness[b.dataset.dkset];
     b.textContent = t("darkness.set_btn", { set: t("autopilot.mood_" + b.dataset.dkset), v: v === null ? t("darkness.none") : `${v} %` });
   });
+}
+
+// v7 Auto: markers and Time at Max go live (and hold until the next set change, like the slider)
+function sendAuto(changes) {
+  dkSentAt = performance.now();
+  return api("POST", "/api/darkness", changes).then((dk) => { dkSentAt = performance.now(); drawDarkness(dk); })
+    .catch((err) => toast(err.message, true));
+}
+function storeSetDarkness(set, value) {
+  const auto = dkLastDk?.mode === "auto";
+  const v = auto ? { mode: "auto", min: +$("#dk-min").value, max: +$("#dk-max").value, time_at_max: +$("#dk-tam").value }
+    : value; // a plain number = that set's Manual value
+  return attempt(() => api("POST", "/api/darkness/set", { set, value: v }));
 }
 
 function update(s) {
@@ -384,9 +415,28 @@ export function init() {
   dk.addEventListener("pointerup", () => { dkHeld = false; });
   dk.addEventListener("input", () => sendDarkness(+dk.value));
   document.querySelectorAll("#ride-darkness [data-dkset]").forEach((b) => (b.onclick = async () => {
-    const r = await attempt(() => api("POST", "/api/darkness/set", { set: b.dataset.dkset, value: +dk.value }));
-    if (r) toast(t("darkness.stored", { set: t("autopilot.mood_" + b.dataset.dkset), v: +dk.value }));
+    const r = await storeSetDarkness(b.dataset.dkset, +dk.value);
+    if (r) toast(t(dkLastDk?.mode === "auto" ? "darkness.stored_auto" : "darkness.stored",
+      { set: t("autopilot.mood_" + b.dataset.dkset), v: +dk.value }));
   }));
+  document.querySelectorAll("#dk-mode [data-dkmode]").forEach((b) => (b.onclick = () => sendAuto({ mode: b.dataset.dkmode })));
+  for (const [id, key] of [["#dk-min", "min"], ["#dk-max", "max"]]) {
+    const inp = $(id);
+    inp.addEventListener("pointerdown", () => { dkEditing = true; });
+    inp.addEventListener("input", () => {
+      dkEditing = true;
+      const mn = +$("#dk-min").value, mx = +$("#dk-max").value;
+      if (mn > mx) { if (key === "min") $("#dk-max").value = mn; else $("#dk-min").value = mx; } // markers can't cross
+      $("#dk-min-v").textContent = `${$("#dk-min").value} %`;
+      $("#dk-max-v").textContent = `${$("#dk-max").value} %`;
+    });
+    inp.addEventListener("change", async () => {
+      await sendAuto({ min: +$("#dk-min").value, max: +$("#dk-max").value });
+      dkEditing = false;
+    });
+  }
+  $("#dk-tam").addEventListener("focus", () => { dkEditing = true; });
+  $("#dk-tam").addEventListener("change", async () => { await sendAuto({ time_at_max: +$("#dk-tam").value }); dkEditing = false; });
   $("#ride-exclude").onclick = () => setExcluding(!excluding);
   onLeave("autopilot", () => { if (excluding) setExcluding(false); });
   onShow("autopilot", load);
