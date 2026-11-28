@@ -147,6 +147,7 @@ function drawDmx() {
 
 let routing = null;
 let myTest = false; // started from this page: stopped when the page is left
+let myTestAt = 0; // when it was confirmed (performance.now()); Infinity while the start is on its way
 
 function testFields() {
   const p = $("#test-pattern").value;
@@ -197,7 +198,8 @@ async function startTest() {
   // ours from the moment it's asked for: the live feed can show it running before the reply comes back, and
   // leaving the page in that gap must still stop it
   myTest = true;
-  if (await attempt(() => api("POST", "/api/test/run", body))) pollTest();
+  myTestAt = Infinity;
+  if (await attempt(() => api("POST", "/api/test/run", body))) { myTestAt = performance.now(); pollTest(); }
   else myTest = false;
 }
 
@@ -209,7 +211,10 @@ async function stopTest(why = "stopped") {
 
 async function startCycle() {
   const [, n] = $("#test-target").value.split(":");
-  if (await attempt(() => api("POST", "/api/cycle/start", { output: +n }))) { myTest = true; pollTest(); }
+  myTest = true;
+  myTestAt = Infinity;
+  if (await attempt(() => api("POST", "/api/cycle/start", { output: +n }))) { myTestAt = performance.now(); pollTest(); }
+  else myTest = false;
 }
 
 function drawCycle(c) {
@@ -226,6 +231,7 @@ function drawCycle(c) {
 }
 
 async function pollTest() {
+  const asked = performance.now(); // a status asked for before our start was confirmed mustn't disown it
   const cy = await get("/api/cycle").catch(() => null);
   if (cy) drawCycle(cy.cycle);
   const r = await get("/api/test").catch(() => null);
@@ -236,7 +242,7 @@ async function pollTest() {
     $("#test-name").textContent = `${t("test.running")} ${tst.name}`;
     $("#test-what").textContent = tst.now || "";
     $("#test-left").textContent = t("test.left", { s: Math.round(tst.left_s) });
-  } else myTest = false;
+  } else if (asked > myTestAt) myTest = false;
   $("#test-log").replaceChildren(...r.log.slice(-4).reverse().map((x) => el("div", { text: t("test.log", {
     time: new Date(x.time * 1000).toLocaleTimeString("en-AU", { hour12: false }), what: x.what, pattern: x.pattern,
     u: x.universe, out: x.output !== null ? ` output ${x.output + 1}` : "", by: x.by }) })));
@@ -259,7 +265,8 @@ function drawFaultFind(v) {
     onclick: () => ffDo({ action: "answer", answer: a }) }, label(a)));
   if (v.test) {
     const tb = el("button", { disabled: !v.test_allowed, title: v.test_allowed ? "" : t("ff.locked"),
-      onclick: async () => { await ffDo({ action: "test" }); myTest = true; pollTest(); } }, t("ff.test"));
+      onclick: async () => { myTest = true; myTestAt = Infinity; await ffDo({ action: "test" }); myTestAt = performance.now(); pollTest(); } },
+    t("ff.test"));
     btns.unshift(tb);
   }
   $("#ff-answers").replaceChildren(...btns);
