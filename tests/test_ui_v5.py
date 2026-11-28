@@ -467,3 +467,33 @@ def test_wizard_saves_what_is_ticked_even_on_a_quick_next(ui, monkeypatch):
     page.wait_for_function("document.querySelector('#wizard').textContent.includes('Which lights')")
     rig = yaml.safe_load((root / "rigs" / "full.yaml").read_text(encoding="utf-8"))
     assert rig["outputs"] == [{"driver": "log"}]
+
+
+STALE_STATUS = """() => { const f = window.fetch;
+  window.fetch = async (url, opts) => { const r = await f(url, opts);
+    const status = String(url).endsWith('/api/test') && (!opts || !opts.method || opts.method === 'GET');
+    if (status) await new Promise(ok => setTimeout(ok, 700));
+    return r; }; }"""
+
+
+def test_late_status_reply_doesnt_disown_a_running_test(ui):
+    """A status poll sent just before Go and answered after it ("no test") mustn't make the page forget it
+    started the test, or leaving the page wouldn't stop it (CI caught this on a slow runner)."""
+    page, app, *_ = ui
+    go(page, "monitor")
+    page.wait_for_selector("#test-target option", state="attached")
+    page.evaluate(STALE_STATUS)
+    page.select_option("#test-pattern", "all_full")
+    page.wait_for_timeout(250)  # a status poll is on its way when Go is pressed
+    page.click("#test-go")
+    for _ in range(40):
+        if app.engine.test is not None:
+            break
+        page.wait_for_timeout(25)
+    page.wait_for_timeout(800)  # the late "no test" reply lands
+    go(page, "live")
+    for _ in range(50):
+        if app.engine.test is None:
+            break
+        page.wait_for_timeout(50)
+    assert app.engine.test is None and app.engine.test_log[-1]["what"] == "page left"
