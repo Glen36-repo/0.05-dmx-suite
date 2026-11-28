@@ -446,11 +446,13 @@ def test_show_and_scene_buttons_are_an_aligned_grid(ui):
     assert after[:-1] == scenes_before and after[-1] == "scene:aaa_new"
     # a long name doesn't widen its button (once the list has settled: the reload and the live feed can each
     # redraw it, and a button measured mid-redraw isn't laid out yet)
+    # CI has caught it at 0 px between redraws, so wait for the new button to be laid out (width > 0) first
     page.wait_for_function("""() => { const bs = [...document.querySelectorAll('#scenes > button')];
         const w = bs.map(b => Math.round(b.getBoundingClientRect().width));
-        return bs.length && w.every(x => x === w[0]); }""", timeout=5000)
+        const nb = document.querySelector('#scenes [data-scene=aaa_new]');
+        return nb && w[0] > 0 && w.every(x => x === w[0]); }""", timeout=5000)
     w = page.eval_on_selector("#scenes [data-scene=aaa_new]", "b => b.getBoundingClientRect().width")
-    assert abs(w - boxes(page, "#scenes > button")[0]["w"]) < 1
+    assert w > 0 and abs(w - boxes(page, "#scenes > button")[0]["w"]) < 1
 
 
 # ---------------------------------------------------------------- step editor (item 10)
