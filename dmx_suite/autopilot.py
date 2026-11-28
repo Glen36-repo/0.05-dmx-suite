@@ -91,7 +91,9 @@ DEFAULTS: dict[str, Any] = {
     "palettes": [],
     "seed": "",
     "darkness": 0,  # v6: % black put into the Autopilot's effects (not a dimmer)
-    "set_darkness": {},  # v6: per set {low, mid, high} %, loaded on a set (mood) change
+    "set_darkness": {},  # v6: per set {low, mid, high} % (v7: or {mode, value, min, max, time_at_max, hold_s})
+    "darkness_mode": "manual",  # v7: manual (the slider / pedal value) | auto (moves between Min and Max)
+    "darkness_auto": {"min": 0, "max": 60, "time_at_max": 30, "hold_s": None},  # %, %, % of time; hold None = layer
     # v7 layer timing: together = every layer changes on each look change (v6); staggered = a clock per layer
     "timing": "together",
     "layers": {
@@ -157,9 +159,17 @@ def parse_config(d: Any) -> dict[str, Any]:
     if isinstance(dk, bool) or not isinstance(dk, (int, float)) or not 0 <= dk <= 100:
         raise ConfigError("autopilot darkness: 0-100 (%)")
     sd = out["set_darkness"]
-    if not isinstance(sd, dict) or set(sd) - set(MOODS) or any(
-            v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100) for v in sd.values()):
-        raise ConfigError("autopilot set_darkness: {low, mid, high} each 0-100 (%)")
+    if not isinstance(sd, dict) or set(sd) - set(MOODS):
+        raise ConfigError("autopilot set_darkness: {low, mid, high} each 0-100 (%) or {mode, value, min, max, time_at_max}")
+    for m, v in sd.items():
+        if v is None or (_num(v) is not None and 0 <= v <= 100):
+            continue
+        if not isinstance(v, dict):
+            raise ConfigError(f"autopilot set_darkness {m}: 0-100 (%) or {{mode, value, min, max, time_at_max, hold_s}}")
+        _check_darkness_auto(v, f"autopilot set_darkness {m}", allow={"mode", "value"})
+    if out["darkness_mode"] not in DARKNESS_MODES:
+        raise ConfigError("autopilot darkness_mode: manual or auto")
+    _check_darkness_auto(out["darkness_auto"], "autopilot darkness_auto")
     if not 0 <= float(out["variation"]) <= 0.9:
         raise ConfigError("autopilot variation: 0-0.9")
     if not isinstance(out["no_repeat"], int) or not 0 <= out["no_repeat"] <= 50:
@@ -232,6 +242,25 @@ def merge_settings(cur: dict[str, Any] | None, changes: dict[str, Any]) -> dict[
             out[k] = v
     parse_config(out)
     return out
+
+
+DARKNESS_MODES = ("manual", "auto")
+AUTO_KEYS = ("min", "max", "time_at_max", "hold_s")
+
+
+def _check_darkness_auto(d: Any, where: str, allow: set[str] | None = None) -> None:
+    keys = set(AUTO_KEYS) | (allow or set())
+    if not isinstance(d, dict) or set(d) - keys:
+        raise ConfigError(f"{where}: {', '.join(sorted(keys))}")
+    if "mode" in d and d["mode"] not in DARKNESS_MODES:
+        raise ConfigError(f"{where} mode: manual or auto")
+    for k in ("value", "min", "max", "time_at_max"):
+        if d.get(k) is not None and (_num(d[k]) is None or not 0 <= d[k] <= 100):
+            raise ConfigError(f"{where} {k}: 0-100 (%)")
+    if d.get("hold_s") is not None and (_num(d["hold_s"]) is None or not 0 <= d["hold_s"] <= 3600):
+        raise ConfigError(f"{where} hold_s: 0-3600 s, or empty for the Darkness layer's interval")
+    if d.get("min") is not None and d.get("max") is not None and d["min"] > d["max"]:
+        raise ConfigError(f"{where}: min is above max")
 
 
 START_MODES = ("first_hit", "count_in")
@@ -581,6 +610,15 @@ class Autopilot:
             else:  # next, fill_crash, build, breakdown: the clocked layers
                 out = tuple(k for k in LAYERS if "on" not in lay[k])
         return tuple(k for k in out if not self.locked(k))
+
+    def darkness_interval(self) -> float:
+        """v7: the Darkness layer's interval (the Auto darkness hold default): its own clock when staggered,
+        else one look (the set's time)."""
+        if self.staggered:
+            base = self._base_s("darkness")
+            if base is not None:
+                return base
+        return float(self.cfg["moods"][self.st.mood])
 
     def _darkness(self, now: float, why: str) -> None:
         if self.darkness_step is not None:

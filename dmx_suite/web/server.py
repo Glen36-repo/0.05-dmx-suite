@@ -850,11 +850,25 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 raise ApiError(400, "tempo action: tap, source or params")
             if path == "/api/darkness" and method == "POST":  # v6 live Darkness (slider / Claude); gig lock allows it
                 src = "claude" if self._is_claude() else str(body.get("source") or "slider")
-                return self._json(200, {"ok": True, **app.set_darkness(float(body.get("value", 0)), src)})
+                try:
+                    if any(k in body for k in ("mode", "min", "max", "time_at_max", "hold_s")):  # v7 Auto
+                        app.set_darkness_auto(body.get("mode"), body.get("min"), body.get("max"), body.get("time_at_max"),
+                                              body.get("hold_s"), src)
+                    if "value" in body or not any(k in body for k in ("mode", "min", "max", "time_at_max", "hold_s")):
+                        return self._json(200, {"ok": True, **app.set_darkness(float(body.get("value", 0)), src)})
+                    return self._json(200, {"ok": True, **app.darkness.status()})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/darkness/set" and method == "POST":  # a set's stored darkness (saved to the rig)
                 v = body.get("value")
-                return self._json(200, {"ok": True, **app.set_set_darkness(str(body.get("set", "")),
-                                                                           None if v in (None, "") else float(v))})
+                if isinstance(v, dict):  # v7: {mode, value, min, max, time_at_max, hold_s}
+                    val: Any = v
+                else:
+                    val = None if v in (None, "") else float(v)
+                try:
+                    return self._json(200, {"ok": True, **app.set_set_darkness(str(body.get("set", "")), val)})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/faultfind" and method == "POST":  # v5 "Rig not responding" wizard
                 return self._json(200, app.fault_find(str(body.get("action", "status")), str(body.get("answer", "")),
                                                       body.get("fixture") or None, "claude" if self._is_claude() else "ui"))

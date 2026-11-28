@@ -175,6 +175,16 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.set_autopilot(darkness)
 
     @tool
+    def set_darkness(mode: str | None = None, min: float | None = None, max: float | None = None,
+                     time_at_max: float | None = None, hold_s: float | None = None, value: float | None = None,
+                     set: str | None = None) -> str:
+        """Autopilot Darkness, v7. mode manual (the value holds) | auto (moves between the Min and Max markers on
+        the Darkness layer's clock, spending time_at_max % of the time at Max, holding each marker at least
+        hold_s, default the layer's interval). min / max / value 0-100 %. Live (allowed under gig lock) unless
+        `set` (low, mid or high) is given: then it's saved to that set in the rig (not under gig lock)."""
+        return t.set_darkness(mode, min, max, time_at_max, hold_s, value, set)
+
+    @tool
     def set_set_darkness(set: str, value: float | None = None) -> str:
         """Store the darkness (0-100 %) a set loads: set = low, mid or high; value None clears it. Saved to the
         rig's autopilot block (set_darkness). Not under gig lock."""

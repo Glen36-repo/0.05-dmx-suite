@@ -65,11 +65,13 @@ class App:
             quality=self.quality, bus=self.bus, cfg=files.rig.autopilot, log_dir=log_dir,
             master_off=lambda: self.engine.rig.profile.master_gate and not self.engine.master,
             flash=lambda kind: self.flash_fx(kind, True, "show", length_ms=500),
-            ratings=self.look_ratings, presets=self.preset_picks, playing=lambda: self.ride_pick)
+            ratings=self.look_ratings, presets=self.preset_picks, playing=lambda: self.ride_pick,
+            darkness_step=lambda now, why: self.darkness.step(now, why))
         self.router.ride = self.ride_action
         from .darkness import Darkness
 
-        self.darkness = Darkness(self.engine.clock, lambda: self.autopilot.st.mood)  # v6
+        self.darkness = Darkness(self.engine.clock, lambda: self.autopilot.st.mood,  # v6
+                                 interval=self.autopilot.darkness_interval)  # v7: Auto's hold default
         self.darkness.configure(files.rig.autopilot)
         self.ctl.on_manual = self._manual_pick
         self.ctl.on_setlist = self._setlist_walk
@@ -1614,14 +1616,38 @@ class App:
         self.darkness.set(v / 100, source)
         return self.darkness.status()
 
-    def set_set_darkness(self, which: str, value: float | None) -> dict[str, Any]:
+    def set_darkness_auto(self, mode: str | None = None, mn: float | None = None, mx: float | None = None,
+                          time_at_max: float | None = None, hold_s: float | None = None,
+                          source: str = "slider") -> dict[str, Any]:
+        """v7 Auto darkness, live (% values): mode manual / auto, Min and Max markers, time at Max, hold."""
+        for k, v in (("min", mn), ("max", mx), ("time_at_max", time_at_max)):
+            if v is not None and not 0 <= float(v) <= 100:
+                raise ValueError(f"darkness {k}: 0-100 (%)")
+        if hold_s is not None and not 0 <= float(hold_s) <= 3600:
+            raise ValueError("darkness hold_s: 0-3600 s")
+        def pct(v: float | None) -> float | None:
+            return None if v is None else float(v) / 100
+
+        self.darkness.set_auto(mode, pct(mn), pct(mx), pct(time_at_max), None if hold_s is None else float(hold_s), source)
+        return self.darkness.status()
+
+    def set_set_darkness(self, which: str, value: float | dict[str, Any] | None) -> dict[str, Any]:
         """A set's stored darkness (LOW / MID / HIGH), loaded on that set; None clears it. Saved to the rig."""
         from .autopilot import MOODS
 
         which = str(which).lower()
         if which not in MOODS:
             raise ValueError("set is low, mid or high")
-        if value is not None and not 0 <= float(value) <= 100:
+        if isinstance(value, dict):  # v7: {mode, value, min, max, time_at_max, hold_s}
+            from .autopilot import _check_darkness_auto
+            from .fixtures import ConfigError
+
+            value = {k: v for k, v in value.items() if v is not None}
+            try:
+                _check_darkness_auto(value, f"{which} darkness", allow={"mode", "value"})
+            except ConfigError as e:
+                raise ValueError(str(e)) from e
+        elif value is not None and not 0 <= float(value) <= 100:
             raise ValueError("darkness 0-100 (%)")
         rig_name = self.names[0]
         data = self.store.read("rig", rig_name)
@@ -1629,8 +1655,13 @@ class App:
         sd = dict(ap.get("set_darkness") or {})
         if value is None:
             sd.pop(which, None)
+        elif isinstance(value, dict):
+            old = sd.get(which)
+            base = dict(old) if isinstance(old, dict) else ({"value": old} if old is not None else {})
+            sd[which] = {**base, **value}
         else:
-            sd[which] = round(float(value), 1)
+            old = sd.get(which)
+            sd[which] = {**old, "value": round(float(value), 1)} if isinstance(old, dict) else round(float(value), 1)
         ap["set_darkness"] = sd
         data["autopilot"] = ap
         bid = self.store.put("rig", rig_name, data, f"autopilot: {which} darkness on rig {rig_name}")
