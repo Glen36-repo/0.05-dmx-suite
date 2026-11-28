@@ -336,3 +336,83 @@ def test_between_songs_badge(ui):
     assert ap.st.between
     page.wait_for_selector("#ap-between:not(.hidden)")
     assert page.inner_text("#ap-between").startswith("Between songs · ")
+
+
+# ------------------------------------------------------------------ B2 groups picker, B1 Layout strip
+
+
+def test_groups_picker_on_fixtures(ui):
+    page, app, *_ = ui
+    go(page, "fixtures")
+    page.wait_for_selector("#fx-patch [data-groups=wash_l]")
+    page.click("#fx-patch [data-groups=wash_l] summary")
+    before = app.files.patch.fixtures["wash_l"].groups
+    page.check("#fx-patch [data-groups=wash_l] [data-item=bars]")
+    page.once("dialog", lambda d: d.accept("front_wash"))
+    page.click("#fx-patch [data-groups=wash_l] .picker-extra")
+    page.wait_for_function("document.querySelector('#fx-patch [data-groups=wash_l] .picker-text')"
+                           ".textContent.includes('front_wash')")
+    page.click("#fx-patch-save")
+    for _ in range(80):
+        if "front_wash" in app.files.patch.fixtures["wash_l"].groups:
+            break
+        page.wait_for_timeout(25)
+    assert set(app.files.patch.fixtures["wash_l"].groups) == {*before, "bars", "front_wash"}
+
+
+def test_group_left_empty_is_flagged_with_its_users(ui):
+    page, app, _, errors = ui
+    go(page, "fixtures")
+    page.wait_for_selector("#fx-patch [data-groups=mh_a]")
+    heads = [f for f, fx in app.files.patch.fixtures.items() if "heads" in fx.groups]
+    for f in heads:  # take every light out of "heads"
+        page.click(f"#fx-patch [data-groups={f}] summary")
+        page.uncheck(f"#fx-patch [data-groups={f}] [data-item=heads]")
+        page.keyboard.press("Escape")
+    page.wait_for_selector("#fx-groups-empty [data-empty-group=heads]")
+    text = page.inner_text("#fx-groups-empty")
+    assert "heads" in text and "scenes/red_movers.yaml" in text  # what still uses it
+    page.click("#fx-patch-save")  # refused: scenes use it
+    page.wait_for_timeout(300)
+    assert all("heads" in app.files.patch.fixtures[f].groups for f in heads)
+    errors[:] = [e for e in errors if "400" not in e]  # the refused save, as expected
+
+
+def test_layout_strip_names_find_and_test(ui):
+    page, app, *_ = ui
+    go(page, "layout")
+    page.wait_for_selector("#lp-fixtures tr[data-id=mh_a] [data-find]")
+    assert page.locator("#lp-fixtures input").count() == 0  # no addresses here
+    width = page.eval_on_selector(".lp-side", "e => e.getBoundingClientRect().width")
+    stage = page.eval_on_selector(".lp-main", "e => e.getBoundingClientRect().width")
+    assert width <= 260 and stage > 3 * width  # the stage takes the room
+    page.click("#lp-fixtures tr[data-id=mh_a] [data-find]")
+    page.wait_for_selector("#lp-fixtures tr[data-id=mh_a] [data-find].sel")
+    assert app.engine.find == "mh_a" or app.snapshot()["setup"]["find"] == "mh_a"
+    page.click("#lp-fixtures tr[data-id=mh_a] [data-find]")  # off again
+    page.click("#lp-fixtures tr[data-id=mh_a] [data-test]")
+    for _ in range(80):
+        if app.engine.test is not None:
+            break
+        page.wait_for_timeout(25)
+    assert app.engine.test is not None and app.engine.test_status()["fixture"] == "mh_a"
+    page.click("#lp-fixtures tr[data-id=mh_a] [data-test]")  # again stops it
+    for _ in range(80):
+        if app.engine.test is None:
+            break
+        page.wait_for_timeout(25)
+    assert app.engine.test is None
+    page.click("#lp-fixtures tr[data-id=bar_2] td:first-child")  # a row picks the light on the stage
+    assert page.eval_on_selector_all("#layout-grid .fx.sel", "els => els.map(e => e.dataset.id)") == ["bar_2"]
+
+
+def test_address_map_panel_remembers_open(ui):
+    page, *_ = ui
+    go(page, "fixtures")
+    page.wait_for_selector("#fx-addr")
+    assert not page.eval_on_selector("#fx-addr", "e => e.open")  # closed by default
+    page.click("#fx-addr summary")
+    page.wait_for_selector("#addr-maps .addr-map")
+    go(page, "live")
+    go(page, "fixtures")
+    assert page.eval_on_selector("#fx-addr", "e => e.open")

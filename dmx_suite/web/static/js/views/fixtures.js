@@ -1,12 +1,13 @@
 // Fixtures page: the patch (where each light sits), fixture types (channel maps, wheel and gobo
 // slots, Open Fixture Library import/export) and the rig settings. Saves go through the store
 // (checked, backed up, undoable) and apply live.
+import { AddressMaps, routingRows, sourceOptions, universesOf } from "../addrmap.js";
 import { api, attempt, cmd, get, toast } from "../api.js";
-import { $, $$, el } from "../dom.js";
+import { $, $$, el, remember } from "../dom.js";
 import { t } from "../i18n.js";
-import { go, onShow } from "../nav.js";
-import { editAddress } from "./layout.js";
+import { onLeave, onShow } from "../nav.js";
 import { autoPatch, clashes as clashPatch, footprintOf } from "../patch.js";
+import { picker } from "../picker.js";
 import { live, onCatalogue, refreshCatalogue } from "../state.js";
 
 const KINDS = ["head", "bar", "wash", "kick", "haze"];
@@ -47,22 +48,76 @@ function select(options, value, onChange) {
 
 // ---------------------------------------------------------------- patch
 
+// v7: universes, addresses and groups are edited here, the one place for them (clash checks, the address
+// map with live values and the routing table below); Layout only arranges the stage
+const range = (f) => (f.address ? `${f.address}-${f.address + footprint(f.type) - 1}` : "");
+let extraGroups = []; // made with "+ New group", not on a light yet
+
+function allGroups() {
+  return [...new Set([...doc.fixtures.flatMap((f) => f.groups || []), ...extraGroups])].sort();
+}
+
+function groupPicker(f) {
+  const groups = allGroups();
+  const p = picker({ items: groups.map((g) => ({ id: g, label: g })), value: f.groups || [], label: t("fixtures.groups_of", { id: f.id }),
+    onChange: (ids) => { if (ids.length) f.groups = ids; else delete f.groups; dirty(); checkGroups(); },
+    extra: { label: t("fixtures.new_group"), onClick: () => newGroup(f) } });
+  p.dataset.groups = f.id;
+  return p;
+}
+
+function newGroup(f) {
+  const name = (prompt(t("groups.name_placeholder")) || "").trim();
+  if (!name) return;
+  if (!/^[A-Za-z0-9_-]+$/.test(name) || name === "all" || doc.fixtures.some((x) => x.id === name)) return toast(t("fixtures.bad_group", { name }), true);
+  if (!allGroups().includes(name)) extraGroups.push(name);
+  f.groups = [...new Set([...(f.groups || []), name])];
+  renderPatch();
+}
+
+// a group left with no lights isn't deleted quietly: say so, with what uses it (saving is then refused if anything does)
+let groupsSaved = new Set();
+async function checkGroups() {
+  const now = new Set(doc.fixtures.flatMap((f) => f.groups || []));
+  const gone = [...groupsSaved].filter((g) => !now.has(g));
+  const box = $("#fx-groups-empty");
+  if (!gone.length) { box.replaceChildren(); return; }
+  const lines = await Promise.all(gone.map(async (g) => {
+    const used = (await get(`/api/groups/used/${encodeURIComponent(g)}`).catch(() => ({ used: [] }))).used;
+    return el("div", { "data-empty-group": g, text: used.length ? t("fixtures.group_empty_used", { name: g, used: used.join(", ") })
+      : t("fixtures.group_empty", { name: g }) });
+  }));
+  box.replaceChildren(...lines);
+}
+
+// typing in a universe or address: refresh only what depends on the numbers, so the field keeps focus
+function patchChanged() {
+  const bad = clashes(doc.fixtures);
+  $$("#fx-patch tr").forEach((tr) => {
+    const f = doc.fixtures[+tr.dataset.row];
+    if (!f) return;
+    tr.classList.toggle("error", bad.has(f.id));
+    tr.querySelector("[data-range]").textContent = range(f);
+  });
+  $("#fx-clash").textContent = bad.size ? t("fixtures.clash", { ids: [...bad].join(", ") }) : "";
+  $("#fx-patch-save").disabled = bad.size > 0;
+  dirty();
+  renderAddresses();
+}
+
 function renderPatch() {
   const rows = doc.fixtures;
   const bad = clashes(rows);
   const typeNames = Object.entries(doc.types).map(([k, ty]) => [k, ty.name || k]);
-  $("#fx-patch").replaceChildren(...rows.map((f, i) => el("tr", { class: bad.has(f.id) ? "error" : "" },
+  $("#fx-patch").replaceChildren(...rows.map((f, i) => el("tr", { class: bad.has(f.id) ? "error" : "", "data-id": f.id, "data-row": i },
     el("td", {}, el("input", { value: f.id, class: "narrow", oninput: (e) => { f.id = e.target.value.trim(); dirty(); } })),
     el("td", {}, select(typeNames, f.type, (v) => { f.type = v; renderPatch(); })),
-    // addresses and universes are edited in one place, Layout (address map, live values, clash checks)
-    el("td", { class: "num-cell", text: String(f.universe ?? 0) }),
-    el("td", { class: "num-cell" }, el("span", { text: f.address ? String(f.address) : "-" }), " ",
-      el("button", { class: "mini link-btn", "data-addr": f.id, title: t("fixtures.addr_on_layout"),
-        "aria-label": t("fixtures.addr_change_aria", { id: f.id }),
-        onclick: () => { go("layout"); editAddress(f.id); } }, t("fixtures.addr_change"))),
-    el("td", { class: "muted", text: f.address ? `${f.address}-${f.address + footprint(f.type) - 1}` : "" }),
-    el("td", {}, el("input", { value: (f.groups || []).join(", "), placeholder: t("fixtures.groups_placeholder"),
-      oninput: (e) => { const g = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); if (g.length) f.groups = g; else delete f.groups; dirty(); } })),
+    el("td", {}, el("input", { type: "number", class: "num", min: 0, max: 15, value: f.universe ?? 0, "data-uni": f.id,
+      "aria-label": t("layout.aria_universe", { id: f.id }), oninput: (e) => { f.universe = +e.target.value || 0; patchChanged(); } })),
+    el("td", {}, el("input", { type: "number", class: "num", min: 1, max: 512, value: f.address || "", "data-address": f.id,
+      "aria-label": t("layout.aria_address", { id: f.id }), oninput: (e) => { f.address = +e.target.value || 0; patchChanged(); } })),
+    el("td", { class: "muted", "data-range": f.id, text: range(f) }),
+    el("td", {}, groupPicker(f)),
     el("td", {}, select(SUBS.map((s) => [s, s || t("fixtures.sub_kind")]), f.sub || "", (v) => { if (v) f.sub = v; else delete f.sub; dirty(); })),
     el("td", { class: "tools" },
       el("button", { title: t("fixtures.find_tip"), class: live.state?.setup.find === f.id ? "sel" : "", onclick: () => cmd("find", { fixture: live.state?.setup.find === f.id ? null : f.id }) }, t("fixtures.find")),
@@ -70,6 +125,38 @@ function renderPatch() {
   $("#fx-clash").textContent = bad.size ? t("fixtures.clash", { ids: [...bad].join(", ") }) : "";
   $("#fx-patch-save").disabled = bad.size > 0;
   dirty();
+  checkGroups();
+  renderAddresses();
+}
+
+// ---------------------------------------------------------------- address map (collapsible) and routing
+
+let maps = null;
+let routing = null;
+let routingTimer = null;
+const addrOpen = () => $("#fx-addr").open && $("#page-fixtures").classList.contains("on") && tab === "patch";
+const carriers = (u) => (routing?.rows || []).filter((r) => r.universe === u).map((r) => r.interface);
+
+function renderAddresses() {
+  if (!doc || !maps || !$("#fx-addr").open) return;
+  maps.render(doc, universesOf(doc, live.cat));
+  maps.watch(addrOpen());
+}
+
+async function loadRouting() {
+  try { routing = await get("/api/routing"); } catch { return; }
+  $("#fx-routing").replaceChildren(...routingRows(routing));
+  $("#fx-routing-problems").replaceChildren(...routing.problems.map((p) => el("li", { text: p })));
+  const us = universesOf(doc, live.cat);
+  $("#fx-out").replaceChildren(...sourceOptions(routing, us, maps.out, carriers));
+}
+
+function addrShown() {
+  clearInterval(routingTimer);
+  if (!addrOpen()) { maps?.stop(); return; }
+  renderAddresses();
+  loadRouting();
+  routingTimer = setInterval(() => (addrOpen() ? loadRouting() : null), 1000);
 }
 
 async function removeFixture(f, i) {
@@ -99,6 +186,8 @@ function addFixtures() {
 async function savePatch() {
   if (await attempt(() => api("PUT", "/api/store/patch", { fixtures: doc.fixtures }), t("fixtures.patch_saved"))) {
     saved = JSON.stringify(doc);
+    groupsSaved = new Set(doc.fixtures.flatMap((f) => f.groups || []));
+    extraGroups = [];
     await refreshCatalogue();
     renderPatch();
   }
@@ -362,6 +451,8 @@ async function load() {
   doc.types ||= {};
   doc.fixtures ||= [];
   saved = JSON.stringify(doc);
+  groupsSaved = new Set(doc.fixtures.flatMap((f) => f.groups || []));
+  extraGroups = [];
   $("#fx-add-type").replaceChildren(...Object.entries(doc.types).map(([k, ty]) => el("option", { value: k }, ty.name || k)));
   renderPatch();
   renderTypes();
@@ -373,6 +464,7 @@ function showTab(name) {
   tab = name;
   $$("#fx-tabs [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   for (const p of ["patch", "types", "rig"]) $(`#fx-tab-${p}`).classList.toggle("hidden", p !== name);
+  addrShown();
 }
 
 export function init() {
@@ -394,4 +486,12 @@ export function init() {
   };
   onCatalogue(() => { if (doc && tab === "rig") renderRig(); });
   onShow("fixtures", () => { document.body.dataset.fixturesReady = ""; load(); showTab(tab); });
+  // v7: the address map and routing (moved here from Layout), live while open
+  maps = new AddressMaps($("#addr-maps"), { cat: () => live.cat });
+  maps.out = remember.get("layout.out", "");
+  $("#fx-addr").addEventListener("toggle", () => { remember.set("fixtures.addr_open", $("#fx-addr").open); addrShown(); });
+  $("#fx-addr").open = remember.get("fixtures.addr_open", false);
+  $("#fx-out").onchange = (e) => { maps.out = e.target.value; remember.set("layout.out", maps.out); maps.watch(addrOpen()); };
+  $("#fx-print").onclick = () => { renderAddresses(); window.print(); };
+  onLeave("fixtures", () => { clearInterval(routingTimer); maps.stop(); });
 }

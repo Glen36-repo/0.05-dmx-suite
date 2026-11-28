@@ -242,13 +242,8 @@
           <button id="layout-undo" class="icon" data-icon="rotate-l" data-key="Ctrl+Z" data-tip="layout.undo"></button>
           <button id="layout-redo" class="icon" data-icon="rotate-r" data-key="Ctrl+Shift+Z" data-tip="layout.redo"></button>
           <button id="layout-reset" class="danger-text" data-i18n="layout.reset"></button>
-          <button id="lp-print" data-i18n="layout.print" data-i18n-title="layout.print_tip"></button>
           <button id="lp-png" data-i18n="layout.png" data-i18n-title="layout.png_tip"></button>
         </div>
-      </div>
-      <div class="tabs" id="lp-views" role="tablist">
-        <button data-view="stage" class="on" data-i18n="layout.view_stage"></button>
-        <button data-view="addresses" data-i18n="layout.view_addresses"></button>
       </div>
       <div class="lp-body">
         <div class="lp-main">
@@ -326,29 +321,13 @@
         <button id="group-delete" class="danger-text" data-i18n="groups.delete"></button>
       </div>
           </div>
-          <div id="lp-addresses" class="lp-pane hidden">
-            <div class="row wrap"><button type="button" class="info" data-info="layout.addresses" aria-expanded="false">ⓘ</button><span class="grow"></span>
-              <label class="muted" for="lp-out" data-i18n="layout.addr_source"></label><select id="lp-out"></select></div>
-            <div id="addr-maps"></div>
-          </div>
         </div>
-        <aside class="lp-side">
+        <aside class="lp-side lp-strip">
           <h2><span data-i18n="layout.fixture_list"></span> <button type="button" class="info" data-info="layout.fixtures" aria-expanded="false">ⓘ</button></h2>
-          <div class="table-scroll"><table class="lp-fixtures">
-            <thead><tr><th data-i18n="layout.col_id"></th><th data-i18n="layout.col_type"></th><th data-i18n="layout.col_ch"></th>
-              <th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_addr"></th><th data-i18n="layout.col_range"></th>
-              <th data-i18n="layout.col_groups"></th><th data-i18n="layout.col_out"></th></tr></thead>
-            <tbody id="lp-fixtures"></tbody></table></div>
-          <div class="error hidden" id="lp-clash"></div>
-          <div class="row"><button id="lp-patch-save" class="primary" data-i18n="layout.patch_save" disabled></button>
-            <button id="lp-patch-revert" data-i18n="layout.patch_revert" disabled></button></div>
-          <h2><span data-i18n="layout.routing"></span> <button type="button" class="info" data-info="layout.routing" aria-expanded="false">ⓘ</button></h2>
-          <div class="table-scroll"><table class="lp-routing">
-            <thead><tr><th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_interface"></th><th data-i18n="layout.col_state"></th>
-              <th data-i18n="layout.col_fps"></th><th data-i18n="layout.col_frames"></th><th data-i18n="layout.col_errors"></th><th data-i18n="layout.col_last"></th>
-              <th data-i18n="layout.col_timing"></th></tr></thead>
-            <tbody id="lp-routing"></tbody></table></div>
-          <ul class="layout-problems" id="lp-routing-problems"></ul>
+          <table class="lp-fixtures">
+            <thead><tr><th data-i18n="layout.col_id"></th><th data-i18n="layout.col_type"></th><th></th></tr></thead>
+            <tbody id="lp-fixtures"></tbody></table>
+          <p class="muted" data-i18n="layout.addr_moved"></p>
         </aside>
       </div>
     </section>
@@ -800,6 +779,7 @@
           <tbody id="fx-patch"></tbody>
         </table>
         <div class="error" id="fx-clash" role="alert"></div>
+        <div class="error" id="fx-groups-empty" role="alert"></div>
         <div class="row wrap">
           <select id="fx-add-type" data-i18n-title="a11y.fx_add_type"></select>
           <input id="fx-add-count" type="number" min="1" max="64" value="1" class="num" data-i18n-title="fixtures.add_count">
@@ -809,6 +789,20 @@
           <button id="fx-patch-save" data-i18n="fixtures.save_patch"></button>
           <button type="button" class="info" data-info="fixtures.patch" aria-expanded="false">ⓘ</button>
         </div>
+        <details class="scene-more" id="fx-addr">
+          <summary><span data-i18n="fixtures.addr_map"></span> <button type="button" class="info" data-info="layout.addresses" aria-expanded="false">ⓘ</button></summary>
+          <div class="row wrap"><span class="grow"></span>
+            <label class="muted" for="fx-out" data-i18n="layout.addr_source"></label><select id="fx-out"></select>
+            <button id="fx-print" data-i18n="layout.print" data-i18n-title="layout.print_tip"></button></div>
+          <div id="addr-maps"></div>
+          <h3><span data-i18n="layout.routing"></span> <button type="button" class="info" data-info="layout.routing" aria-expanded="false">ⓘ</button></h3>
+          <div class="table-scroll"><table class="lp-routing">
+            <thead><tr><th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_interface"></th><th data-i18n="layout.col_state"></th>
+              <th data-i18n="layout.col_fps"></th><th data-i18n="layout.col_frames"></th><th data-i18n="layout.col_errors"></th><th data-i18n="layout.col_last"></th>
+              <th data-i18n="layout.col_timing"></th></tr></thead>
+            <tbody id="fx-routing"></tbody></table></div>
+          <ul class="layout-problems" id="fx-routing-problems"></ul>
+        </details>
       </div>
       <div id="fx-tab-types" class="hidden">
         <div class="row wrap">

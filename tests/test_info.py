@@ -264,7 +264,7 @@ def test_page_path_refuses_anything_outside(name):
 
 def test_manual_route(server):
     app, web, *_ = server
-    status, html, headers = call(web, "/manual/layout.md", raw=True)
+    status, html, headers = call(web, "/manual/fixtures.md", raw=True)
     assert status == 200 and headers["Content-Type"].startswith("text/html")
     assert '/static/themes/' in html and "/theme.css" in html and "/static/style.css" in html
     assert 'id="addresses"' in html and 'href="/manual/README.md"' in html
@@ -287,8 +287,8 @@ def test_manual_works_under_gig_lock_and_needs_the_pin_on_the_network(server):
 def test_manual_page_in_the_browser(ui):
     page, *_ = ui
     base = page.url.split("/?")[0]
-    page.goto(f"{base}/manual/layout.md#addresses")
-    assert page.is_visible("h2#addresses")
+    page.goto(f"{base}/manual/fixtures.md#addresses")
+    assert page.is_visible("h3#addresses")
     page.click("a[href='/manual/README.md']")
     page.wait_for_selector("h1")
     assert "manual" in page.inner_text("h1").lower()
@@ -340,9 +340,6 @@ def test_every_button_on_every_page(ui):
     page.click("#bell")
     seen |= check_visible_buttons(page, "#alerts-panel")
     page.click("#alerts-close")
-    go(page, "layout")
-    page.click("#lp-views [data-view=addresses]")
-    seen |= check_visible_buttons(page, "#page-layout")
     for tab in ("rig",):
         go(page, "fixtures")
         page.click(f"#fx-tabs [data-tab={tab}]")
@@ -365,15 +362,15 @@ def test_every_button_on_every_page(ui):
 
 def test_more_in_the_manual_opens_the_right_section(ui):
     page, *_ = ui
-    go(page, "layout")
-    page.click("#lp-views [data-view=addresses]")
+    go(page, "fixtures")  # v7: the address map is on Fixtures
+    page.click("#fx-addr summary")
     page.click("button.info[data-info='layout.addresses']")
     with page.context.expect_page() as new:
         page.click("#info-pop .info-pop-more")
     tab = new.value
     tab.wait_for_load_state()
-    assert tab.url.endswith("/manual/layout.md#addresses") and tab.is_visible("h2#addresses")
-    assert page.is_visible("#page-layout.on")  # the app stays where it was
+    assert tab.url.endswith("/manual/fixtures.md#addresses") and tab.is_visible("#addresses")
+    assert page.is_visible("#page-fixtures.on")  # the app stays where it was
     tab.close()
 
 

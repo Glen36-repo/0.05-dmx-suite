@@ -499,7 +499,13 @@ body:has(#page-layout.on) main { max-width: none; }
 .lp-status.bad { color: var(--bad-text, var(--bad)); }
 .lp-actions { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: center; min-width: 0; max-width: 100%; }
 .dirty-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); display: inline-block; }
-.lp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 580px); gap: 14px; align-items: start; }
+/* v7: the stage takes the width; beside it a narrow strip (name, type, find, test) */
+.lp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 260px); gap: 14px; align-items: start; }
+.lp-strip .lp-fixtures { width: 100%; }
+.lp-strip .lp-fixtures td { padding: 3px 4px; white-space: nowrap; }
+.lp-strip .lp-fixtures td:nth-child(2) { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.lp-strip .lp-fixtures td.tools { text-align: right; }
+.lp-strip .lp-fixtures tr { cursor: pointer; }
 @media (max-width: 1100px) { .lp-body { grid-template-columns: minmax(0, 1fr); } }
 .lp-side { position: sticky; top: 60px; max-height: calc(100vh - 80px); overflow: auto; }
 .lp-side h2:first-child { margin-top: 0; }
@@ -531,11 +537,13 @@ table.lp-routing tr.on td { background: color-mix(in srgb, var(--accent) 14%, tr
 @media print {
   @page { size: A4 landscape; margin: 10mm; }
   body { background: #fff; color: #000; }
-  .top, .health, .banners, .menu, .alerts-panel, .lp-actions, #lp-views, .toolbar, #group-tabs, #layout-sel,
+  .top, .health, .banners, .menu, .alerts-panel, .lp-actions, .toolbar, #group-tabs, #layout-sel,
   #layout-problems-head, #arrange-tools, #arrange-tools ~ .row, #page-layout h2[data-i18n="layout.arrange"],
-  #page-layout h2[data-i18n="groups.title"], #page-layout h2[data-i18n="groups.title"] ~ *, #lp-patch-save, #lp-patch-revert,
-  .lp-side h2[data-i18n="layout.routing"], .lp-side h2[data-i18n="layout.routing"] ~ *, #lp-addresses .row { display: none !important; }
-  .page:not(#page-layout) { display: none !important; }
+  #page-layout h2[data-i18n="groups.title"], #page-layout h2[data-i18n="groups.title"] ~ *,
+  /* v7 patch sheet from Fixtures: the patch table and the address map */
+  #fx-tabs, #fx-tab-patch > .row, #fx-addr > .row, #fx-addr h3:has([data-i18n="layout.routing"]),
+  #fx-addr h3:has([data-i18n="layout.routing"]) ~ *, #fx-patch .tools, #fx-addr summary .info { display: none !important; }
+  .page:not(.on) { display: none !important; }
   main { padding: 0; max-width: none; }
   .lp-body { display: block; }
   .lp-pane.hidden { display: block !important; }
