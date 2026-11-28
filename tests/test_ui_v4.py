@@ -244,11 +244,14 @@ def test_layout_patch_page_universe_list_and_address_map(shot):
     page.click("#lp-fixtures tr[data-id=bar_2] td:first-child")
     assert page.eval_on_selector_all("#layout-grid .fx.sel", "els => els.map(e => e.dataset.id)") == ["bar_2"]
     assert "sel" in page.eval_on_selector("#lp-fixtures tr[data-id=bar_2]", "e => e.className")
-    # routing table and status strip: U0 goes out the simulator
-    page.wait_for_selector("#lp-routing tr")
-    assert "Simulator" in page.inner_text("#lp-routing") and "U0 → Simulator" in page.inner_text("#lp-status")
+    # status strip: U0 goes out the simulator
+    page.wait_for_function("document.querySelector('#lp-status').textContent.includes('U0 → Simulator')")
+    # v7: the routing table and the address map are on Fixtures
+    go(page, "fixtures")
+    page.click("#fx-addr summary")
+    page.wait_for_selector("#fx-routing tr")
+    assert "Simulator" in page.inner_text("#fx-routing")
     # address map: blocks labelled, live values from what the interface sent
-    page.click("#lp-views [data-view=addresses]")
     page.wait_for_selector("#addr-maps .addr-map[data-u='0'] .ac[data-ch='129'].start .lbl")
     assert page.inner_text("#addr-maps .ac[data-ch='129'] .lbl") == "bar_1"
     assert page.eval_on_selector("#addr-maps .ac[data-ch='2']", "e => e.dataset.ids") == ""  # free channel blank
@@ -258,20 +261,26 @@ def test_layout_patch_page_universe_list_and_address_map(shot):
     del app.engine.channel_test[(0, 2)]
 
 
-def test_layout_patch_inline_address_edit(shot):
+def test_fixtures_inline_address_edit(shot):
+    """v7 B2: universes and addresses are typed on Fixtures, with the range, clash checks and the address map."""
     page, app, root, _ = shot
-    go(page, "layout")
-    page.wait_for_selector("#lp-fixtures tr[data-id=par_1]")
-    addr = "#lp-fixtures tr[data-id=par_1] td:nth-child(5) input"
+    go(page, "fixtures")
+    page.wait_for_selector("#fx-patch tr[data-id=par_1]")
+    page.click("#fx-addr summary")
+    addr = "#fx-patch [data-address=par_1]"
     page.fill(addr, "386")  # on top of par_2 (385-391)
-    page.wait_for_selector("#lp-fixtures tr[data-id=par_1].error")
-    assert "par_1" in page.inner_text("#lp-clash") and page.is_disabled("#lp-patch-save")
-    page.click("#lp-views [data-view=addresses]")
+    page.wait_for_selector("#fx-patch tr[data-id=par_1].error")
+    assert "par_1" in page.inner_text("#fx-clash") and page.is_disabled("#fx-patch-save")
+    assert page.evaluate("document.activeElement.dataset.address") == "par_1"  # still typing in it
     page.wait_for_selector("#addr-maps .ac[data-ch='386'].clash")
     page.fill(addr, "450")
-    page.wait_for_function("!document.querySelector('#lp-patch-save').disabled")
-    page.click("#lp-patch-save")
-    page.wait_for_function("document.querySelector('#lp-patch-save').disabled")
+    assert page.inner_text("#fx-patch [data-range=par_1]") == "450-456"
+    page.wait_for_function("!document.querySelector('#fx-patch-save').disabled")
+    page.click("#fx-patch-save")
+    for _ in range(80):
+        if app.files.patch.fixtures["par_1"].address == 450:
+            break
+        page.wait_for_timeout(25)
     assert app.files.patch.fixtures["par_1"].address == 450
 
 
@@ -282,8 +291,12 @@ def test_patch_sheet_png(shot):
     with page.expect_download() as dl:
         page.click("#lp-png")
     assert dl.value.suggested_filename.startswith("patch-sheet-") and dl.value.suggested_filename.endswith(".png")
+    go(page, "fixtures")  # v7: the printed patch sheet comes from Fixtures (patch table + address map)
+    page.click("#fx-addr summary")
+    page.wait_for_selector("#addr-maps .addr-map")
     page.emulate_media(media="print")
-    assert page.is_visible("#addr-maps") and not page.is_visible("#menu")
+    assert page.is_visible("#addr-maps") and page.is_visible("#fx-patch") and not page.is_visible("#menu")
+    assert not page.is_visible("#fx-routing")
     page.emulate_media(media="screen")
 
 

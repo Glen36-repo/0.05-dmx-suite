@@ -288,19 +288,15 @@ def test_setup_claude_section_folds(ui):
 
 
 def test_fixtures_clash_bar_only_when_clashing(ui):
-    """Addresses are edited on Layout only (28/11/2026); the clash bar shows there."""
+    """Addresses are edited on Fixtures (v7); the clash bar shows only when lights overlap."""
     page, *_ = ui
     go(page, "fixtures")
-    page.wait_for_selector("#fx-patch tr")
+    page.wait_for_selector("#fx-patch tr[data-id=mh_b]")
     assert not page.is_visible("#fx-clash")
-    assert page.locator("#fx-patch input[type=number]").count() == 0  # no address fields here
-    go(page, "layout")
-    page.wait_for_selector("#lp-fixtures tr[data-id=mh_b]")
-    assert not page.is_visible("#lp-clash")
-    field = page.locator("#lp-fixtures tr[data-id=mh_b] input >> nth=1")
+    field = page.locator("#fx-patch [data-address=mh_b]")
     field.fill("1")  # mh_b on mh_a's address
     field.dispatch_event("input")
-    page.wait_for_selector("#lp-clash", state="visible")
+    page.wait_for_selector("#fx-clash", state="visible")
 
 
 # ------------------------------------------------------------------ scene builder (v2 R3)

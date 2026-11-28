@@ -120,9 +120,10 @@ def test_timing_and_checks_shown(open_ui):
     page.wait_for_function("document.querySelector('#mon-dmx-timing').textContent.includes('target 176')")
     assert "VCP" in page.inner_text("#mon-dmx-timing")
     page.wait_for_function("document.querySelector('#mon-dmx-checks').textContent.includes('Latency timer: 16 ms')")
-    go(page, "layout")
-    page.wait_for_function("[...document.querySelectorAll('#lp-routing td')].some(td => td.textContent.includes('break'))")
-    cell = page.locator("#lp-routing td.amber")
+    go(page, "fixtures")  # v7: the routing table is on Fixtures
+    page.click("#fx-addr summary")
+    page.wait_for_function("[...document.querySelectorAll('#fx-routing td')].some(td => td.textContent.includes('break'))")
+    cell = page.locator("#fx-routing td.amber")
     assert cell.count() == 1 and "Latency timer" in cell.get_attribute("title")
 
 
@@ -395,14 +396,16 @@ def test_override_empty_state_has_a_first_step(phone):
 # ---------------------------------------------------------------- option 3: one place for addresses, text size, motion
 
 
-def test_fixtures_change_address_opens_layout_with_the_field(ui):
+def test_addresses_edited_on_fixtures_only(ui):
+    """v7 B2 reverses the 28/11 "one place on Layout": Fixtures is the one place; Layout has no address fields."""
     page, *_ = ui
     go(page, "fixtures")
-    page.wait_for_selector("#fx-patch button[data-addr=bar_2]")
-    page.click("#fx-patch button[data-addr=bar_2]")
-    page.wait_for_selector("#page-layout.on")
-    page.wait_for_function("document.activeElement && document.activeElement.closest('#lp-fixtures tr[data-id=bar_2]') !== null")
-    assert page.evaluate("document.activeElement.value") == "51"
+    page.wait_for_selector("#fx-patch [data-address=bar_2]")
+    assert page.input_value("#fx-patch [data-address=bar_2]") == "51"
+    assert page.locator("#fx-patch button[data-addr]").count() == 0  # no "Change → Layout"
+    go(page, "layout")
+    page.wait_for_selector("#lp-fixtures tr[data-id=bar_2]")
+    assert page.locator("#lp-fixtures input").count() == 0
 
 
 SMALL_WORDS = """() => [...document.querySelectorAll('body *')]

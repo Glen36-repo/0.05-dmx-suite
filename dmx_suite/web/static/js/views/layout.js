@@ -1,12 +1,12 @@
 // Layout page: arrange the lights on the grid, and make groups from a selection.
-import { api, attempt, get, toast } from "../api.js";
+import { ago, hue, universesOf } from "../addrmap.js";
+import { api, attempt, cmd, get, toast } from "../api.js";
 import { $, $$, el, remember } from "../dom.js";
-import { watchFrames } from "../frames.js";
 import { LightGrid } from "../grid.js";
 import { t } from "../i18n.js";
 import { fillIcons } from "../icons.js";
 import { onLeave, onShow } from "../nav.js";
-import { addressMap, clashes as clashPatch, footprintOf } from "../patch.js";
+import { addressMap } from "../patch.js";
 import { live, onCatalogue, onState, refreshCatalogue } from "../state.js";
 
 let grid;
@@ -180,48 +180,39 @@ export function init() {
     if (confirm(t("groups.confirm_delete", { name: group }))) editGroup({ action: "delete", name: group }, t("groups.deleted", { name: group }));
   };
 
-  $$("#lp-views [data-view]").forEach((b) => (b.onclick = () => setView(b.dataset.view)));
-  $("#lp-out").onchange = (e) => { outChoice = e.target.value; remember.set("layout.out", outChoice); watch(); };
-  $("#lp-patch-save").onclick = savePatch;
-  $("#lp-patch-revert").onclick = () => { doc.fixtures = JSON.parse(docSaved); renderFixtures(); renderAddresses(); };
-  $("#lp-print").onclick = () => { renderAddresses(); window.print(); };
   $("#lp-png").onclick = () => exportPng().catch((e) => toast(String(e), true));
   onShow("layout", () => {
-    setView(view);
+    grid.fit();
     loadRouting();
     clearInterval(routingTimer);
     routingTimer = setInterval(() => (shown() ? loadRouting() : null), 1000);
   });
   onLeave("layout", () => {
-    clearInterval(routingTimer); stopFeeds.forEach((s) => s()); stopFeeds = [];
+    clearInterval(routingTimer);
     if (grid.dirty) toast(t("layout.unsaved_leave")); // kept, never discarded; Live isn't held up
   });
 
   onCatalogue(buildCatalogue);
-  onState((s) => grid.update(s.fixtures, s.haze));
+  onState((s) => {
+    grid.update(s.fixtures, s.haze);
+    $$("#lp-fixtures [data-find]").forEach((b) => b.classList.toggle("sel", b.dataset.find === s.setup?.find));
+  });
   onShow("layout", updateSelection);
   window.addEventListener("beforeunload", (ev) => { if (grid.dirty) ev.preventDefault(); });
 }
 
-// ---------------------------------------------------------------- v4: universes, patch list, routing, address map
+// ---------------------------------------------------------------- v4: universes, status strip; v7: the narrow strip
+// (universes, addresses, the address map and routing moved to Fixtures, the one place for them)
 
 let uni = remember.get("layout.uni", "all"); // "all" or a universe number
-let view = remember.get("layout.view", "stage");
-let doc = null; // fixtures.yaml (types + patch rows)
-let docSaved = "";
+let doc = null; // fixtures.yaml (types + patch rows), for the strip and the patch sheet
 let routing = null;
 let routingTimer = null;
-let stopFeeds = [];
-const values = {}; // universe -> Uint8Array (what the chosen interface sent)
-let outChoice = remember.get("layout.out", "");
 
-const hue = (id) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 const shown = () => $("#page-layout").classList.contains("on");
 
 function universes() {
-  const set = new Set((live.cat?.fixtures || []).map((f) => f.universe ?? 0));
-  for (const f of doc?.fixtures || []) set.add(+f.universe || 0);
-  return [...set].sort((a, b) => a - b);
+  return universesOf(doc, live.cat);
 }
 
 function rowsInView() {
@@ -241,95 +232,39 @@ function setUni(u) {
   renderUniTabs();
   buildGrid(live.cat);
   renderFixtures();
-  renderRouting();
-  renderAddresses();
+  renderStatus();
 }
 
 function filteredCat(cat) {
   return uni === "all" ? cat : { ...cat, fixtures: cat.fixtures.filter((f) => (f.universe ?? 0) === uni) };
 }
 
-// interfaces carrying each universe, from the routing table: "U0" -> ["Simulator", "Left bars"]
-function carriers(u) {
-  return (routing?.rows || []).filter((r) => r.universe === u).map((r) => r.interface);
-}
-
-// a rebuilt list keeps the field being typed in (and honours a pending "Change" from Fixtures)
-let pendingAddr = null;
-function focusRowField(id, idx, select) {
-  const tr = document.querySelector(`#lp-fixtures tr[data-id="${CSS.escape(id)}"]`);
-  const inp = tr?.querySelectorAll("input")[idx];
-  if (!inp) return false;
-  inp.focus();
-  if (select) { inp.scrollIntoView({ block: "center" }); inp.select(); }
-  return true;
-}
-
+// the narrow strip: name, type, find, test; tap a row to pick the light on the stage
 function renderFixtures() {
-  const act = document.activeElement;
-  const keep = act?.closest?.("#lp-fixtures tr") ? [act.closest("tr").dataset.id, [...act.closest("tr").querySelectorAll("input")].indexOf(act)] : null;
-  renderFixtureRows();
-  if (pendingAddr && focusRowField(pendingAddr, 1, true)) { pickFixture(pendingAddr); pendingAddr = null; }
-  else if (keep) focusRowField(keep[0], keep[1], false);
-}
-
-function renderFixtureRows() {
   if (!doc) return;
-  const bad = clashPatch(doc.fixtures, doc.types);
-  const sel = grid ? grid.selected : new Set();
-  $("#lp-fixtures").replaceChildren(...rowsInView().map((f) => {
-    const n = footprintOf(doc.types, f.type);
-    const tr = el("tr", { class: [bad.has(f.id) ? "error" : "", sel.has(f.id) ? "sel" : ""].join(" ").trim(), "data-id": f.id,
-      onclick: (e) => { if (!e.target.matches("input")) pickFixture(f.id, e.shiftKey); } },
-    el("td", { text: f.id }),
-    el("td", { text: doc.types[f.type]?.name || f.type, title: doc.types[f.type]?.name || f.type }),
-    el("td", { text: n }),
-    el("td", {}, el("input", { type: "number", class: "num", min: 0, max: 15, value: f.universe ?? 0,
-      "aria-label": t("layout.aria_universe", { id: f.id }),
-      oninput: (e) => { f.universe = +e.target.value || 0; patchChanged(); } })),
-    el("td", {}, el("input", { type: "number", class: "num", min: 1, max: 512, value: f.address ?? "",
-      "aria-label": t("layout.aria_address", { id: f.id }),
-      oninput: (e) => { f.address = +e.target.value || 0; patchChanged(); } })),
-    el("td", { class: "muted", text: f.address ? `${f.address}-${f.address + n - 1}` : "" }),
-    el("td", { class: "muted", text: (f.groups || []).join(", ") }),
-    el("td", { class: "muted", text: carriers(+f.universe || 0).join(", ") || "-" }));
-    return tr;
-  }));
-  $("#lp-clash").textContent = bad.size ? t("layout.clash", { ids: [...bad].join(", ") }) : "";
-  $("#lp-clash").classList.toggle("hidden", !bad.size);
-  const dirtyPatch = JSON.stringify(doc.fixtures) !== docSaved;
-  $("#lp-patch-save").disabled = !dirtyPatch || bad.size > 0;
-  $("#lp-patch-revert").disabled = !dirtyPatch;
+  const findOn = live.state?.setup?.find;
+  $("#lp-fixtures").replaceChildren(...rowsInView().map((f) => el("tr", { "data-id": f.id,
+    onclick: (e) => { if (!e.target.closest("button")) pickFixture(f.id, e.shiftKey); } },
+  el("td", { text: f.id }),
+  el("td", { class: "muted", text: doc.types[f.type]?.name || f.type, title: doc.types[f.type]?.name || f.type }),
+  el("td", { class: "tools" },
+    el("button", { class: "mini" + (findOn === f.id ? " sel" : ""), "data-find": f.id, title: t("fixtures.find_tip"),
+      onclick: () => cmd("find", { fixture: live.state?.setup?.find === f.id ? null : f.id }) }, t("fixtures.find")),
+    el("button", { class: "mini", "data-test": f.id, title: t("layout.test_tip"), onclick: () => testFixture(f) }, t("layout.test"))))));
+  markListSelection();
 }
 
-function patchChanged() {
-  // keep focus in the field being typed in: only refresh what depends on the numbers
-  const bad = clashPatch(doc.fixtures, doc.types);
-  $$("#lp-fixtures tr").forEach((tr) => {
-    const f = doc.fixtures.find((x) => x.id === tr.dataset.id);
-    tr.classList.toggle("error", bad.has(tr.dataset.id));
-    const n = footprintOf(doc.types, f.type);
-    tr.children[5].textContent = f.address ? `${f.address}-${f.address + n - 1}` : "";
-  });
-  $("#lp-clash").textContent = bad.size ? t("layout.clash", { ids: [...bad].join(", ") }) : "";
-  $("#lp-clash").classList.toggle("hidden", !bad.size);
-  const dirtyPatch = JSON.stringify(doc.fixtures) !== docSaved;
-  $("#lp-patch-save").disabled = !dirtyPatch || bad.size > 0;
-  $("#lp-patch-revert").disabled = !dirtyPatch;
-  renderAddresses();
-}
-
-// Fixtures › Patch sends address changes here (one place to edit addresses): open Layout with that
-// light picked and its address field ready to type in
-export function editAddress(id) {
-  if (uni !== "all" && !rowsInView().some((f) => f.id === id)) setUni("all");
-  pendingAddr = id;  // taken by the next render if the rows aren't there yet
-  if (focusRowField(id, 1, true)) { pickFixture(id); pendingAddr = null; }
+// Test: the v5 "find fixture" pattern (colour flash and a tilt nod) on that light's universe; again stops it
+async function testFixture(f) {
+  const st = await get("/api/test").catch(() => null);
+  if (st?.test?.fixture === f.id) return api("POST", "/api/test/stop", { why: "stopped" }).catch(() => null);
+  attempt(() => api("POST", "/api/test/run", { pattern: "find", fixture: f.id, universe: +f.universe || 0, timeout_s: 30 }),
+    t("layout.testing", { id: f.id }));
 }
 
 function pickFixture(id, add) {
   if (grid.items[id]) grid.select([id], add);
-  else { // not on the stage (haze machine) or another universe: highlight the list and the address map only
+  else { // not on the stage (haze machine) or another universe: highlight the list only
     lpSelected = new Set(add ? [...lpSelected, id] : [id]);
     markListSelection();
   }
@@ -339,53 +274,24 @@ let lpSelected = new Set();
 function markListSelection() {
   const sel = new Set([...grid.selected, ...lpSelected]);
   $$("#lp-fixtures tr").forEach((tr) => tr.classList.toggle("sel", sel.has(tr.dataset.id)));
-  $$("#addr-maps .ac").forEach((c) => c.classList.toggle("hl", (c.dataset.ids || "").split(",").some((x) => sel.has(x))));
 }
 
 async function loadDoc() {
   doc = await get("/api/store/fixtures");
   doc.fixtures ||= [];
-  docSaved = JSON.stringify(doc.fixtures);
   renderUniTabs();
   renderFixtures();
-  renderAddresses();
 }
 
-async function savePatch() {
-  const r = await attempt(() => api("PUT", "/api/store/patch", { fixtures: doc.fixtures }), t("layout.patch_saved"));
-  if (r) { await refreshCatalogue(); await loadDoc(); }
-}
-
-// ---------------------------------------------------------------- routing table + status strip
+// ---------------------------------------------------------------- status strip: the interface(s) carrying the universe in view
 
 async function loadRouting() {
   try { routing = await get("/api/routing"); } catch { return; }
-  renderRouting();
+  renderStatus();
 }
 
-const ago = (ms) => (ms === null || ms === undefined ? t("layout.never") : t("layout.ms_ago", { n: ms }));
-
-// v5: USB DMX (Open) rows: driver (VCP / D2XX), break method, measured vs target; amber when out of range
-function timingCell(r) {
-  const tm = r.timing;
-  if (!tm) return el("td", { text: "" });
-  const m = tm.measured, g = tm.target, ck = r.checks;
-  const driver = t(`timing.${ck?.driver_type || (tm.backend === "d2xx" ? "d2xx" : "vcp")}`);
-  const text = t("timing.short", { driver, method: tm.method_name, brk: m.break_us ?? "-", tbrk: g.break_us, mab: m.mab_us ?? "-", tmab: g.mab_us });
-  const warn = tm.warnings.length || (ck && ck.result !== "pass");
-  return el("td", { class: warn ? "amber" : "", text, title: [...tm.warnings, ...(ck?.problems || []), tm.note].join("\n") });
-}
-
-function renderRouting() {
+function renderStatus() {
   if (!routing) return;
-  $("#lp-routing").replaceChildren(...routing.rows.map((r) => el("tr", { class: uni !== "all" && r.universe === uni ? "on" : "" },
-    el("td", { text: r.universe ?? "?" }),
-    el("td", { text: r.interface + (r.port ? ` (${r.port})` : r.mac ? ` (${r.mac})` : ""), title: r.detail || "" }),
-    el("td", {}, el("span", { class: `st-dot ${r.state}` }), r.state),
-    el("td", { text: r.fps ?? "-" }), el("td", { text: r.frames ?? r.packets ?? "-" }), el("td", { text: r.errors ?? "-" }),
-    el("td", { text: ago(r.last_frame_age_ms) }), timingCell(r))));
-  $("#lp-routing-problems").replaceChildren(...routing.problems.map((p) => el("li", { text: p })));
-  // status strip: the interface(s) carrying the universe in view
   const us = uni === "all" ? universes() : [uni];
   const parts = us.map((u) => {
     const rows = routing.rows.filter((r) => r.universe === u);
@@ -395,79 +301,6 @@ function renderRouting() {
   });
   $("#lp-status").textContent = parts.join("  |  ");
   $("#lp-status").classList.toggle("bad", us.some((u) => !routing.rows.some((r) => r.universe === u)));
-  // where address-map values come from
-  const opts = [["", "auto"], ...routing.rows.filter((r) => r.output !== null && r.output !== undefined && (uni === "all" || r.universe === uni))
-    .map((r) => [String(r.output), r.interface]), ["engine", t("layout.addr_engine")]];
-  const seen = new Set();
-  $("#lp-out").replaceChildren(...opts.filter(([v]) => !seen.has(v) && seen.add(v)).map(([v, label]) =>
-    el("option", { value: v, selected: v === outChoice }, v === "" ? (carriers(us[0])[0] || label) : label)));
-  renderFixtures();
-}
-
-// ---------------------------------------------------------------- address map (32 x 16 per universe)
-
-function renderAddresses() {
-  if (!doc) return;
-  const us = uni === "all" ? universes() : [uni];
-  $("#addr-maps").replaceChildren(...us.map((u) => {
-    const { cells } = addressMap(doc.fixtures, doc.types, u);
-    const grid32 = el("div", { class: "addr-map", "data-u": u });
-    for (let c = 1; c <= 512; c++) {
-      const ids = cells[c - 1];
-      const cell = el("div", { class: "ac" + (ids.length ? " used" : "") + (ids.length > 1 ? " clash" : ""), "data-ch": c,
-        "data-ids": ids.join(",") }, el("span", { class: "n", text: c }), el("span", { class: "v" }));
-      if (ids.length) {
-        const f = doc.fixtures.find((x) => x.id === ids[0]);
-        const n = footprintOf(doc.types, f.type);
-        cell.style.setProperty("--h", hue(ids[0]));
-        const name = live.cat?.fixtures.find((x) => x.id === ids[0])?.channels?.[c - f.address];
-        cell.title = `${ids.join(" + ")} · ch ${c}` + (name ? ` · ${name}` : "") + ` (${f.address}-${f.address + n - 1})`;
-        if (c === f.address) { cell.classList.add("start"); cell.append(el("span", { class: "lbl", text: ids[0] })); }
-      }
-      grid32.append(cell);
-    }
-    return el("div", {}, el("h3", { text: t("layout.addr_title", { u }) }), el("div", { class: "addr-note", "data-note": u }), grid32);
-  }));
-  markListSelection();
-  paintValues();
-  watch();
-}
-
-function paintValues() {
-  for (const box of $$("#addr-maps .addr-map")) {
-    const u = +box.dataset.u, v = values[u];
-    box.querySelectorAll(".ac").forEach((cell, i) => {
-      const x = v ? v[i] : null;
-      cell.querySelector(".v").textContent = x === null || x === undefined || !v ? "" : x || "";
-      cell.style.setProperty("--v", x ? x / 255 : 0);
-    });
-  }
-}
-
-function watch() {
-  stopFeeds.forEach((s) => s());
-  stopFeeds = [];
-  if (!shown() || view !== "addresses") return;
-  const us = uni === "all" ? universes() : [uni];
-  stopFeeds = us.map((u) => watchFrames(u, outChoice, (f) => {
-    values[u] = f.values; // null when the interface sent nothing: shown blank, never guessed
-    const note = $(`#addr-maps [data-note="${u}"]`);
-    if (note) {
-      note.textContent = f.no_frames ? t("layout.addr_no_frames", { source: f.source, u }) : f.stats?.all_zero ? t("layout.addr_all_zero", { source: f.source }) : f.source;
-      note.classList.toggle("bad", !!(f.no_frames || f.stats?.all_zero));
-    }
-    paintValues();
-  }));
-}
-
-function setView(v) {
-  view = v;
-  remember.set("layout.view", v);
-  $$("#lp-views [data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
-  $("#lp-stage").classList.toggle("hidden", v !== "stage");
-  $("#lp-addresses").classList.toggle("hidden", v !== "addresses");
-  if (v === "stage") grid.fit();
-  watch();
 }
 
 // ---------------------------------------------------------------- patch sheet: PNG

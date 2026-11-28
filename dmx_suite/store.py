@@ -953,6 +953,11 @@ class ShowStore:
         data["steps"].pop(i)
         return self.put("scene", scene, data, f"{scene}: delete step {i + 1}")
 
+    def group_users(self, name: str) -> list[str]:
+        """v7: show files that name group `name` (scenes, looks, rigs, MIDI maps), for the Fixtures page's
+        warning when a group is left with no lights."""
+        return sorted(str(p.relative_to(self.root).as_posix()) for p in self._rename_refs(name, "\x00"))
+
     def _rename_refs(self, old: str, new: str) -> dict[Path, str | None]:
         """Files whose fixture lists name group `old`, rewritten to name `new`."""
 
