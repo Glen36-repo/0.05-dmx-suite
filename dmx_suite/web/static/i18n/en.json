@@ -1470,5 +1470,18 @@
  "setup.motion": "Motion",
  "setup.motion_auto": "Follow this device",
  "setup.motion_reduce": "Reduce (no pulses or fades)",
- "setup.motion_full": "Full"
+ "setup.motion_full": "Full",
+ "picker.all": "All",
+ "picker.none": "None",
+ "picker.empty": "Nothing to pick",
+ "picker.select_all": "All",
+ "picker.select_none": "None",
+ "picker.kind_head": "Moving heads",
+ "picker.kind_bar": "Pixel bars",
+ "picker.kind_wash": "Pars and washes",
+ "picker.kind_kick": "Kick",
+ "picker.count_head": "{n} heads",
+ "picker.count_bar": "{n} bars",
+ "picker.count_wash": "{n} pars",
+ "picker.count_kick": "kick"
 }
