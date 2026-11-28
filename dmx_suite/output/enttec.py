@@ -89,17 +89,20 @@ class _Port:
             return False
 
     def failed(self, e: Exception) -> None:
-        self.errors += 1
-        self.last_error = str(e) or type(e).__name__
-        if not self._failing:  # once per outage, never per frame
-            log.warning("%s: write failed (%s), reopening", self.port, self.last_error)
-            self._failing = True
+        # drop the port before counting the error, so anyone who sees the error count go up also sees
+        # the port gone (state "bad"), never a moment of "warn" with a dead port (another thread reads these)
+        last = str(e) or type(e).__name__
         try:
             if self.ser is not None:
                 self.ser.close()
         except Exception:
             pass
         self.ser = None
+        self.last_error = last
+        self.errors += 1
+        if not self._failing:  # once per outage, never per frame
+            log.warning("%s: write failed (%s), reopening", self.port, self.last_error)
+            self._failing = True
 
     def wrote(self) -> None:
         self.ok_at = time.monotonic()

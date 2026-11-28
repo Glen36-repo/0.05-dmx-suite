@@ -431,7 +431,11 @@ def test_show_and_scene_buttons_are_an_aligned_grid(ui):
     page.wait_for_selector("#scenes [data-scene=aaa_new]")
     after = page.eval_on_selector_all("#scenes > button", "bs => bs.map(b => b.dataset.item)")
     assert after[:-1] == scenes_before and after[-1] == "scene:aaa_new"
-    # a long name doesn't widen its button
+    # a long name doesn't widen its button (once the list has settled: the reload and the live feed can each
+    # redraw it, and a button measured mid-redraw isn't laid out yet)
+    page.wait_for_function("""() => { const bs = [...document.querySelectorAll('#scenes > button')];
+        const w = bs.map(b => Math.round(b.getBoundingClientRect().width));
+        return bs.length && w.every(x => x === w[0]); }""", timeout=5000)
     w = page.eval_on_selector("#scenes [data-scene=aaa_new]", "b => b.getBoundingClientRect().width")
     assert abs(w - boxes(page, "#scenes > button")[0]["w"]) < 1
 
