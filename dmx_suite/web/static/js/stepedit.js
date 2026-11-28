@@ -12,6 +12,7 @@
 import { api, attempt, cmd, toast } from "./api.js";
 import { $, el, remember } from "./dom.js";
 import { t } from "./i18n.js";
+import { infoButton } from "./info.js";
 import { live } from "./state.js";
 
 let currentStep = 0;
@@ -347,7 +348,7 @@ function pixelsTab(ids) {
       ctxRef.swatch(b, (v) => { b = v || "blue"; remember.set("steps.pxb", b); }, false, bars)),
     el("div", { class: "row wrap" }, el("button", { "data-px": "fill", onclick: fill }, t("steps.px_fill")),
       el("button", { "data-px": "gradient", onclick: gradient }, t("steps.px_gradient")),
-      el("button", { "data-px": "alternate", onclick: alternate }, t("steps.px_alternate")))];
+      el("button", { "data-px": "alternate", onclick: alternate }, t("steps.px_alternate")), infoButton("steps.pixels"))];
 }
 
 function renderProgrammer() {
@@ -371,6 +372,7 @@ function renderProgrammer() {
       el("button", { id: "rec-overwrite", disabled: !progN || undefined, title: t("steps.rec_overwrite_tip"), onclick: () => record("overwrite") }, t("steps.rec_overwrite")),
       el("button", { id: "rec-new", disabled: !progN || undefined, onclick: () => record("new") }, t("steps.rec_new")),
       el("button", { id: "rec-update", disabled: !progN || undefined, title: t("steps.rec_update_tip"), onclick: () => record("update") }, t("steps.rec_update")),
+      infoButton("steps.record"),
       el("button", { class: "mini", id: "prog-clear", disabled: !progN || undefined, onclick: () => { prog = {}; renderProgrammer(); sendLive(); } }, t("steps.prog_clear")),
       el("span", { class: "muted", id: "prog-state", text: progN ? t("steps.prog_n", { n: progN }) : "" })),
     el("div", { class: "row wrap" },
@@ -500,7 +502,7 @@ function renderList() {
     el("button", { class: "mini", onclick: () => { const ix = [...picked].sort((a, b) => a - b); loopRange = [ix[0], ix[ix.length - 1]]; renderList(); } }, t("steps.loop_range")),
     el("button", { class: "mini", onclick: () => { picked.clear(); loopRange = null; renderList(); } }, t("steps.unpick"))) : "";
   $("#steps-list-pane").replaceChildren(
-    el("h2", { text: t("steps.title") }),
+    el("h2", {}, el("span", { text: t("steps.title") }), " ", infoButton("steps.list")),
     el("ol", { class: "steps-list" }, ...rows), bulk,
     el("div", { class: "row wrap" },
       el("button", { id: "step-add", onclick: () => { steps.push({ name: t("steps.step_n", { n: steps.length + 1 }), set: {} }); currentStep = steps.length - 1; changed(); } }, t("steps.add")),
@@ -526,7 +528,8 @@ function renderBar(ctx) {
     field(t("steps.move"), select([["", t("steps.move_profile")], ["dark", t("steps.move_dark")], ["lit", t("steps.move_lit")]], d.move || "",
       (v) => { setOrDrop(d, "move", v || undefined); changed(); })),
     field(t("steps.dark_s"), numIn(d.dark_s, (v) => { setOrDrop(d, "dark_s", v); changed(); }, { max: 5, k: "dark_s" })),
-    el("span", { class: "muted", id: "steps-length", text: t("steps.length", { s: Math.round(length * 10) / 10 }) }));
+    el("span", { class: "muted", id: "steps-length", text: t("steps.length", { s: Math.round(length * 10) / 10 }) }),
+    infoButton("steps.bar"));
 }
 
 function renderTransport() {
@@ -540,6 +543,7 @@ function renderTransport() {
     docRef.step_beats !== undefined || st.step_beats !== undefined ? el("button", { onclick: () => cmd("tap") }, t("live.tap")) : "",
     el("label", { class: "check", title: t("steps.live_tip") }, el("input", { type: "checkbox", id: "steps-live", checked: liveMode || undefined,
       onchange: (e) => { liveMode = e.target.checked; remember.set("steps.live", liveMode); if (liveMode) sendLive(); else stop(); } }), t("steps.live")),
+    infoButton("steps.live"),
     el("button", { class: "mini", title: "Ctrl+Z", disabled: !past.length || undefined, id: "steps-undo", onclick: undo }, t("layout.undo")),
     el("button", { class: "mini", title: "Ctrl+Shift+Z", disabled: !future.length || undefined, id: "steps-redo", onclick: redo }, t("layout.redo")),
     el("button", { class: "mini" + (yamlOpen ? " sel" : ""), id: "steps-yaml", onclick: () => { yamlOpen = !yamlOpen; renderYaml(); renderTransportOnly(); } }, t("steps.yaml")));
@@ -573,7 +577,7 @@ export function renderSteps(doc, ctx) {
   const warns = stepProblems.filter((p) => p.step === currentStep).map((p) => el("div", { class: "warn-note", text: p.message }));
   $("#steps-editor").replaceChildren(
     renderTransport(),
-    el("h3", { text: t("steps.this_step", { n: currentStep + 1 }) + (st.name ? ` · ${st.name}` : "") }),
+    el("h3", {}, el("span", { text: t("steps.this_step", { n: currentStep + 1 }) + (st.name ? ` · ${st.name}` : "") }), " ", infoButton("steps.programmer")),
     errNote, ...warns,
     el("p", { class: "muted", text: t("steps.tracking_help") }),
     el("div", { id: "step-programmer", class: "programmer" }),

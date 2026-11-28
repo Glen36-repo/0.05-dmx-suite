@@ -4,6 +4,7 @@
 import { api, attempt, cmd, toast } from "./api.js";
 import { $, el } from "./dom.js";
 import { t } from "./i18n.js";
+import { infoButton } from "./info.js";
 
 // [key, unit, min, max, step]
 const BLOCKS = {
@@ -43,7 +44,7 @@ function field(key, unit, min, max, step) {
 
 function build() {
   const blocks = Object.entries(BLOCKS).map(([mode, fields]) => {
-    const head = el("h3", {}, el("span", { text: t("haze.b_" + mode) }));
+    const head = el("h3", {}, el("span", { text: t("haze.b_" + mode) }), infoButton(`haze.${mode}`));
     if (mode !== "safety") head.append(el("button", { class: "mini", "data-test": mode, title: t("haze.test_tip"), onclick: () => test(mode) }, t("haze.test")));
     const box = el("div", { class: "hz-block", "data-block": mode }, head, ...fields.map((f) => field(...f)));
     if (mode === "pulse") box.append(el("div", { class: "hz-duty", id: "hz-duty", text: duty() }));

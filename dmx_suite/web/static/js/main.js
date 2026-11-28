@@ -1,6 +1,7 @@
 // 0.05 DMX Suite UI: plain ES modules, no build step, no internet needed.
 import { cmd } from "./api.js";
 import { apply, load } from "./i18n.js";
+import { initInfo } from "./info.js";
 import * as nav from "./nav.js";
 import { start } from "./state.js";
 import * as override from "./views/override.js";
@@ -44,6 +45,7 @@ document.addEventListener("visibilitychange", wakeLock);
   apply();
   for (const view of [top, liveView, autopilot, review, layout, scenes, shows, override, fixtures, heads, palettes, midi, monitor, setup, claude, files, wizard]) view.init();
   nav.init();
+  initInfo();
   await start();
   document.body.classList.add("ready");
 })();

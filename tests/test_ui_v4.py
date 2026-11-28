@@ -290,8 +290,9 @@ def test_arrange_panel_groups_disabled_reasons_redo_revert(ui):
     page, *_ = ui
     go(page, "layout")
     page.wait_for_selector("#arrange [data-align=left] svg")
-    assert page.text_content("#arrange").split() == ["Align", "Distribute", "Shape", "Spacing", "Columns", "Rotate", "Step", "°",
-                                                   "Angle", "°", "Pixels", "Columns"]
+    words = [w for w in page.text_content("#arrange").split() if w != "ⓘ"]
+    assert words == ["Align", "Distribute", "Shape", "Spacing", "Columns", "Rotate", "Step", "°", "Angle", "°", "Pixels",
+                     "Columns"]
     assert page.is_disabled("[data-align=left]") and "two or more" in page.get_attribute("[data-align=left]", "title")
     assert "(Alt+←)" in page.get_attribute("[data-align=left]", "title")
     assert page.is_disabled("#layout-reset") and page.is_disabled("#layout-redo")
