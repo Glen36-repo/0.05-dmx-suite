@@ -438,6 +438,12 @@ class DmxTools:
         r = self._live("POST", "/api/test/run", {k: v for k, v in body.items() if v not in (None, "")})
         return _dump({"running": r["test"], "note": "stop it with stop_test_pattern (or it stops itself at timeout_s)"})
 
+    def check_outputs(self) -> str:
+        r = self._live("GET", "/api/outputs/check")["outputs"]
+        if not r:
+            return "no USB DMX (Open) outputs in this rig: the checks are for FTDI interfaces"
+        return _dump(r)
+
     def test_output_methods(self, output: int, save_step: int = 0) -> str:
         """Run the break-method cycle on an Open DMX output and wait for it; or save_step N afterwards."""
         if save_step:

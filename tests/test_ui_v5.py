@@ -106,3 +106,21 @@ def test_cycle_methods_big_step_and_lights_responded(open_ui, monkeypatch):
     page.click("#cycle-yes")
     page.wait_for_function("document.querySelector('#cycle-result').textContent.startsWith('Saved: Baud drop')")
     assert yaml.safe_load(p.read_text())["outputs"][0]["break_method"] == "baud_drop"
+
+
+def test_timing_and_checks_shown(open_ui):
+    from test_v5_checks import FakeProbe, FakeRegistry
+
+    page, app, p = open_ui
+    app.registry = FakeRegistry("COM_NONE")
+    app.health_probe = FakeProbe(latency=16, suspend_plan=False)
+    app.check_outputs()
+    go(page, "monitor")
+    page.wait_for_selector("#test-target option[value='o:0']", state="attached")
+    page.wait_for_function("document.querySelector('#mon-dmx-timing').textContent.includes('target 176')")
+    assert "VCP" in page.inner_text("#mon-dmx-timing")
+    page.wait_for_function("document.querySelector('#mon-dmx-checks').textContent.includes('Latency timer: 16 ms')")
+    go(page, "layout")
+    page.wait_for_function("[...document.querySelectorAll('#lp-routing td')].some(td => td.textContent.includes('break'))")
+    cell = page.locator("#lp-routing td.amber")
+    assert cell.count() == 1 and "Latency timer" in cell.get_attribute("title")

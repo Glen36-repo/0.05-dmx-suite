@@ -366,6 +366,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.layout_view())
             if path == "/api/routing":
                 return self._json(200, app.routing())
+            if path == "/api/outputs/check":  # v5: USB DMX (Open) checklist, run now
+                return self._json(200, {"outputs": app.check_outputs()})
             if path == "/api/cycle":  # v5 break-method cycle test
                 return self._json(200, {"cycle": app.cycle_view()})
             if path == "/api/test":  # v5 test pattern running (or null) and its start / stop log
@@ -798,6 +800,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, {"ok": True, "seconds": span})
             if path == "/api/test/run" and method == "POST":  # v5 test pattern (gig lock: keep-alive only)
                 return self._json(200, {"ok": True, "test": app.run_test(body, "claude" if self._is_claude() else "ui")})
+            if path == "/api/outputs/latency" and method == "POST":  # set via D2XX, after the UI asked
+                return self._json(200, {"ok": True, **app.set_output_latency(int(body.get("output", -1)),
+                                                                             int(body.get("ms", 1)))})
             if path == "/api/cycle/start" and method == "POST":
                 return self._json(200, {"ok": True, "cycle": app.start_cycle(int(body.get("output", -1)),
                                                                             "claude" if self._is_claude() else "ui")})

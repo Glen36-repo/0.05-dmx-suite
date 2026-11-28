@@ -286,6 +286,17 @@ class EnttecOpenDriver(OutputDriver):
         self._new.set()
         return dict(self.settings)
 
+    def set_latency(self, ms: int = 1) -> int:
+        """Set the FTDI latency timer through D2XX (only while this output runs on D2XX)."""
+        ser = self._p.ser
+        if self.method != "d2xx" or ser is None or not hasattr(ser, "latency_timer"):
+            raise ValueError("the latency timer can only be set here while the output uses D2XX; "
+                             "otherwise set it in Device Manager (Port Settings › Advanced › Latency Timer = 1)")
+        if not 1 <= ms <= 255:
+            raise ValueError("latency 1-255 ms")
+        ser.latency_timer = ms
+        return int(ser.latency_timer)
+
     def slots(self) -> int:
         n = self.settings["channels"]
         if n == "patched":

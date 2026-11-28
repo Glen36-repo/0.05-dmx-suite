@@ -1323,5 +1323,16 @@
  "cycle.of": "Step {step} of {of} · Watch the lights",
  "cycle.confirmed": "Saved: {label}",
  "cycle.no_response": "No step confirmed: the output is back as it was ({method}, {us} µs)",
- "cycle.stopped": "Cycle test stopped: the output is back as it was"
+ "cycle.stopped": "Cycle test stopped: the output is back as it was",
+ "layout.col_timing": "Driver / timing",
+ "timing.line": "{driver} · {method} · break {brk} µs (target {tbrk}) · MAB {mab} µs (target {tmab}) · {fps} fps (target {tfps}) · write {write} ms · jitter {jit} ms",
+ "timing.short": "{driver} · {method} · break {brk}/{tbrk} µs · MAB {mab}/{tmab} µs",
+ "timing.vcp": "VCP",
+ "timing.d2xx": "D2XX",
+ "timing.unknown": "driver ?",
+ "checks.now": "Check now",
+ "checks.latency": "Set latency to 1 ms",
+ "checks.latency_confirm": "Set the FTDI latency timer on this interface to 1 ms now (through D2XX)? The setting stays on the interface.",
+ "checks.latency_done": "Latency timer now {ms} ms",
+ "checks.all_pass": "Interface checks: all pass"
 }

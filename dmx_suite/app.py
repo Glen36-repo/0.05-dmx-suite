@@ -73,6 +73,10 @@ class App:
         self.ctl.on_song_auto = self._song_auto
         self.gig_lock = False
         self.cycle: Any = None  # v5 break-method cycle test (dmxcheck.MethodCycle)
+        self.output_health: dict[int, dict[str, Any]] = {}  # v5: FTDI / port checks per Open DMX output
+        self._health_wake = threading.Event()
+        self._health_thread: threading.Thread | None = None
+        self.health_probe: Any = None  # tests: a fake output.ftdi.Probe
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
         self.store = ShowStore(files.root, self._store_locked)
@@ -413,6 +417,8 @@ class App:
             except Exception:  # noqa: BLE001 - an unplugged port may not close cleanly
                 log.debug("closing an old output failed", exc_info=True)
         self.engine.output()  # the new outputs get a frame now, not on the next tick
+        self.output_health = {}
+        self._health_wake.set()
         return [f"outputs rebuilt: {len(new)} live"]
 
     def replace_device(self, missing: str, use: str) -> dict[str, Any]:
@@ -521,7 +527,7 @@ class App:
                              "port": cfg.get("port") or getattr(d, "port", None), "device": cfg.get("device"),
                              "state": st["state"], "detail": st["detail"],
                              "packets": st_d.get("packets", st_d.get("frames")), "errors": st_d.get("errors", 0),
-                             "timing": st_d.get("timing"), **w})
+                             "timing": st_d.get("timing"), "checks": self._health_summary(i), **w})
         for n in self.nodes():
             if n.get("mac"):
                 rows.append({"universe": n.get("universe"), "output": None, "kind": "node",
@@ -626,6 +632,7 @@ class App:
         return {"universe": universe, "out": idx, "test": tst if testing else None,
                 "source": (d.cfg or {}).get("alias") or st["name"],
                 "carries": d.carries(universe), "frame": base64.b64encode(frame).decode() if frame is not None else None,
+                "checks": self._health_summary(idx), "timing": d.status().get("timing"),
                 "no_frames": frame is None, "stats": {**d.wire.stats(universe), "errors": d.status().get("errors", 0),
                                                        "state": st["state"], "detail": st["detail"]}}
 
@@ -705,8 +712,8 @@ class App:
         """Save step `step` (1-based, as listed by the last cycle on this output) without re-running it."""
         from .dmxcheck import cycle_steps
 
-        drv = self.engine.drivers[index] if 0 <= index < len(self.engine.drivers) else None
-        if drv is None or not hasattr(drv, "d2xx_ok"):
+        drv = dict(self._open_outputs()).get(index)
+        if drv is None:
             raise ValueError("not a USB DMX (Open) output")
         steps = self.cycle.steps if self.cycle is not None and self.cycle.index == index else cycle_steps(drv)
         if not 1 <= step <= len(steps):
@@ -714,6 +721,68 @@ class App:
         s = steps[step - 1]
         self.set_output(index, {"break_method": s["break_method"], "break_us": s["break_us"]})
         return {k: s[k] for k in ("step", "label", "break_method", "break_us")}
+
+    # ------------------------------------------------------------------ output health checks (v5 item 2)
+
+    def _open_outputs(self) -> list[tuple[int, Any]]:
+        from .output.enttec import EnttecOpenDriver
+
+        return [(i, d) for i, d in enumerate(self.engine.drivers) if isinstance(d, EnttecOpenDriver)]
+
+    def check_outputs(self) -> list[dict[str, Any]]:
+        """Run the checklist on every USB DMX (Open) output now (also kept for the status bar)."""
+        from .output.ftdi import check_interface
+
+        out: dict[int, dict[str, Any]] = {}
+        for i, d in self._open_outputs():
+            cfg = d.cfg or {}
+            info = None
+            if self.registry is not None:
+                info = (self.registry.get(cfg["device"]) if cfg.get("device") else None) or next(
+                    (x for x in self.registry.all() if x.get("port") == d.port), None)
+            r = check_interface(d.port, info, d, self.health_probe)
+            r.update({"output": i, "interface": cfg.get("alias") or info and info.get("name") or "USB DMX (Open)",
+                      "universe": d.universe, "checked": time.time()})
+            out[i] = r
+        self.output_health = out
+        return [out[i] for i in sorted(out)]
+
+    def start_health_checks(self, every_s: float = 60.0) -> None:
+        """Check at start, on hot-plug (device registry), after outputs change, and every minute."""
+        if self._health_thread is not None:
+            return
+        if self.registry is not None:
+            self.registry.on_change.append(lambda d, what: self._health_wake.set())
+
+        def run() -> None:
+            while True:
+                try:
+                    self.check_outputs()
+                except Exception:  # noqa: BLE001 - a check must never take anything down
+                    log.debug("output checks failed", exc_info=True)
+                self._health_wake.wait(every_s)
+                self._health_wake.clear()
+                time.sleep(1.0)  # let a new port settle / the new driver open
+
+        self._health_thread = threading.Thread(target=run, name="output-checks", daemon=True)
+        self._health_thread.start()
+
+    def _health_summary(self, index: int) -> dict[str, Any] | None:
+        h = self.output_health.get(index)
+        if h is None:
+            return None
+        return {"result": h["result"], "driver_type": h["driver_type"], "latency_ms": h["latency_ms"],
+                "d2xx_available": h["d2xx_available"],
+                "problems": [f"{c['name']}: {c['detail']}" for c in h["checks"] if c["result"] in ("fail", "warn")]}
+
+    def set_output_latency(self, index: int, ms: int = 1) -> dict[str, Any]:
+        self.require_unlocked("changing the latency timer")
+        drv = dict(self._open_outputs()).get(index)
+        if drv is None:
+            raise ValueError("not a USB DMX (Open) output")
+        got = drv.set_latency(ms)
+        self._health_wake.set()
+        return {"output": index, "latency_ms": got}
 
     def routing_problems_cached(self) -> list[str]:
         from .rig import routing_problems
@@ -767,6 +836,16 @@ class App:
             if unis and st.get("state") != "sim":  # which universe(s) it carries, at the front
                 st["detail"] = f"U{','.join(map(str, unis))} · {st['detail']}"
             out.append(st)
+        for h in list(self.output_health.values()):
+            bad = [c for c in h["checks"] if c["result"] in ("fail", "warn")]
+            if bad:
+                worst = next((c for c in bad if c["result"] == "fail"), bad[0])
+                more = f" (+{len(bad) - 1})" if len(bad) > 1 else ""
+                out.append({"kind": "dmx_check", "name": f"{h['interface']} checks",
+                            "state": "bad" if worst["result"] == "fail" else "warn",
+                            "detail": f"{worst['name']}: {worst['detail']}{more}"
+                                      + (f". Fix: {worst['fix']}" if worst["fix"] else ""),
+                            "output": h["output"]})
         tst = self.engine.test_status()
         if tst is not None:
             where = f"output {tst['output'] + 1}" if tst["output"] is not None else f"U{tst['universe']}"

@@ -83,9 +83,10 @@ def check(rig: Rig, tp: TestPattern, haze: set[tuple[int, int]]) -> TestPattern:
         tp.universe = fx.universe
     if tp.pattern == "ramp":
         if tp.channel is None and tp.fixture and tp.extra.get("role"):
-            fx = rig.patch.fixtures.get(tp.fixture)
-            if fx is None or tp.fixture not in rig.present:
+            rf = rig.patch.fixtures.get(tp.fixture)
+            if rf is None or tp.fixture not in rig.present:
                 raise ValueError(f"{tp.fixture} is not in this rig")
+            fx = rf
             ch = next((c for c in fx.type.channels if c.role == tp.extra["role"]), None)
             if ch is None:
                 raise ValueError(f"{tp.fixture} has no {tp.extra['role']} channel")

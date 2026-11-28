@@ -60,6 +60,7 @@ function watch() {
     $("#mon-dmx").classList.toggle("testing", !!f.test);
     $("#mon-dmx-stats").textContent = (f.test ? `TEST: ${f.test.name} · ` : "") + t("monitor.stats", { source: f.source, fps: s.fps ?? "-", frames: s.frames ?? "-",
       errors: s.errors ?? "-", jitter: s.jitter_ms ?? "-", last: ms(s.last_frame_age_ms) });
+    drawTiming(f);
     const flag = f.no_frames ? t("monitor.no_frames", { source: f.source, u: uni })
       : s.all_zero ? t("monitor.all_zero")
       : s.last_frame_age_ms > 2000 ? t("monitor.stale", { s: Math.round(s.last_frame_age_ms / 1000) }) : "";
@@ -67,6 +68,37 @@ function watch() {
     $("#mon-dmx-flag").classList.toggle("hidden", !flag);
     drawDmx();
   });
+}
+
+// v5: the interface's driver and measured timing beside the targets, and any failing checks with the fix
+function drawTiming(f) {
+  const tm = f.timing, ck = f.checks;
+  const line = $("#mon-dmx-timing");
+  if (!tm) { line.textContent = ""; $("#mon-dmx-checks").replaceChildren(); return; }
+  const m = tm.measured, g = tm.target;
+  const driver = t(`timing.${ck?.driver_type || (tm.backend === "d2xx" ? "d2xx" : "vcp")}`);
+  line.textContent = t("timing.line", { driver, method: tm.method_name, brk: m.break_us ?? "-", tbrk: g.break_us,
+    mab: m.mab_us ?? "-", tmab: g.mab_us, fps: m.fps ?? "-", tfps: g.fps, write: m.write_ms ?? "-", jit: m.jitter_ms ?? "-" });
+  line.classList.toggle("amber", tm.warnings.length > 0);
+  line.title = [...tm.warnings, tm.note].join("\n");
+  const key = JSON.stringify(ck);
+  if (line.dataset.k === key) return;
+  line.dataset.k = key;
+  const rows = (ck?.problems || []).map((p) => el("div", { class: "ck warn" }, el("b", { text: "⚠ " }), p));
+  const tools = [el("button", { class: "mini", onclick: checkNow }, t("checks.now"))];
+  if (ck && ck.driver_type === "d2xx" && ck.latency_ms > 1) tools.push(el("button", { class: "mini", onclick: setLatency }, t("checks.latency")));
+  $("#mon-dmx-checks").replaceChildren(...(rows.length ? rows : ck ? [el("div", { class: "ck", text: t("checks.all_pass") })] : []), ...tools);
+}
+
+async function checkNow() {
+  const r = await attempt(() => get("/api/outputs/check"));
+  if (r) { $("#mon-dmx-timing").dataset.k = ""; toast(r.outputs.map((o) => `${o.interface}: ${o.result}`).join(" · ") || "-"); }
+}
+
+async function setLatency() {
+  if (!confirm(t("checks.latency_confirm"))) return;
+  const r = await attempt(() => api("POST", "/api/outputs/latency", { output: +out, ms: 1 }));
+  if (r) toast(t("checks.latency_done", { ms: r.latency_ms }));
 }
 
 function drawDmx() {

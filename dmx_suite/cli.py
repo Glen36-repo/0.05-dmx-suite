@@ -353,6 +353,7 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     if not args.sim:
         app.registry = registry
         registry.start()
+        app.start_health_checks()  # v5: USB DMX (Open) driver / latency / port / power checks
     if project is not None:
         app.attach_project(project)
     ctl, router = app.ctl, app.router

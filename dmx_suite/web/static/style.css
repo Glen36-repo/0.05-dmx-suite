@@ -547,6 +547,10 @@ body:has(#page-monitor.on) main { max-width: none; }
 .mon-head h2 { margin: 0; }
 .seg-row { display: inline-flex; gap: 2px; }
 .mon-stats { font-size: 12px; color: var(--muted); margin: 4px 0; }
+.mon-checks { font-size: 13px; margin: 2px 0 6px; }
+.mon-checks .ck { margin: 2px 0; } .mon-checks .ck.warn b { color: var(--warn); } .mon-checks .ck.fail b { color: var(--bad); }
+.mon-checks .fix { color: var(--muted, inherit); }
+td.amber, .mon-stats .amber { color: var(--warn); }
 .cycle-live { text-align: center; margin: 8px 0; padding: 12px; border: 2px solid var(--warn); border-radius: var(--radius); }
 .cycle-step { font-size: 40px; font-weight: 700; margin: 6px 0 12px; }
 button.big.ok { background: var(--ok, #2e9d5b); color: #fff; min-width: 240px; font-size: 20px; }

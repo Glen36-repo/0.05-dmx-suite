@@ -347,6 +347,14 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
                                   patched_only, role)
 
     @tool
+    def check_outputs() -> str:
+        """Checklist per USB DMX (Open) interface, run now: driver (VCP COM port vs D2XX), FTDI latency timer
+        (amber over 1 ms), port opened exclusively (red when another program - Daslight, QLC+, FreeStyler -
+        holds it), 250k 8N2, USB selective suspend, measured timing. Each check pass / warn / fail / unknown
+        with fix text. Use it early when the rig is dark but frames are counting."""
+        return t.check_outputs()
+
+    @tool
     def test_output_methods(output: int, save_step: int = 0) -> str:
         """Break-method cycle test on a USB DMX (Open) output (index from list_outputs): runs "all full" on it
         while it steps through each break method (D2XX if installed, serial break, baud drop, long 500 µs
