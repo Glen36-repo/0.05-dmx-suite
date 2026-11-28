@@ -28,9 +28,15 @@ def full_layout(rig: Rig) -> dict[str, Placement]:
     return {f.id: placed[f.id] for f in rig.fixtures if f.id in placed}
 
 
-def cell_offsets(n: int, shape: str = "row", cols: int = 0) -> list[tuple[float, float]]:
+def cell_offsets(n: int, shape: str = "row", cols: int = 0, reverse: bool = False) -> list[tuple[float, float]]:
     """Where each pixel of a light sits relative to its centre, in cells, before rotation.
-    Same as cellOffsets in web/static/js/grid.js, so effects land where the screen shows them."""
+    Same as cellOffsets in web/static/js/grid.js, so effects land where the screen shows them.
+    `reverse`: the light is mounted backwards, pixel 1 at the other end."""
+    out = _offsets(n, shape, cols)
+    return out[::-1] if reverse else out
+
+
+def _offsets(n: int, shape: str, cols: int) -> list[tuple[float, float]]:
     n = max(1, n or 1)
     if n == 1:
         return [(0.0, 0.0)]
@@ -49,6 +55,96 @@ def cell_positions(p: Placement, pixels: int) -> list[tuple[float, float]]:
     """Grid positions of a light's cells (one per pixel, or one for a single-cell light)."""
     a = math.radians(p.rot)
     out = []
-    for x, y in cell_offsets(pixels, p.shape, p.cols):
+    for x, y in cell_offsets(pixels, p.shape, p.cols, p.reverse):
         out.append((p.x + x * math.cos(a) - y * math.sin(a), p.y + x * math.sin(a) + y * math.cos(a)))
+    return out
+
+
+# ---------------------------------------------------------------------- overlaps (v4)
+
+MIN_GAP = 0.25  # cells: lights closer than this (edge to edge) are flagged too close
+
+
+def footprint(p: Placement, pixels: int) -> tuple[float, float, float, float]:
+    """The box a light takes on the grid (x0, y0, x1, y1), segments included."""
+    cells = cell_positions(p, pixels)
+    r = 0.5 if pixels > 1 else 0.41  # a pixel bar's segments touch; a single light is a 0.82 square
+    xs, ys = [x for x, _ in cells], [y for _, y in cells]
+    return min(xs) - r, min(ys) - r, max(xs) + r, max(ys) + r
+
+
+def layout_problems(rig: Rig, min_gap: float = MIN_GAP) -> list[dict[str, object]]:
+    """Lights whose places overlap or nearly touch. Spatial effects (mapping: spatial, linear wave,
+    radial, gradient, bars, noise, split) use these places, so two lights in one spot always show the
+    same part of an effect. Haze machines aren't on the stage and are left out."""
+    lay = full_layout(rig)
+    boxes = [(f.id, footprint(lay[f.id], f.type.pixels)) for f in rig.fixtures
+             if f.id in lay and f.kind != Kind.HAZE]
+    out: list[dict[str, object]] = []
+    for i, (a, ba) in enumerate(boxes):
+        for b, bb in boxes[i + 1:]:
+            gap = max(bb[0] - ba[2], ba[0] - bb[2], bb[1] - ba[3], ba[1] - bb[3])  # < 0: they overlap
+            if gap < 0:
+                out.append({"a": a, "b": b, "kind": "overlap", "gap": round(gap, 2)})
+            elif gap < min_gap:
+                out.append({"a": a, "b": b, "kind": "close", "gap": round(gap, 2)})
+    return sorted(out, key=lambda p: p["kind"] != "overlap")  # the worst first
+
+
+def layout_warnings(rig: Rig) -> list[str]:
+    out = []
+    for p in layout_problems(rig):
+        if p["kind"] == "overlap":
+            out.append(f"layout: {p['a']} and {p['b']} are in the same place; spatial effects show them the same - "
+                       "move one on the Layout page")
+        else:
+            out.append(f"layout: {p['a']} and {p['b']} touch; leave a gap so they read as two lights")
+    return out
+
+
+# ---------------------------------------------------------------------- reading / setting places (v4, Claude)
+
+
+def layout_view(rig: Rig) -> dict[str, object]:
+    """Every light's place (defaults filled in, `placed: false` for those), the stage size the lights
+    take up, and any overlaps. Haze machines aren't drawn on the stage and are listed apart."""
+    lay = full_layout(rig)
+    out: dict[str, dict[str, object]] = {}
+    hazes = []
+    for f in rig.fixtures:
+        if f.kind == Kind.HAZE:
+            hazes.append(f.id)
+            continue
+        if f.id in lay:
+            out[f.id] = {**lay[f.id].to_dict(), "placed": f.id in rig.layout}
+    boxes = [footprint(lay[f.id], f.type.pixels) for f in rig.fixtures if f.id in out]
+    w = max((b[2] for b in boxes), default=0.0)
+    h = max((b[3] for b in boxes), default=0.0)
+    return {"layout": out, "haze": hazes,
+            "stage": {"w_cells": round(w, 2), "h_cells": round(h, 2), "cells_per_m": 4,
+                      "note": "x, y in cells (25 cm) from the top left; back of the stage at the top; "
+                              "rot 0 = facing the audience"},
+            "problems": layout_problems(rig)}
+
+
+def merge_positions(rig: Rig, current: dict[str, object] | None, positions: dict[str, object]) -> dict[str, object]:
+    """The rig file's `layout:` with `positions` ({fixture: {x, y, z, rot | rotation}}) set over it. A
+    fixture not placed yet starts from its default spot, so a partial place (only rot, say) works."""
+    from .fixtures import ConfigError
+    from .rig import parse_placement
+
+    if not isinstance(positions, dict) or not positions:
+        raise ConfigError("positions: {fixture id: {x, y, z, rot}}")
+    lay = full_layout(rig)
+    out = dict(current or {})
+    for fid, v in positions.items():
+        if fid not in rig.patch.fixtures:
+            raise ConfigError(f"layout: unknown fixture {fid!r}")
+        if not isinstance(v, dict):
+            raise ConfigError(f"layout {fid}: {{x, y, z, rot}}")
+        v = dict(v)
+        if "rotation" in v:
+            v["rot"] = v.pop("rotation")
+        base = out.get(fid) if isinstance(out.get(fid), dict) else (lay[fid].to_dict() if fid in lay else {})
+        out[fid] = parse_placement(fid, {**base, **v}).to_dict()  # type: ignore[dict-item]
     return out

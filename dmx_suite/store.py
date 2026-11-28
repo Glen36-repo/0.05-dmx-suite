@@ -29,13 +29,14 @@ import yaml
 
 from .fixtures import ConfigError, Kind
 from .showfiles import check_all
-from .versions import FORMAT, FormatError, kind_of, needs_upgrade, show_files, stamped, upgrade
+from .versions import FORMAT, FormatError, format_of, kind_of, needs_upgrade, show_files, stamped, upgrade
 from .yamlio import plain_dump, update_text
 
 log = logging.getLogger(__name__)
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
-FOLDERS = {"scene": "scenes", "show": "shows", "setlist": "setlists", "rig": "rigs", "look": "looks", "midi": "midi"}
+FOLDERS = {"scene": "scenes", "show": "shows", "setlist": "setlists", "rig": "rigs", "look": "looks", "midi": "midi",
+           "device": "devices"}
 BACKUPS = ".backups"
 
 
@@ -71,6 +72,7 @@ class ShowStore:
         self.root = Path(root)
         self._lock = threading.Lock()
         self._locked = locked or (lambda: False)  # gig lock check (callable)
+        self._local = threading.local()
         self.undo_stack: list[Change] = []
         self.redo_stack: list[Change] = []
         self._next_id = 1
@@ -100,6 +102,10 @@ class ShowStore:
             return self.root / "fixtures.yaml"
         if kind == "panels":
             return self.root / "panels.yaml"
+        if kind == "inputs":
+            return self.root / "inputs.yaml"
+        if kind in ("quality", "presets", "ratings"):
+            return self.root / f"{kind}.yaml"
         if kind not in FOLDERS:
             raise StoreError(f"unknown kind {kind!r}")
         self._check_name(name)
@@ -116,7 +122,7 @@ class ShowStore:
         """Current-format data, without `version:` (writes add it back)."""
         p = self.path(kind, name)
         if not p.exists():
-            if kind in ("palettes", "panels"):
+            if kind in ("palettes", "panels", "inputs", "quality", "presets", "ratings"):
                 return {}
             raise StoreError(f"no {kind} {name!r}")
         try:
@@ -148,21 +154,466 @@ class ShowStore:
         apply: it's the app catching up, not an edit. Returns (backup id, files upgraded)."""
         with self._lock:
             changes: dict[Path, str | None] = {}
+            before_v5 = False
             for p in show_files(self.root):
                 try:
                     if needs_upgrade(p):
                         text = p.read_text(encoding="utf-8")
-                        data = upgrade(yaml.safe_load(text), kind_of(p), p.name)  # no version: = format 1
+                        raw = yaml.safe_load(text)
+                        before_v5 = before_v5 or format_of(raw if isinstance(raw, dict) else {}, p.name) < 5
+                        data = upgrade(raw, kind_of(p), p.name)  # no version: = format 1
                         changes[p] = update_text(text, stamped(data))
                 except (FormatError, ConfigError, OSError, yaml.YAMLError):
                     continue  # newer format or broken: loading reports it
+            if before_v5:
+                try:
+                    changes.update(self._migrate_v5(changes))
+                except (FormatError, ConfigError, OSError, yaml.YAMLError, KeyError, TypeError, ValueError):
+                    log.exception("moving MIDI mappings / positions for file format 5 failed; files upgraded as they are")
             if not changes:
                 return None, []
-            names = [str(p.relative_to(self.root)) for p in changes]
+            names = [p.relative_to(self.root).as_posix() for p in changes]  # same on Windows and Linux
             return self._commit(changes, f"upgrade to file format {FORMAT}: {', '.join(names)}"), names
+
+    def _migrate_v5(self, staged: dict[Path, str | None]) -> dict[Path, str | None]:
+        """Format 5 moves across files (migrate.py): raw MIDI mappings -> named inputs, the kick
+        tempo note -> an input with the kick role, palette positions -> head points in each rig."""
+        from .fixtures import parse_patch
+        from .migrate import mappings_to_inputs, positions_to_points
+        from .rig import parse_rig
+
+        def current(p: Path) -> dict[str, Any]:
+            text = staged.get(p)
+            if text is None:
+                text = p.read_text(encoding="utf-8") if p.exists() else ""
+            return upgrade(yaml.safe_load(text) if text else {}, kind_of(p), p.name)
+
+        out: dict[Path, str | None] = {}
+        maps = {p: current(p) for p in sorted((self.root / "midi").glob("*.yaml"))}
+        rigs = {p: current(p) for p in sorted((self.root / "rigs").glob("*.yaml"))}
+        kicks = [int(r["tempo"]["kick_note"]) for r in rigs.values()
+                 if isinstance(r.get("tempo"), dict) and r["tempo"].get("source") == "kick" and "kick_note" in r["tempo"]]
+        raw = any("input" not in m for d in maps.values() for m in d.get("mappings") or [] if isinstance(m, dict))
+        ip = self.root / "inputs.yaml"
+        if raw or kicks:
+            inputs, new_maps = mappings_to_inputs(current(ip) if ip.exists() else {}, {str(p): d for p, d in maps.items()},
+                                                  kicks)
+            for p, d in maps.items():
+                if new_maps[str(p)] != d:
+                    out[p] = update_text(staged.get(p) or p.read_text(encoding="utf-8"), stamped(new_maps[str(p)]))
+            if inputs.get("devices"):
+                out[ip] = update_text(ip.read_text(encoding="utf-8") if ip.exists() else None, stamped(inputs))
+        pp = self.root / "palettes.yaml"
+        pal = current(pp) if pp.exists() else {}
+        if pal.get("positions"):
+            patch = parse_patch(current(self.root / "fixtures.yaml"))
+            heads_of: dict[str, list[str]] = {}
+            for p, r in rigs.items():
+                try:
+                    present = parse_rig(r, patch).present
+                except (ConfigError, KeyError, TypeError, ValueError):
+                    present = list(patch.fixtures)
+                heads_of[str(p)] = [f for f in present if patch.fixtures[f].type.has("pan")
+                                    and not patch.fixtures[f].type.colour_only]
+            new_pal, new_rigs = positions_to_points(pal, {str(p): r for p, r in rigs.items()}, heads_of)
+            out[pp] = update_text(staged.get(pp) or pp.read_text(encoding="utf-8"), stamped(new_pal))
+            for p, r in rigs.items():
+                if new_rigs[str(p)] != r:
+                    out[p] = update_text(staged.get(p) or p.read_text(encoding="utf-8"), stamped(new_rigs[str(p)]))
+        return out
+
+    # ------------------------------------------------------------------ named inputs (v3)
+
+    def input_users(self, name: str) -> list[str]:
+        """Show files that name input `name` (`input: name` anywhere)."""
+        from .midi.named import refs
+
+        out = []
+        for p in show_files(self.root):
+            if p.name == "inputs.yaml":
+                continue
+            try:
+                data = upgrade(yaml.safe_load(p.read_text(encoding="utf-8")), kind_of(p), p.name)
+            except (FormatError, ConfigError, OSError, yaml.YAMLError):
+                continue
+            n = refs(data, name)
+            if n:
+                out.append(f"{p.relative_to(self.root).as_posix()} ({n})")
+        return out
+
+    def put_input(self, device: str, name: str, value: dict[str, Any], device_info: dict[str, Any] | None = None) -> str:
+        """Add or replace input `name` in `device` (made if new, with `device_info` name/port/channel).
+        An input moving device is taken out of its old one."""
+        self._check_name(device)
+        self._check_name(name)
+        if not isinstance(value, dict):
+            raise StoreError("an input is a mapping: type, notes/number or address, roles...")
+        data = self.read("inputs")
+        devices = data.setdefault("devices", {}) or {}
+        data["devices"] = devices
+        for did, d in devices.items():
+            if did != device and name in ((d or {}).get("inputs") or {}):
+                del d["inputs"][name]
+        dev = devices.setdefault(device, {"name": (device_info or {}).get("name") or device.replace("_", " ").title(),
+                                          "inputs": {}})
+        for k in ("name", "port", "channel"):
+            if device_info and device_info.get(k) not in (None, ""):
+                dev[k] = device_info[k]
+        dev.setdefault("inputs", {})
+        if dev["inputs"] is None:
+            dev["inputs"] = {}
+        dev["inputs"][name] = value
+        p = self.path("inputs", "")
+        return self.apply({p: self.text_for(p, data)}, f"put input {device}.{name}")
+
+    def put_device(self, device: str, value: dict[str, Any]) -> str:
+        """Replace a whole device (name, port, channel, inputs). Inputs it no longer has must be unused."""
+        self._check_name(device)
+        if not isinstance(value, dict):
+            raise StoreError("a device is a mapping: name, port, channel, inputs")
+        data = self.read("inputs")
+        devices = data.setdefault("devices", {}) or {}
+        data["devices"] = devices
+        gone = set((devices.get(device) or {}).get("inputs") or {}) - set(value.get("inputs") or {})
+        self._refuse_used(gone)
+        devices[device] = value
+        p = self.path("inputs", "")
+        return self.apply({p: self.text_for(p, data)}, f"put device {device}")
+
+    def _refuse_used(self, names: Any) -> None:
+        for n in sorted(names):
+            users = self.input_users(n)
+            if users:
+                raise StoreError(f"input {n} is still used: {', '.join(users)}")
+
+    def export_device(self, device: str) -> str:
+        """Save a device as a profile in the show's devices/ folder, to load into other shows or share."""
+        devices = self.read("inputs").get("devices") or {}
+        if device not in devices:
+            raise StoreError(f"no device {device!r}")
+        return self.put("device", device, dict(devices[device]), f"save device profile {device}")
+
+    def delete_input(self, name: str) -> str:
+        data = self.read("inputs")
+        for d in (data.get("devices") or {}).values():
+            if name in ((d or {}).get("inputs") or {}):
+                self._refuse_used([name])
+                del d["inputs"][name]
+                p = self.path("inputs", "")
+                return self.apply({p: self.text_for(p, data)}, f"delete input {name}")
+        raise StoreError(f"no input {name!r}")
+
+    def delete_device(self, device: str) -> str:
+        data = self.read("inputs")
+        devices = data.get("devices") or {}
+        if device not in devices:
+            raise StoreError(f"no device {device!r}")
+        self._refuse_used((devices[device] or {}).get("inputs") or {})
+        del devices[device]
+        p = self.path("inputs", "")
+        return self.apply({p: self.text_for(p, data)}, f"delete device {device}")
+
+    def rename_input(self, old: str, new: str) -> str:
+        """Rename an input and every show file that names it, in one change."""
+        from .midi.named import refs, rename_refs
+
+        self._check_name(new)
+        data = self.read("inputs")
+        devs = data.get("devices") or {}
+        owner = next((d for d in devs.values() if old in ((d or {}).get("inputs") or {})), None)
+        if owner is None:
+            raise StoreError(f"no input {old!r}")
+        if any(new in ((d or {}).get("inputs") or {}) for d in devs.values()):
+            raise StoreError(f"there's already an input {new!r}")
+        owner["inputs"] = {(new if k == old else k): v for k, v in owner["inputs"].items()}
+        p = self.path("inputs", "")
+        changes: dict[Path, str | None] = {p: self.text_for(p, data)}
+        for f in show_files(self.root):
+            if f == p:
+                continue
+            try:
+                d = upgrade(yaml.safe_load(f.read_text(encoding="utf-8")), kind_of(f), f.name)
+            except (FormatError, ConfigError, OSError, yaml.YAMLError):
+                continue
+            if refs(d, old):
+                changes[f] = self.text_for(f, rename_refs(d, old, new))
+        return self.apply(changes, f"rename input {old} -> {new}")
+
+    # ------------------------------------------------------------------ named colours and palettes (v3)
+
+    COLOUR_KEYS = ("colour", "colours", "pixels", "show_colour", "background", "colour_b")
+
+    def _colour_refs(self, data: Any, name: str, new: str | None = None, keys: tuple[str, ...] = COLOUR_KEYS) -> tuple[int, Any]:
+        """(times `data` names colour `name` under a colour key, the data with it renamed `new`)."""
+        def swap(v: Any) -> tuple[int, Any]:
+            if v == name:
+                return 1, (new if new is not None else v)
+            if isinstance(v, list):
+                n, out = 0, []
+                for x in v:
+                    c, y = swap(x) if not isinstance(x, (dict, list)) else self._colour_refs(x, name, new, keys)
+                    n += c
+                    out.append(y)
+                return n, out
+            if isinstance(v, dict):
+                return self._colour_refs(v, name, new, keys)
+            return 0, v
+
+        if isinstance(data, dict):
+            n, out = 0, {}
+            for k, v in data.items():
+                if k in keys:
+                    c, out[k] = swap(v)
+                else:
+                    c, out[k] = self._colour_refs(v, name, new, keys)
+                n += c
+            return n, out
+        if isinstance(data, list):
+            n, items = 0, []
+            for x in data:
+                c, y = self._colour_refs(x, name, new, keys)
+                n += c
+                items.append(y)
+            return n, items
+        return 0, data
+
+    def _files_using(self, fn: Any) -> list[str]:
+        out = []
+        for kind in ("scene", "look", "show", "setlist", "rig", "midi"):
+            for n in self.names(kind):
+                c = fn(self.read(kind, n))
+                if c:
+                    out.append(f"{FOLDERS[kind]}/{n}.yaml ({c})")
+        for kind, fname in (("panels", "panels.yaml"), ("palettes", "palettes.yaml")):
+            c = fn(self.read(kind))
+            if c:
+                out.append(f"{fname} ({c})")
+        return out
+
+    def colour_users(self, name: str) -> list[str]:
+        """Show files that use named colour `name` (scenes, looks, Override panels, palettes...)."""
+        def count(d: Any) -> int:
+            if isinstance(d, dict) and "colours" in d and isinstance(d.get("colours"), dict):
+                d = {k: v for k, v in d.items() if k != "colours"}  # palettes.yaml's own definitions
+            return self._colour_refs(d, name)[0]
+        return self._files_using(count)
+
+    def palette_users(self, name: str) -> list[str]:
+        """Files that pick palette `name` (`palette: name`, e.g. Ride presets and the auto show)."""
+        def count(d: Any) -> int:
+            if isinstance(d, dict) and isinstance(d.get("palettes"), dict):
+                d = {k: v for k, v in d.items() if k != "palettes"}
+            return self._colour_refs(d, name, keys=("palette", "palettes"))[0]
+        return self._files_using(count)
+
+    def rename_colour(self, old: str, new: str) -> str:
+        """Rename a named colour, and every scene, look, panel and palette that uses it."""
+        from .palettes import BUILTIN_COLOURS
+
+        self._check_name(new)
+        if old in BUILTIN_COLOURS:
+            raise StoreError(f"{old} is built in and can't be renamed")
+        pal = self.read("palettes")
+        cols = pal.get("colours") or {}
+        if old not in cols:
+            raise StoreError(f"no colour {old!r}")
+        if new in cols or new in BUILTIN_COLOURS:
+            raise StoreError(f"there's already a colour {new!r}")
+        pal["colours"] = {(new if k == old else k): v for k, v in cols.items()}
+        sets = pal.get("palettes") or {}
+        for v in sets.values():
+            if isinstance(v, dict) and isinstance(v.get("colours"), list):
+                v["colours"] = [new if c == old else c for c in v["colours"]]
+        pp = self.path("palettes", "")
+        changes: dict[Path, str | None] = {pp: self.text_for(pp, pal)}
+        for kind in ("scene", "look", "show", "setlist"):
+            for n in self.names(kind):
+                c, d = self._colour_refs(self.read(kind, n), old, new)
+                if c:
+                    p = self.path(kind, n)
+                    changes[p] = self.text_for(p, d)
+        c, d = self._colour_refs(self.read("panels"), old, new)
+        if c:
+            p = self.root / "panels.yaml"
+            changes[p] = self.text_for(p, d)
+        return self.apply(changes, f"rename colour {old} -> {new}")
+
+    def rename_palette(self, old: str, new: str) -> str:
+        self._check_name(new)
+        pal = self.read("palettes")
+        sets = pal.get("palettes") or {}
+        if old not in sets:
+            raise StoreError(f"no palette {old!r}")
+        if new in sets:
+            raise StoreError(f"there's already a palette {new!r}")
+        pal["palettes"] = {(new if k == old else k): v for k, v in sets.items()}
+        pp = self.path("palettes", "")
+        changes: dict[Path, str | None] = {pp: self.text_for(pp, pal)}
+        for kind in ("scene", "look", "show", "setlist", "rig"):
+            for n in self.names(kind):
+                c, d = self._colour_refs(self.read(kind, n), old, new, keys=("palette", "palettes"))
+                if c:
+                    p = self.path(kind, n)
+                    changes[p] = self.text_for(p, d)
+        return self.apply(changes, f"rename palette {old} -> {new}")
+
+    def import_palette(self, data: dict[str, Any], overwrite: bool = False) -> str:
+        """A palette exported from another show: {palette: {key: {...}}, colours: {...}} (its named
+        colours come with it). Names already here are refused unless overwrite."""
+        if not isinstance(data, dict) or not isinstance(data.get("palette"), dict) or len(data["palette"]) != 1:
+            raise StoreError("a palette file has palette: {name: {name, tags, colours}} and its colours")
+        pal = self.read("palettes")
+        key, value = next(iter(data["palette"].items()))
+        sets = pal.setdefault("palettes", {}) or {}
+        pal["palettes"] = sets
+        cols = pal.setdefault("colours", {}) or {}
+        pal["colours"] = cols
+        clash = ([key] if key in sets else []) + [c for c, v in (data.get("colours") or {}).items() if c in cols and cols[c] != v]
+        if clash and not overwrite:
+            raise StoreError(f"already here: {', '.join(clash)} (import again with overwrite to replace)")
+        cols.update(data.get("colours") or {})
+        sets[key] = value
+        pp = self.path("palettes", "")
+        return self.apply({pp: self.text_for(pp, pal)}, f"import palette {key}")
+
+    def export_palette(self, key: str) -> dict[str, Any]:
+        pal = self.read("palettes")
+        sets = pal.get("palettes") or {}
+        if key not in sets:
+            raise StoreError(f"no palette {key!r}")
+        have = pal.get("colours") or {}
+        named = {c: have[c] for c in sets[key].get("colours") or [] if isinstance(c, str) and c in have}
+        return {"version": FORMAT, "palette": {key: sets[key]}, "colours": named}
+
+    # ------------------------------------------------------------------ head points (v3)
+
+    POINT_KEYS = ("position", "from", "to")
+
+    def _point_refs(self, data: Any, name: str, new: str | None = None) -> tuple[int, Any]:
+        """(how many times data names point `name` as a position, the data with it renamed `new`)."""
+        if isinstance(data, dict):
+            n, out = 0, {}
+            for k, v in data.items():
+                if k in self.POINT_KEYS and v == name:
+                    n += 1
+                    out[k] = new if new is not None else v
+                else:
+                    c, out[k] = self._point_refs(v, name, new)
+                    n += c
+            return n, out
+        if isinstance(data, list):
+            n, items = 0, []
+            for x in data:
+                c, y = self._point_refs(x, name, new)
+                n += c
+                items.append(y)
+            return n, items
+        return 0, data
+
+    def point_users(self, name: str) -> list[str]:
+        out = []
+        for kind in ("scene", "look", "show"):
+            for n in self.names(kind):
+                c, _ = self._point_refs(self.read(kind, n), name)
+                if c:
+                    out.append(f"{FOLDERS[kind]}/{n}.yaml ({c})")
+        c, _ = self._point_refs(self.read("panels"), name)
+        if c:
+            out.append(f"panels.yaml ({c})")
+        return out
+
+    def put_point(self, rig: str, name: str, value: dict[str, Any], merge: bool = False) -> str:
+        """Add or replace head point `name` in a rig. merge=True keeps heads not in `value` (store
+        the heads just aimed). A head outside the rig's head limits is refused (rule 8)."""
+        from .fixtures import load_patch
+        from .rig import parse_rig
+
+        self._check_name(name)
+        if not isinstance(value, dict):
+            raise StoreError("a point is {description, tags, stage, heads: {head: {pan, tilt}}}")
+        data = self.read("rig", rig)
+        points = data.get("positions") or {}
+        data["positions"] = points
+        old = dict(points.get(name) or {})
+        if merge:
+            heads = {**(old.get("heads") or {}), **(value.get("heads") or {})}
+            new = {**old, **{k: v for k, v in value.items() if k != "heads"}, "heads": heads}
+        else:
+            new = dict(value)
+        new["heads"] = {f: {"pan": round(float(pv["pan"]), 5), "tilt": round(float(pv["tilt"]), 5)}
+                        for f, pv in (new.get("heads") or {}).items() if isinstance(pv, dict) and "pan" in pv and "tilt" in pv}
+        for k in ("description", "tags", "stage"):
+            if new.get(k) in (None, "", [], {}):
+                new.pop(k, None)
+        points[name] = new
+        r = parse_rig(data, load_patch(self.root / "fixtures.yaml"))
+        bad = [w for w in r.point_problems() if w.startswith(f"point {name}:")
+               and any(f" {f} is outside" in w for f in (value.get("heads") or {}))]
+        if bad:
+            raise StoreError(f"can't store inside the head limits' no-go zone (rule 8): {'; '.join(bad)}")
+        p = self.path("rig", rig)
+        return self.apply({p: self.text_for(p, data)}, f"point {name} on rig {rig}")
+
+    def delete_point(self, rig: str, name: str) -> str:
+        data = self.read("rig", rig)
+        points = data.get("positions") or {}
+        if name not in points:
+            raise StoreError(f"rig {rig} has no point {name!r}")
+        others = [r for r in self.names("rig") if r != rig and name in (self.read("rig", r).get("positions") or {})]
+        if not others:
+            users = self.point_users(name)
+            if users:
+                raise StoreError(f"point {name} is still used: {', '.join(users)}")
+        del points[name]
+        if not points:
+            data.pop("positions")
+        p = self.path("rig", rig)
+        return self.apply({p: self.text_for(p, data)}, f"delete point {name} from rig {rig}")
+
+    def rename_point(self, old: str, new: str) -> str:
+        """Rename a point in every rig and every scene, look, show and Override panel that names it."""
+        self._check_name(new)
+        changes: dict[Path, str | None] = {}
+        found = False
+        for r in self.names("rig"):
+            data = self.read("rig", r)
+            points = data.get("positions") or {}
+            if old in points:
+                if new in points:
+                    raise StoreError(f"rig {r} already has a point {new!r}")
+                data["positions"] = {(new if k == old else k): v for k, v in points.items()}
+                p = self.path("rig", r)
+                changes[p] = self.text_for(p, data)
+                found = True
+        if not found:
+            raise StoreError(f"no point {old!r}")
+        for kind in ("scene", "look", "show"):
+            for n in self.names(kind):
+                c, d = self._point_refs(self.read(kind, n), old, new)
+                if c:
+                    p = self.path(kind, n)
+                    changes[p] = self.text_for(p, d)
+        c, d = self._point_refs(self.read("panels"), old, new)
+        if c:
+            p = self.root / "panels.yaml"
+            changes[p] = self.text_for(p, d)
+        return self.apply(changes, f"rename point {old} -> {new}")
+
+    @contextmanager
+    def recovery(self) -> Iterator[None]:
+        """Mid-gig recovery (v4): swapping a missing interface for a plugged-in one is allowed under gig
+        lock. Only the gig lock is lifted, for this thread and this change; any other reason a write is
+        refused (the show file open elsewhere) still applies."""
+        self._local.recovering = True
+        try:
+            yield
+        finally:
+            self._local.recovering = False
 
     def _guard(self) -> None:
         why = self._locked()  # True (gig lock) or a reason, e.g. the show file is open elsewhere
+        if why is True and getattr(self._local, "recovering", False):
+            return
         if why:
             raise LockedError(why if isinstance(why, str) else "gig lock is on: show files can't be changed")
 
@@ -298,7 +749,7 @@ class ShowStore:
 
     def put_entry(self, kind: str, section: str, name: str, value: Any) -> str:
         """kind 'palettes' (section colours/positions/gobos) or 'fixtures' (section types)."""
-        sections = {"palettes": ("colours", "positions", "gobos"), "fixtures": ("types",)}
+        sections = {"palettes": ("colours", "positions", "gobos", "palettes"), "fixtures": ("types",)}
         if section not in sections.get(kind, ()):
             raise StoreError(f"{kind} sections: {sections.get(kind)}")
         self._check_name(name)
@@ -307,6 +758,10 @@ class ShowStore:
         if value is None:
             if name not in (data[section] or {}):
                 raise StoreError(f"no {section} entry {name!r}")
+            if kind == "palettes" and section in ("colours", "palettes"):
+                users = self.colour_users(name) if section == "colours" else self.palette_users(name)
+                if users:
+                    raise StoreError(f"{section[:-1]} {name} is still used: {', '.join(users)}")
             del data[section][name]
         else:
             data[section][name] = value
@@ -422,13 +877,95 @@ class ShowStore:
         if name == "all" or name in ids or name in {k.value for k in Kind}:
             raise StoreError(f"{name!r} can't be a group name: it's a fixture, a fixture kind or 'all'")
 
+    # ------------------------------------------------------------------ step scenes, one step at a time (v4)
+
+    def _step_scene(self, scene: str) -> dict[str, Any]:
+        data = self.read("scene", scene)
+        if data.get("type") != "steps" or not isinstance(data.get("steps"), list):
+            raise StoreError(f"{scene} isn't a step scene (type: steps)")
+        return data
+
+    @staticmethod
+    def _step_index(data: dict[str, Any], ref: int | str) -> int:
+        """A step by number (1-based, as shown) or by name."""
+        steps = data["steps"]
+        if isinstance(ref, int) or (isinstance(ref, str) and ref.isdigit()):
+            i = int(ref) - 1
+            if not 0 <= i < len(steps):
+                raise StoreError(f"no step {ref}; the scene has {len(steps)}")
+            return i
+        for i, st in enumerate(steps):
+            if isinstance(st, dict) and st.get("name") == ref:
+                return i
+        raise StoreError(f"no step named {ref!r}")
+
+    def add_step(self, scene: str, step: dict[str, Any], at: int | None = None) -> str:
+        """Insert a step (at = 1-based place; default the end)."""
+        data = self._step_scene(scene)
+        if not isinstance(step, dict):
+            raise StoreError("a step is {name, set: {lights: {colour, ...}}, step_s, fade_s, move}")
+        pos = len(data["steps"]) if at is None or at < 1 else min(at - 1, len(data["steps"]))
+        data["steps"].insert(pos, step)
+        return self.put("scene", scene, data, f"{scene}: add step {pos + 1}")
+
+    def update_step(self, scene: str, ref: int | str, set_: dict[str, Any] | None = None,
+                    timing: dict[str, Any] | None = None, replace: bool = False) -> str:
+        """Change one step: `set_` merged into its set: per light/group (replace=True swaps the whole set:;
+        a null value drops that light from the step, so it tracks again); `timing`: name, step_s,
+        step_beats, fade_s, move (null removes the step's own value)."""
+        data = self._step_scene(scene)
+        i = self._step_index(data, ref)
+        st = dict(data["steps"][i] or {})
+        if set_ is not None:
+            cur = {} if replace else dict(st.get("set") or {})
+            for target, attrs in set_.items():
+                if attrs is None:
+                    cur.pop(target, None)
+                elif isinstance(attrs, dict) and not replace and isinstance(cur.get(target), dict):
+                    merged = {**cur[target], **attrs}
+                    cur[target] = {k: v for k, v in merged.items() if v is not None}
+                else:
+                    cur[target] = attrs
+            st["set"] = cur
+        for k, v in (timing or {}).items():
+            if k not in ("name", "step_s", "step_beats", "fade_s", "move"):
+                raise StoreError(f"a step's timing is name, step_s, step_beats, fade_s, move (not {k})")
+            if v is None:
+                st.pop(k, None)
+            else:
+                st[k] = v
+        data["steps"][i] = st
+        return self.put("scene", scene, data, f"{scene}: step {i + 1}")
+
+    def move_step(self, scene: str, ref: int | str, to: int) -> str:
+        data = self._step_scene(scene)
+        i = self._step_index(data, ref)
+        st = data["steps"].pop(i)
+        j = max(0, min(int(to) - 1, len(data["steps"])))
+        data["steps"].insert(j, st)
+        return self.put("scene", scene, data, f"{scene}: step {i + 1} to {j + 1}")
+
+    def delete_step(self, scene: str, ref: int | str) -> str:
+        data = self._step_scene(scene)
+        if len(data["steps"]) == 1:
+            raise StoreError("a step scene needs at least one step")
+        i = self._step_index(data, ref)
+        data["steps"].pop(i)
+        return self.put("scene", scene, data, f"{scene}: delete step {i + 1}")
+
     def _rename_refs(self, old: str, new: str) -> dict[Path, str | None]:
         """Files whose fixture lists name group `old`, rewritten to name `new`."""
 
+        def one(n: Any) -> Any:  # `old`, or a pixel selection on it (`old:px1-4`, v4)
+            if not isinstance(n, str):
+                return n
+            name, sep, spec = n.partition(":")
+            return f"{new}{sep}{spec}" if name == old else n
+
         def swap(names: Any) -> Any:
             if isinstance(names, list):
-                return [new if n == old else n for n in names]
-            return new if names == old else names
+                return [one(n) for n in names]
+            return one(names)
 
         out: dict[Path, str | None] = {}
         for kind, folder in FOLDERS.items():
@@ -440,6 +977,9 @@ class ShowStore:
                         for k in ("fixtures", "fallback"):
                             if isinstance(ly, dict) and k in ly:
                                 ly[k] = swap(ly[k])
+                    for st in data.get("steps") or []:  # step scenes: `set:` is keyed by fixture / group
+                        if isinstance(st, dict) and isinstance(st.get("set"), dict):
+                            st["set"] = {one(k): v for k, v in st["set"].items()}
                 elif kind == "rig":
                     if "fixtures" in data:
                         data["fixtures"] = swap(data["fixtures"])

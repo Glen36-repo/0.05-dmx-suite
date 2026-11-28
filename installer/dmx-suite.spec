@@ -11,6 +11,7 @@ ICON = str(ROOT / "installer" / "icon.ico")
 
 datas = [
     (str(ROOT / "dmx_suite" / "web" / "static"), "dmx_suite/web/static"),
+    (str(ROOT / "dmx_suite" / "midi" / "devices"), "dmx_suite/midi/devices"),
     (str(ROOT / "shows"), "shows"),
 ]
 binaries = []

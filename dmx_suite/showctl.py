@@ -41,6 +41,7 @@ class Now:
     song: int | None = None  # 0-based
     song_name: str | None = None
     bpm: float | None = None
+    steps: dict[str, Any] | None = None  # a step scene playing (v3.2): step, of, name, time left, speeds
 
 
 
@@ -67,22 +68,39 @@ class ShowController:
         self.player: ShowPlayer | None = None
         self.setlist: Setlist | None = None
         self.song: int | None = None
+        # v3.4: the band picked something by hand (the autopilot steps aside); setlist start / end (walk looks)
+        self.on_manual: Callable[[], None] | None = None
+        self.on_setlist: Callable[[str], None] | None = None
+        self.on_song_auto: Callable[[list[str] | None, str | None], None] | None = None  # v3.5: songs run by presets
 
     # ------------------------------------------------------------------ selection
 
     @_locked
     def select_look(self) -> None:
+        from . import steps
+
+        if self.on_manual:
+            self.on_manual()
+
+        steps.set_active(None)
         self.mode, self.show, self.set_name, self.scene_key, self.player = "look", None, None, None, None
         self.e.set_look(self.files.look)
         self._save()
 
     @_locked
-    def select_scene(self, key: str) -> None:
+    def select_scene(self, key: str, step: int = 0) -> None:
+        from . import steps
+
+        if self.on_manual:
+            self.on_manual()
+
         if key not in self.files.scenes:
             raise ConfigError(f"no scene {key!r}")
         sc = self.files.scenes[key]
         self.mode, self.scene_key, self.show, self.set_name, self.player = "scene", key, None, None, None
-        self.e.set_source(ScenePlayer(sc, self.e.rig, self.e.clock(), self.tempo.eff), sc, self.e.rig.change_fade_s)
+        player = ScenePlayer(sc, self.e.rig, self.e.clock(), self.tempo.eff, first_step=step)
+        steps.set_active(player.runner)
+        self.e.set_source(player, sc, self.e.rig.change_fade_s)
         self._save()
 
     @_locked
@@ -91,6 +109,11 @@ class ShowController:
             raise ConfigError(f"no show {key!r}")
         show = self.files.shows[key]
         set_name = set_name or show.default_set
+        from . import steps
+
+        if self.on_manual:
+            self.on_manual()
+        steps.set_active(None)  # a step scene in the show takes over when it's drawn
         self.player = ShowPlayer(show, set_name, self.e.rig, self.files.palettes, self.files.scenes, self.tempo, self.e.clock())
         self.mode, self.show, self.set_name, self.scene_key = "show", show, set_name, None
         self.e.set_source(self.player, self.player.scene, self.e.rig.change_fade_s)
@@ -124,6 +147,60 @@ class ShowController:
             self.player.go(index, self.e.clock())
         self.e.set_source(self.player, self.player.scene)
 
+    @_locked
+    def select_ride(self, label: str, player: Any, scene: Any, fade_s: float = 0.0, manual: bool = False) -> None:
+        """The Ride page or the autopilot is playing a look (v3.3)."""
+        from . import steps
+
+        steps.set_active(None)
+        self.mode, self.show, self.set_name, self.scene_key, self.player = "ride", None, None, None, None
+        self.ride_label = label
+        self.e.set_source(player, scene, fade_s)
+        self._save()
+
+    # ------------------------------------------------------------------ step scenes (v3.2)
+
+    def step_runner(self) -> Any:
+        from . import steps
+
+        return steps.active()
+
+    def _runner(self) -> Any:
+        r = self.step_runner()
+        if r is None:
+            raise ConfigError("no step scene playing")
+        return r
+
+    def step_scene(self, action: str, value: float | None = None) -> str:
+        """Pedals, buttons and faders for the step scene playing: next, back, go (value = step,
+        0-based), speed (0.25-4) and fade (scale 0-4)."""
+        r = self._runner()
+        with self.e.lock:
+            if action == "next":
+                r.next()
+            elif action == "back":
+                r.back()
+            elif action == "go":
+                r.go(int(value or 0))
+            elif action == "speed":
+                r.set_speed(float(value if value is not None else 1.0))
+            elif action == "fade":
+                r.set_fade_scale(float(value if value is not None else 1.0))
+            else:
+                raise ConfigError("step action: next, back, go, speed or fade")
+        self.e._changed()
+        return f"step {r.index + 1}: {r.s.steps[r.index].name}"
+
+    def step_input(self, input_id: str) -> bool:
+        """A named input was hit: the step scene playing moves on if it waits for that input."""
+        r = self.step_runner()
+        if r is None or r.s.advance != "input" or r.s.advance_input != input_id:
+            return False
+        with self.e.lock:
+            r.next()
+        self.e._changed()
+        return True
+
     # ------------------------------------------------------------------ setlist
 
     @_locked
@@ -131,6 +208,8 @@ class ShowController:
         if key not in self.files.setlists:
             raise ConfigError(f"no setlist {key!r}")
         self.setlist = self.files.setlists[key]
+        if self.on_setlist and song == 0:
+            self.on_setlist("walk_on")
         self.go_song(song)
 
     @_locked
@@ -142,6 +221,13 @@ class ShowController:
         s = self.setlist.songs[index]
         if s.master is not None:
             self.e.set_master(s.master)
+        if s.presets is not None:  # the autopilot plays only these presets for this song
+            if self.on_song_auto:
+                self.on_song_auto(s.presets, s.mood)
+            self._save()
+            return
+        if self.on_song_auto:
+            self.on_song_auto(None, None)
         if s.show:
             self.select_show(s.show, s.set)
         else:
@@ -150,6 +236,10 @@ class ShowController:
 
     @_locked
     def next_song(self) -> None:
+        if self.setlist is not None and self.song is not None and self.song >= len(self.setlist.songs) - 1:
+            if self.on_setlist:  # past the last song: walk-off
+                self.on_setlist("walk_off")
+            return
         self.go_song((self.song if self.song is not None else -1) + 1)
 
     @_locked
@@ -179,6 +269,8 @@ class ShowController:
     @_locked
     def now(self) -> Now:
         n = Now(self.mode, "static look", bpm=self.tempo.bpm)
+        if self.mode == "ride":
+            n.label = getattr(self, "ride_label", "Autopilot")
         if self.mode == "scene" and self.scene_key:
             n.scene, n.label = self.scene_key, self.files.scenes[self.scene_key].name
         elif self.mode == "show" and self.player and self.show:
@@ -190,6 +282,12 @@ class ShowController:
             n.label = f"{self.show.name} / {self.set_name}"
         if self.setlist and self.song is not None:
             n.setlist, n.song, n.song_name = self.setlist.key, self.song, self.setlist.songs[self.song].name
+        r = self.step_runner()
+        if r is not None and self.mode in ("scene", "show"):
+            n.steps = {"index": r.index, "of": len(r.s.steps), "name": r.s.steps[r.index].name,
+                       "names": [st.name for st in r.s.steps], "time_left_s": round(r.time_left(), 2),
+                       "advance": r.s.advance, "input": r.s.advance_input, "playback": r.s.playback,
+                       "speed": r.speed, "fade_scale": r.fade_scale, "finished": r.finished}
         return n
 
     @_locked

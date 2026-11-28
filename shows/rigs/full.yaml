@@ -1,5 +1,5 @@
 # Full rig. Levels are 0-100 %. Head limits are % of the pan/tilt range.
-version: 4
+version: 6
 name: Full rig
 fixtures: [all]
 
@@ -40,4 +40,44 @@ midi_inputs: [UM-ONE]          # phase 2: add H2MIDI for the SamplePad
 nodes: []                 # expected nodes, e.g. {mac: "F4:12:FA:00:A0:01", name: Left bars}
 
 outputs:
-  - {driver: enttec_open, port: COM3}     # PLACEHOLDER port; node_serial once the node is built
+  - {driver: usb_dmx_open, port: COM3, universe: 0}     # PLACEHOLDER port; node once the node is built
+
+# Head position points (v3): where each head aims to hit the same spot, 0-1 of its pan/tilt range.
+# Scenes, busk buttons and the auto show use the names. PLACEHOLDERS until focused at rehearsal
+# (Heads page: aim, then store to the point).
+positions:
+  drum_kit:
+    description: Drum kit, centre back, cymbal height
+    tags: [band, safe]
+    stage: {x: centre, y: back, z: mid}
+    heads:
+      mh_a: {pan: 0.42, tilt: 0.3}
+      mh_b: {pan: 0.58, tilt: 0.3}
+  centre:
+    description: Centre stage, floor
+    tags: [band, safe, floor]
+    stage: {x: centre, y: middle, z: floor}
+    heads:
+      mh_a: {pan: 0.5, tilt: 0.5}
+      mh_b: {pan: 0.5, tilt: 0.5}
+  audience_l:
+    description: Audience left, above head height
+    tags: [audience]
+    stage: {x: left, y: front, z: high}
+    heads:
+      mh_a: {pan: 0.3, tilt: 0.55}
+      mh_b: {pan: 0.3, tilt: 0.55}
+  audience_r:
+    description: Audience right, above head height
+    tags: [audience]
+    stage: {x: right, y: front, z: high}
+    heads:
+      mh_a: {pan: 0.7, tilt: 0.55}
+      mh_b: {pan: 0.7, tilt: 0.55}
+  ceiling:
+    description: Straight up at the ceiling
+    tags: [ceiling, safe]
+    stage: {x: centre, y: middle, z: ceiling}
+    heads:
+      mh_a: {pan: 0.5, tilt: 0.95}
+      mh_b: {pan: 0.5, tilt: 0.95}

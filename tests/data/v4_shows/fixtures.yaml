@@ -1,0 +1,123 @@
+# Fixture types and patch.
+#
+# PLACEHOLDER channel maps and addresses: every type below has `verified: false` until it's
+# checked against the current Daslight patch (SCOPE: "DMX addresses and channel maps to be
+# copied from the current Daslight patch"). Channel roles:
+#   dimmer, red, green, blue, white, amber, uv, pan, tilt, pt_speed (invert: true = DMX 0
+#   fastest), colour_wheel, gobo, strobe, haze, fixed, zoom, focus, frost, prism; a `<role>_fine`
+#   after dimmer, pan, tilt, zoom or focus makes it 16-bit. Per type (optional): `colour_mix: auto`
+#   to mix colours for the fixture's emitters, `wheel:` / `gobos:` named slots, `sub:` sub-master.
+# `default:` is the value when nothing drives the channel (e.g. strobe open, mode channels).
+
+version: 4
+types:
+  mhl36:
+    name: BeamZ MHL36
+    kind: head
+    colour_mix: "off"           # colours sent as given (types from before colour mixing)
+    verified: false
+    home: {pan: 0.5, tilt: 0.5}
+    channels:
+      - pan
+      - pan_fine
+      - tilt
+      - tilt_fine
+      - {role: pt_speed, invert: true}   # 0 = fastest (rule 7)
+      - dimmer
+      - {role: strobe, default: 0}
+      - red
+      - green
+      - blue
+      - white
+      - gobo
+      - {role: fixed, default: 0}        # function / reset
+
+  lcb803:
+    name: LCB803 8-pixel LED bar
+    kind: bar
+    colour_mix: "off"           # colours sent as given (types from before colour mixing)
+    verified: false
+    channels:   # 24-channel mode: 8 pixels x RGB, no dimmer (grand master scales RGB)
+      - {role: red, pixel: 0}
+      - {role: green, pixel: 0}
+      - {role: blue, pixel: 0}
+      - {role: red, pixel: 1}
+      - {role: green, pixel: 1}
+      - {role: blue, pixel: 1}
+      - {role: red, pixel: 2}
+      - {role: green, pixel: 2}
+      - {role: blue, pixel: 2}
+      - {role: red, pixel: 3}
+      - {role: green, pixel: 3}
+      - {role: blue, pixel: 3}
+      - {role: red, pixel: 4}
+      - {role: green, pixel: 4}
+      - {role: blue, pixel: 4}
+      - {role: red, pixel: 5}
+      - {role: green, pixel: 5}
+      - {role: blue, pixel: 5}
+      - {role: red, pixel: 6}
+      - {role: green, pixel: 6}
+      - {role: blue, pixel: 6}
+      - {role: red, pixel: 7}
+      - {role: green, pixel: 7}
+      - {role: blue, pixel: 7}
+
+  starcolor72:
+    name: StarColor 72
+    kind: wash
+    colour_mix: "off"           # colours sent as given (types from before colour mixing)
+    verified: false
+    channels:
+      - dimmer
+      - red
+      - green
+      - blue
+      - white
+      - {role: strobe, default: 0}
+
+  uking_mini:
+    name: U'King mini moving head
+    kind: head
+    colour_mix: "off"           # colours sent as given (types from before colour mixing)
+    colour_only: true            # rule 7: never moves
+    verified: false
+    home: {pan: 0.5, tilt: 0.5}
+    channels:
+      - pan
+      - tilt
+      - {role: pt_speed, invert: true}
+      - dimmer
+      - red
+      - green
+      - blue
+      - white
+      - {role: strobe, default: 0}
+
+  kick_rgb:
+    name: Kick-drum RGB light
+    kind: kick
+    colour_mix: "off"           # colours sent as given (types from before colour mixing)
+    verified: false
+    channels: [red, green, blue]
+
+  smoke:
+    name: Smoke machine
+    kind: haze
+    colour_mix: "off"           # colours sent as given (types from before colour mixing)
+    verified: false
+    channels: [haze]
+
+fixtures:
+  - {id: mh_a,     type: mhl36,       address: 1,   groups: [heads, movers]}
+  - {id: mh_b,     type: mhl36,       address: 14,  groups: [heads, movers]}
+  - {id: bar_1,    type: lcb803,      address: 27,  groups: [bars]}
+  - {id: bar_2,    type: lcb803,      address: 51,  groups: [bars]}
+  - {id: bar_3,    type: lcb803,      address: 75,  groups: [bars]}
+  - {id: bar_4,    type: lcb803,      address: 99,  groups: [bars]}
+  - {id: wash_l,   type: starcolor72, address: 123, groups: [washes]}
+  - {id: wash_r,   type: starcolor72, address: 129, groups: [washes]}
+  - {id: uking_l,  type: uking_mini,  address: 135, groups: [heads, ukings]}
+  - {id: uking_r,  type: uking_mini,  address: 144, groups: [heads, ukings]}
+  - {id: kick,     type: kick_rgb,    address: 153}
+  - {id: smoke,    type: smoke,       address: 156}

@@ -1,7 +1,9 @@
 // Live page: the rig's lights, shows and sets, setlist, masters, haze.
 import { cmd } from "../api.js";
 import { $, $$, el } from "../dom.js";
+import { fillGrid } from "../btngrid.js";
 import { LightGrid } from "../grid.js";
+import { initHazePanel, renderHazePanel } from "../hazepanel.js";
 import { t } from "../i18n.js";
 import { live, onCatalogue, onState } from "../state.js";
 
@@ -11,10 +13,15 @@ function buildCatalogue(cat) {
   grid = grid || new LightGrid($("#live-grid"));
   grid.build(cat);
 
-  const shows = $("#shows");
-  shows.replaceChildren(
-    ...Object.entries(cat.shows).map(([k, s]) => el("button", { "data-show": k, onclick: () => cmd("show", { show: k }) }, s.name)),
-    ...Object.entries(cat.scenes).map(([k, s]) => el("button", { "data-scene": k, onclick: () => cmd("scene", { scene: k }) }, "▸ " + s)));
+  // Shows, Scenes, then starter / generated ones (folded away): aligned grids in a saved order
+  const gen = new Set(cat.generated || []);
+  const showItem = ([k, s]) => ({ id: `show:${k}`, label: s.name, attrs: { "data-show": k }, onclick: () => cmd("show", { show: k }) });
+  const sceneItem = ([k, s]) => ({ id: `scene:${k}`, label: "▸ " + s, attrs: { "data-scene": k }, onclick: () => cmd("scene", { scene: k }) });
+  const shows = Object.entries(cat.shows).map(showItem), scenes = Object.entries(cat.scenes).map(sceneItem);
+  fillGrid($("#shows"), "shows", shows.filter((i) => !gen.has(i.id)));
+  fillGrid($("#scenes"), "scenes", scenes.filter((i) => !gen.has(i.id)));
+  fillGrid($("#generated"), "generated", [...shows, ...scenes].filter((i) => gen.has(i.id)));
+  $("#generated-section").classList.toggle("hidden", !gen.size);
   $("#sets").dataset.sets = "";
   $("#setlist").replaceChildren(...Object.entries(cat.setlists).map(([k, s]) => el("option", { value: k }, s.name)));
 
@@ -47,8 +54,8 @@ function render(s) {
   const cat = live.cat;
   if (!cat) return;
   $("#preview").textContent = s.preview_s != null ? t("live.previewing", { s: Math.ceil(s.preview_s) }) : "";
-  $$("#shows [data-show]").forEach((b) => b.classList.toggle("sel", s.now.show === b.dataset.show));
-  $$("#shows [data-scene]").forEach((b) => b.classList.toggle("sel", s.now.mode === "scene" && s.now.scene === b.dataset.scene));
+  $$("#page-live [data-show]").forEach((b) => b.classList.toggle("sel", s.now.show === b.dataset.show));
+  $$("#page-live [data-scene]").forEach((b) => b.classList.toggle("sel", s.now.mode === "scene" && s.now.scene === b.dataset.scene));
   const sets = $("#sets");
   const show = s.now.show && cat.shows[s.now.show];
   const want = show ? show.sets.join("|") : "";
@@ -94,11 +101,13 @@ function render(s) {
   if (h.next_pulse_s != null) bits.push(t("haze.next_pulse", { s: Math.round(h.next_pulse_s) }));
   if (h.auto_off_s != null) bits.push(t("haze.auto_off", { min: Math.round(h.auto_off_s / 60) }));
   if (h.boost_cooldown_s) bits.push(t("haze.cooldown", { s: Math.round(h.boost_cooldown_s) }));
+  if (h.testing) bits.push(t("haze.testing", { mode: t("haze.b_" + h.testing) }));
   $("#haze").textContent = bits.join(" · ");
   $$("[data-haze]").forEach((b) => b.classList.toggle("sel", h.mode === b.dataset.haze));
+  renderHazePanel(h);
 
-  grid.update(s.fixtures);
-  grid.mark(Object.keys(s.busk?.lights || {})); // lights held by busk buttons
+  grid.update(s.fixtures, s.haze);
+  grid.mark(Object.keys(s.override?.lights || {})); // lights held by Override buttons
 }
 
 export function init() {
@@ -110,6 +119,7 @@ export function init() {
   boost.addEventListener("pointerdown", (e) => { e.preventDefault(); boost.classList.add("on"); cmd("haze", { action: "boost" }); });
   const up = () => { if (boost.classList.contains("on")) { boost.classList.remove("on"); cmd("haze", { action: "release" }); } };
   ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => boost.addEventListener(ev, up));
+  initHazePanel();
   onCatalogue(buildCatalogue);
   onState(render);
 }

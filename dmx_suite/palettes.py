@@ -30,12 +30,42 @@ BUILTIN_COLOURS: dict[str, Colour] = {
 
 Position = tuple[float, float]
 
+# Curated palettes every show has (v3.1): the Ride page and auto show pick from these by tag.
+# A palette of the same name in palettes.yaml replaces the built-in one.
+CURATED: dict[str, dict[str, Any]] = {
+    "warm": {"name": "Warm", "tags": ["warm", "low", "mid"], "colours": ["#ff2a00", "#ff6a00", "#ffa31a", "#ffd6a0"]},
+    "cool": {"name": "Cool", "tags": ["cool", "low", "mid"], "colours": ["#0030ff", "#0090ff", "#00d0ff", "#7a40ff"]},
+    "fire": {"name": "Fire", "tags": ["warm", "high"], "colours": ["#ff0000", "#ff3c00", "#ff7a00", "#ffb400"]},
+    "ice": {"name": "Ice", "tags": ["cool", "low"], "colours": ["#c8f0ff", "#60c8ff", "#0080ff", "#ffffff"]},
+    "neon": {"name": "Neon", "tags": ["high"], "colours": ["#ff00a0", "#00ff60", "#00e0ff", "#ffe000"]},
+    "white": {"name": "White", "tags": ["white", "low"], "colours": ["#ffffff", "#ffe2b8", "#fff4e6"]},
+    "band": {"name": "Band colours", "tags": ["band", "mid", "high"], "colours": ["#ff0030", "#2040ff", "#ffffff"]},
+}
+
 
 @dataclass
 class Palettes:
     colours: dict[str, Colour] = field(default_factory=lambda: dict(BUILTIN_COLOURS))
     positions: dict[str, dict[str, Position]] = field(default_factory=dict)  # name -> {fid or "*": (pan, tilt)}
     gobos: dict[str, dict[str, int]] = field(default_factory=dict)  # name -> {type key or "*": value}
+    # v3: named colour sets (palette editor): name -> {name, tags, colours: [colour names or values]}
+    sets: dict[str, dict[str, Any]] = field(default_factory=dict)
+    point_info: dict[str, dict[str, Any]] = field(default_factory=dict)  # head points: description, tags, stage
+    warnings: set[str] = field(default_factory=set)  # e.g. a point a head doesn't have
+
+    def with_points(self, points: dict[str, Any], also: dict[str, Any] | None = None) -> Palettes:
+        """These palettes with a rig's head points laid over the (legacy) palette positions.
+        `also`: other rigs' points, so a scene naming a point only another rig has still loads
+        (the heads it doesn't cover stay where they are, with a warning)."""
+        out = Palettes(dict(self.colours), {k: dict(v) for k, v in self.positions.items()}, self.gobos, self.sets,
+                       dict(self.point_info))
+        for src in (also or {}, points):
+            for name, pt in src.items():
+                if src is also and name in points:
+                    continue
+                out.positions[name] = dict(pt.heads) if src is points else {}
+                out.point_info[name] = {"description": pt.description, "tags": list(pt.tags), "stage": dict(pt.stage)}
+        return out
 
     def colour(self, v: Any, what: str) -> Colour:
         if isinstance(v, str) and not v.startswith("#"):
@@ -44,7 +74,9 @@ class Palettes:
             return dict(self.colours[v])
         return parse_colour(v, what)
 
-    def position(self, v: Any, fid: str, what: str) -> Position:
+    def position(self, v: Any, fid: str, what: str) -> Position | None:
+        """A head's pan/tilt for a named point (or a {pan, tilt} given directly). None when the
+        point has no entry for this head: it stays where it is, and a warning is noted (v3)."""
         if isinstance(v, str):
             if v not in self.positions:
                 raise LookError(f"{what}: unknown position {v!r}")
@@ -53,8 +85,18 @@ class Palettes:
                 return p[fid]
             if "*" in p:
                 return p["*"]
-            raise LookError(f"{what}: position {v!r} has no entry for {fid}")
+            self.warnings.add(f"{what}: point {v!r} isn't set for {fid}; it stays where it is")
+            return None
         return _pos(v, what)
+
+    def positions_for(self, v: Any, fids: list[str], what: str) -> dict[str, Position]:
+        """{head: (pan, tilt)} for the heads the point covers."""
+        out = {}
+        for f in fids:
+            p = self.position(v, f, what)
+            if p is not None:
+                out[f] = p
+        return out
 
     def gobo(self, v: Any, type_key: str, what: str) -> int:
         if isinstance(v, int):
@@ -117,13 +159,53 @@ def parse_palettes(data: dict, patch: Patch) -> Palettes:
             p.gobos[name] = {tk: _dmx(x, f"gobo {name}") for tk, x in v.items()}
         else:
             raise ConfigError(f"gobo {name}: DMX value or per-type values")
+    p.sets = parse_sets({**CURATED, **(data.get("palettes") or {})}, p)
+    for k in CURATED:
+        p.sets[k]["builtin"] = k not in (data.get("palettes") or {})
     return p
+
+
+SET_KEYS = {"name", "tags", "colours"}
+
+
+def parse_sets(data: Any, pal: Palettes) -> dict[str, dict[str, Any]]:
+    """`palettes:` (v3.1): named colour sets for the palette editor, Ride page and auto show.
+
+        palettes:
+          warm: {name: Warm, tags: [warm, low], colours: [incandescent, amber, "#ff4000"]}
+
+    Colours are named colours (so changing one updates the palette too) or colour values."""
+    import re
+
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ConfigError("palettes: named sets, each {name, tags, colours: [...]}")
+    out: dict[str, dict[str, Any]] = {}
+    for key, v in data.items():
+        what = f"palette {key}"
+        if not re.match(r"^[a-z0-9][a-z0-9_-]{0,39}$", str(key)):
+            raise ConfigError(f"{what}: names use lower case letters, digits, _ or -")
+        if not isinstance(v, dict) or set(v) - SET_KEYS:
+            raise ConfigError(f"{what}: name, tags and colours")
+        cols = v.get("colours") or []
+        if not isinstance(cols, list) or not cols:
+            raise ConfigError(f"{what}: needs at least one colour")
+        resolved = [pal.colour(c, f"{what} colour {i + 1}") for i, c in enumerate(cols)]
+        tags = v.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+        if not isinstance(tags, list) or not all(isinstance(t, str) and t.strip() for t in tags):
+            raise ConfigError(f"{what}: tags is a list of words, e.g. [warm, low]")
+        out[str(key)] = {"name": str(v.get("name") or key), "tags": [t.strip() for t in tags], "colours": list(cols),
+                         "resolved": resolved}
+    return out
 
 
 def load_palettes(path: str | Path, patch: Patch) -> Palettes:
     path = Path(path)
     if not path.exists():
-        return Palettes()
+        return parse_palettes({}, patch)
     from .versions import read_doc
 
     return parse_palettes(read_doc(path, "palettes"), patch)

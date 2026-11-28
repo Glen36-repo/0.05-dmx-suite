@@ -95,11 +95,16 @@ class _UdpDriver(OutputDriver):
         self.seq[universe] = s
         return s
 
-    def _send(self, packet: bytes, dest: tuple[str, int]) -> None:
+    def carries(self, universe: int) -> bool:
+        return self.target(universe) is not None
+
+    def _send(self, packet: bytes, dest: tuple[str, int], universe: int | None = None, frame: bytes | None = None) -> None:
         try:
             self.sock.sendto(packet, dest)
             self.packets += 1
             self.ok_at = time.monotonic()
+            if universe is not None and frame is not None:
+                self.wire.record(universe, frame)
         except OSError as e:  # no network, cable out: count it, the show carries on
             self.errors += 1
             self.last_error = str(e) or type(e).__name__
@@ -137,7 +142,7 @@ class ArtNetDriver(_UdpDriver):
     def send(self, universe: int, frame: bytes) -> None:
         addr = self.target(universe)
         if addr is not None:
-            self._send(artdmx_packet(addr, self.next_seq(universe), frame), self.dest)
+            self._send(artdmx_packet(addr, self.next_seq(universe), frame), self.dest, universe, frame)
 
     def describe(self) -> str:
         return f"{self.dest[0]}"
@@ -167,7 +172,7 @@ class SacnDriver(_UdpDriver):
         u = self.target(universe)
         if u is not None:
             pkt = sacn_packet(u, self.next_seq(universe), frame, self.cid, self.source, self.priority)
-            self._send(pkt, (self.host or sacn_multicast(u), self.port))
+            self._send(pkt, (self.host or sacn_multicast(u), self.port), universe, frame)
 
     def describe(self) -> str:
         return self.host or "multicast"

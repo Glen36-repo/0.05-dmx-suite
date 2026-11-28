@@ -144,8 +144,8 @@ def _widget(d: Any, patch: Patch, pal: Palettes, scenes: dict[str, Any], shows: 
     elif typ == "fader":
         t = str(d.get("target", ""))
         kinds = {f"sub:{k.value}" for k in Kind}
-        if t not in {"grand", "flash_level", "speed"} | kinds:
-            raise ConfigError(f"{what}: target must be grand, flash_level, speed or sub:<kind>")
+        if t not in {"grand", "flash_level", "speed", "step_speed", "step_fade"} | kinds:
+            raise ConfigError(f"{what}: target must be grand, flash_level, speed, step_speed, step_fade or sub:<kind>")
         w.target = t
     elif typ == "haze":
         if d.get("action") not in HAZE:
@@ -167,6 +167,7 @@ class Override:
     keep: frozenset[str] = frozenset()  # solo: lights it never darkens (MASTER-exempt)
     released_at: float | None = None
     fade_s: float = 0.0
+    fn: Callable[[Look, float], Look] | None = None  # kind "fn": Flash FX, laid over the look (v3.3)
 
 
 def apply(look: Look, overrides: list[Override], now: float) -> Look:
@@ -185,15 +186,18 @@ def apply(look: Look, overrides: list[Override], now: float) -> Look:
                     fixtures[fid] = replace(fl, colour={}, pixels=None)
         elif o.kind == "effect" and o.source is not None:
             fixtures.update(o.source(now).fixtures)
+        elif o.kind == "fn" and o.fn is not None:
+            fixtures = dict(o.fn(Look(fixtures=fixtures, show_colour=look.show_colour), now).fixtures)
     return Look(fixtures=fixtures, show_colour=look.show_colour)
 
 
 def apply_with_releases(look: Look, overrides: list[Override], now: float) -> tuple[Look, list[Override]]:
     """Lay the held overrides over the look; released ones fade out over their fade time.
     Returns the look and the overrides still in play (finished releases dropped)."""
-    live = [o for o in overrides if o.released_at is None or now - o.released_at < o.fade_s]
-    held = [o for o in live if o.released_at is None]
-    fading = [o for o in live if o.released_at is not None]
+    live = [o for o in overrides if o.released_at is None or now - o.released_at < o.fade_s
+            or (o.kind == "fn" and now < o.released_at)]  # a timed Flash FX: still on until its end
+    held = [o for o in live if o.released_at is None or now < o.released_at]
+    fading = [o for o in live if o.released_at is not None and now >= o.released_at]
     with_held = apply(look, held, now)
     if not fading:
         return with_held, live

@@ -41,7 +41,7 @@ Numbers are kept from v1 so tests and docs still match. From v2 R1, every rule i
 - Show data in YAML under `shows/`: fixtures, rig configs, palettes, effects, scenes, shows, MIDI map. Every file carries `version:` from v2 R1. Users keep it as one `.dms` show file (zip of those files, `dmx_suite/package.py`) from v2 R6; every loader still works on a folder (the app runs on an unpacked working copy).
 - Everything a user needs must be doable in the UI; Claude (MCP) is optional.
 - UI text lives in `web/static/i18n/en.json` from v2 R2; no hard-coded strings in views.
-- Output drivers are pluggable (`node_serial`, `enttec_open`, `enttec_pro`, `artnet`, `sacn`, `log`, `null`).
+- Output drivers are pluggable (`node`, `usb_dmx_open`, `usb_dmx_pro`, `artnet`, `sacn`, `log`, `null`; the v3 ids `node_serial`, `enttec_open`, `enttec_pro` still load). Every output names its `universe:`.
 - Small commits, one feature each, with tests. Update `docs/SCOPE.md` decisions if a design choice changes; user-visible changes go in `CHANGELOG.md` and `docs/manual/`.
 - Before committing: `ruff check dmx_suite tests installer`, `mypy dmx_suite`, `pytest`; `pio run -d firmware` if firmware changed (CI runs all four).
 - Show file format changes: bump `FORMAT` in `dmx_suite/versions.py` and add an upgrade step with a test.
@@ -65,3 +65,14 @@ v2 (general release; details in `docs/SCOPE.md`):
 - R7 Fixture model and editor, OFL import/export, setup wizard, starter shows
 - R8 Node and firmware fixes
 - R9 Rehearsal sign-off on the real rig
+
+v3 (auto show "Ride"; details in `docs/V3-SCOPE.md`):
+- V3.1 Named MIDI inputs, head position points, colour wheel + palette editor, alerts/banners
+- V3.2 Step scenes (move dark/lit)
+- V3.3 Classification, FX banks, ride controls, look quality rules, rig scaling
+- V3.4 Autopilot, Ride page, between songs, control priority, decision log
+- V3.5 Generator, look review page, presets, Claude MCP tools
+
+v4 (one release; details in `docs/V4-SCOPE.md`): stage view fixes (fit, outlined pixel bars, names, haze indicator, overlap warnings), Layout / Patch page, universe routing, devices by USB identity, Monitor page, step editor + pixel selection, haze settings, UI density, Ride -> Autopilot (Feel), Busk -> Override. Show file format 6.
+
+Haze is never touched by the autopilot, presets, generator or Flash FX. Every v3 feature gets rule tests under both profiles (`tests/rulecheck.py`).

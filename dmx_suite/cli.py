@@ -43,6 +43,14 @@ from .store import ShowStore
 log = logging.getLogger(__name__)
 
 
+
+def resolve_output(o: dict, registry: object) -> dict:
+    """An output named by its device (v4: usb:VID:PID:SERIAL) goes to whatever port that device is on
+    now, so a new COM number doesn't lose its universe; the rig's port is the fallback."""
+    dev = o.get("device")
+    port = registry.port_for(dev) if dev else None  # type: ignore[attr-defined]
+    return {**o, "port": port} if port else dict(o)
+
 def rig_view(engine: Engine) -> str:
     lines = [
         f"MASTER {'ON ' if engine.master else 'off'}  blackout {'ON' if engine.blackout else 'off'}  "
@@ -296,6 +304,7 @@ class Session:
             self.osc.stop()
         if self.web:
             self.web.stop()
+        self.app.autopilot.stop()
         self.engine.stop()
 
 
@@ -329,15 +338,21 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     if args.sim:
         drivers: list[OutputDriver] = [LogDriver()]
         if args.sim_node:
-            drivers.append(make_driver({"driver": "node_serial", "port": "sim"}))
+            drivers.append(make_driver({"driver": "node", "port": "sim"}))
     else:
-        drivers = [make_driver(o) for o in show.rig.outputs]
+        from .devices import DeviceRegistry
+
+        registry = DeviceRegistry()
+        drivers = [make_driver(resolve_output(o, registry)) for o in show.rig.outputs]
     for d in drivers:  # rig config lists the nodes expected, so a missing one shows at setup
         if isinstance(d, NodeSerialDriver):
             d.link.health.expect(show.rig.nodes)
     state_path = None if args.sim else move_old_state(args.shows)  # app data, not the (OneDrive) show folder
     app = App(show, drivers, state_path, log_dir=log_dir(), rig=args.rig, look=args.look, midi=args.midi)
     app.show_problem = problem
+    if not args.sim:
+        app.registry = registry
+        registry.start()
     if project is not None:
         app.attach_project(project)
     ctl, router = app.ctl, app.router
@@ -372,6 +387,11 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
         if not args.sim:
             session.real = MidiInputs(args.midi_port or show.rig.midi_inputs or None, router.handle_mido)
             app.midi_inputs = session.real
+            if show.rig.midi_outputs:  # v4: MIDI out (test sends, feedback), logged on the Monitor page
+                from .midi.outputs import MidiOutputs
+
+                names = [o["device"].split(":", 1)[-1] for o in show.rig.midi_outputs]
+                app.midi_outputs = MidiOutputs(names, app.midi_out_monitor)
             out("MIDI in:", ", ".join(session.real.open) or "none yet (plug in and it connects by itself)")
         if show.rig.osc.port:
             from .osc import OscServer
@@ -384,6 +404,7 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
                 app.osc_error = f"port {show.rig.osc.port}: {e}"
                 out(f"OSC in: couldn't listen on port {show.rig.osc.port} ({e})")
         session.engine.start()
+        app.autopilot.start(app.engine.clock)  # ticks only do anything while it's switched on
     except BaseException:
         session.stop()
         raise

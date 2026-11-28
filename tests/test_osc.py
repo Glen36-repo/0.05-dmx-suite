@@ -65,7 +65,7 @@ def test_learn_takes_osc(engine):
     r = MidiRouter(engine, parse_map({}), MidiMonitor())
     r.learn("sub_master", {"kind": "bar"})
     assert r.handle_osc("/fader/3", [0.1]).startswith("learned")
-    m = r.map.get_osc("/fader/3")
+    m = r.map.get_input("osc_fader_3")
     assert m.action == "sub_master" and m.params == {"kind": "bar"}
     r.handle_osc("/fader/3", [0.6])
     assert engine.masters.subs[engine.rig.patch.fixtures["bar_1"].kind].target == pytest.approx(0.6)
@@ -113,7 +113,8 @@ def test_osc_mapping_round_trip_in_a_learn(engine):
     r = MidiRouter(engine, parse_map({}), MidiMonitor())
     r.learn("blackout_toggle")
     r.handle_osc("/btn/1", [])
-    assert r.map.to_dict()["mappings"] == [{"type": "osc", "address": "/btn/1", "action": "blackout_toggle"}]
+    assert r.map.to_dict()["mappings"] == [{"input": "osc_btn_1", "action": "blackout_toggle"}]
+    assert r.inputs.get("osc_btn_1").address == "/btn/1"
     assert isinstance(r.map.mappings[0], Mapping)
 
 

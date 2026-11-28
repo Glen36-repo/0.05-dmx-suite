@@ -105,8 +105,8 @@ def test_every_ui_text_key_exists():
     """Text in the page and scripts comes from i18n/en.json; a missing key would show its name."""
     static = ROOT / "dmx_suite" / "web" / "static"
     strings = json.loads((static / "i18n" / "en.json").read_text(encoding="utf-8"))
-    used = {k for page in ("index.html", "login.html")
-            for k in re.findall(r'data-i18n(?:-title|-placeholder)?="([^"]+)"', (static / page).read_text(encoding="utf-8"))}
+    attr = r'data-(?:i18n(?:-title|-placeholder)?|tip)="([^"]+)"'
+    used = {k for page in ("index.html", "login.html") for k in re.findall(attr, (static / page).read_text(encoding="utf-8"))}
     for js in (static / "js").rglob("*.js"):
         text = js.read_text(encoding="utf-8")
         used |= set(re.findall(r'\bt\(\s*"([a-z0-9_]+\.[a-z0-9_]+)"', text))
@@ -120,10 +120,39 @@ def test_every_ui_text_key_exists():
     used |= {f"shows.mix_{m}" for m in ("matching", "white", "contrast")}
     used |= {f"shows.pattern_{p}" for p in ("all", "heads_only", "bars_only", "kit")}
     used |= {f"shows.move_{m}" for m in ("random", "sweep", "static")}
-    used |= {f"busk.type_{k}" for k in ("colour", "flash", "solo", "effect", "go", "fader", "haze")}
-    used |= {f"busk.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
+    used |= {f"override.type_{k}" for k in ("colour", "flash", "solo", "effect", "go", "fader", "haze")}
+    used |= {f"override.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
     used |= {f"wizard.{s}_{x}" for s in ("interface", "lights", "profile", "starter", "pin") for x in ("title", "help")}
-    used |= {f"wizard.drv_{d}" for d in ("node_serial", "enttec_open", "enttec_pro")}
+    used |= {f"wizard.drv_{d}" for d in ("node", "usb_dmx_open", "usb_dmx_pro")}
+    # v3.1
+    used |= {f"alerts.state_{s}" for s in ("active", "dismissed", "minimised", "snoozed", "muted", "cleared")}
+    used |= {f"heads.stage_{k}" for k in "xyz"}
+    places = ("left", "centre", "right", "front", "middle", "back", "floor", "low", "mid", "high", "ceiling")
+    used |= {f"heads.place_{p}" for p in places}
+    used |= {f"midi.role_{r}" for r in ("kick", "snare", "tom", "cymbal", "count_in", "activity")}
+    used |= {f"midi.level_{v}" for v in ("quiet", "normal", "loud")}
+    used |= {f"midi.type_{x}" for x in ("note", "program_change", "control_change", "osc")}
+    used |= {f"palettes.scheme_{x}" for x in ("analogous", "complementary", "triadic", "split", "mono")}
+    used |= {f"wheel.{k}" for k in ("red", "green", "blue", "white", "amber", "uv")}
+    # v3.2
+    used |= {f"steps.playback_{p}" for p in ("loop", "once", "bounce")}
+    used |= {f"steps.channel_{k}" for k in ("zoom", "focus", "frost", "strobe", "prism", "speed", "colour_wheel")}
+    used |= {f"steps.tab_{k}" for k in ("colour", "position", "beam", "pixels")}
+    used |= {f"scenes.px_{k}" for k in ("all", "none", "invert", "odd", "even", "nth", "first", "last", "left", "right",
+                                        "centre", "same")}
+    used |= {"steps.move_dark", "steps.move_lit"}
+    # v3.4
+    used |= {f"autopilot.bank_{b}" for b in ("move", "colour", "drum")} | {"autopilot.autopilot_on"}
+    used |= {f"autopilot.class_{c}" for c in ("head", "wash", "pixel", "strobe", "effect")}
+    used |= {f"autopilot.fader_{k}" for k in ("speed", "fade", "fan", "size", "shift")}
+    used |= {f"autopilot.priority_{k}" for k in ("blackout", "drum_flash", "flash_override", "hold", "autopilot", "show")}
+    used |= {"review.banned_toast", "review.rated"}
+    # v4
+    used |= {f"layout.need_{n}" for n in ("one", "two", "three", "pixels")}
+    used |= {f"haze.b_{b}" for b in ("manual", "pulse", "boost", "safety")}
+    used |= {f"haze.u_{u}" for u in ("pct", "s", "min")}
+    used |= {f"haze.f_{k}" for k in ("level", "pulse_level", "pulse_on_s", "pulse_every_s", "boost_level", "boost_s",
+                                     "boost_cooldown_s", "max_on_s", "rest_s", "auto_off_min", "default_mode")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

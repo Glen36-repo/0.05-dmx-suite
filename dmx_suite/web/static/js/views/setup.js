@@ -5,6 +5,54 @@ import { t } from "../i18n.js";
 import { onShow } from "../nav.js";
 import { live, onCatalogue, onState } from "../state.js";
 
+// ---------------------------------------------------------------- devices plugged in (v4)
+
+let foundKey = "";
+
+export async function loadFound(force = false) {
+  let v;
+  try { v = await get("/api/devices/list"); } catch { return; }
+  const key = JSON.stringify(v);
+  if (key === foundKey && !force) return;
+  foundKey = key;
+  const useCell = (d) => {
+    if (d.kind === "serial") {
+      return el("select", { "data-use": d.id },
+        el("option", { value: "", selected: !d.use }, t("setup.use_none")),
+        ...[...Array(16).keys()].map((u) => el("option", { value: u, selected: d.use?.universe === u }, t("setup.use_universe", { u }))));
+    }
+    return el("label", { class: "check" }, el("input", { type: "checkbox", "data-use": d.id, checked: !!d.use }),
+      t(d.kind === "midi_in" ? "setup.use_midi_in" : "setup.use_midi_out"));
+  };
+  $("#found").replaceChildren(...(v.scanning ? v.devices : []).map((d) => {
+    const alias = el("input", { value: d.alias || "", placeholder: d.name, "data-alias": d.id, class: "mini" });
+    const use = useCell(d);
+    const save = el("button", { class: "mini", onclick: async () => {
+      const u = use.querySelector ? use.querySelector("input") : null;
+      const body = { id: d.id, alias: alias.value.trim() || null };
+      if (d.kind === "serial") { body.use = use.value !== ""; if (body.use) body.universe = +use.value; }
+      else body.use = (u || use).checked;
+      if (await attempt(() => api("POST", "/api/devices/set", body), t("setup.device_saved", { name: body.alias || d.name }))) loadFound(true);
+    } }, t("common.save"));
+    return el("tr", { "data-device": d.id },
+      el("td", { text: d.name, title: [d.product, d.manufacturer, d.vid_pid, d.port].filter(Boolean).join(" · ") }),
+      el("td", { class: "muted", text: d.id + (d.stable ? "" : ` (${t("setup.unstable")})`) }),
+      el("td", {}, alias), el("td", {}, use), el("td", {}, save));
+  }));
+  if (!v.scanning) $("#found").replaceChildren(el("tr", {}, el("td", { colspan: 5, class: "muted", text: t("setup.no_scan") })));
+  // a missing device: pick a plugged-in one of the same sort to take over (works under gig lock)
+  const sameSort = (m) => v.devices.filter((d) => (m.midi_in ? d.kind === "midi_in" : m.midi_out ? d.kind === "midi_out" : d.kind === "serial"));
+  $("#found-missing").replaceChildren(...v.missing.map((m) => {
+    const pick = el("select", { "data-replace": m.device }, el("option", { value: "" }, t("setup.use_instead")),
+      ...sameSort(m).map((d) => el("option", { value: d.id }, d.alias ? `${d.alias} (${d.name})` : d.name)));
+    pick.onchange = async () => {
+      if (pick.value && await attempt(() => api("POST", "/api/devices/replace", { missing: m.device, use: pick.value }),
+        t("setup.replaced_device", { name: m.alias || m.label }))) loadFound(true);
+    };
+    return el("li", { "data-missing": m.device }, t("setup.missing", { name: m.alias || m.label, label: m.label }), " ", pick);
+  }));
+}
+
 async function nodeAction(n) {
   if (n.name) return attempt(() => api("POST", "/api/nodes/identify", { mac: n.mac }), t("setup.identifying", { name: n.name }));
   const name = prompt(t("setup.node_name_prompt", { mac: n.mac }));
@@ -87,13 +135,14 @@ async function loadAddresses() {
   $("#addr").replaceChildren(...a.rows.map((r) => el("tr", {},
     el("td", { text: r.id }), el("td", { text: r.type }), el("td", { text: r.universe }), el("td", { text: r.start }), el("td", { text: r.end }),
     el("td", { text: r.in_rig ? t("common.yes") : "-" }), el("td", { text: r.verified ? t("common.yes") : t("setup.not_checked") }))));
-  $("#addrnotes").replaceChildren(...a.notes.map((n) => el("div", { text: n })));
+  $("#addrnotes").textContent = a.notes.join(" · ");
 }
 
 async function loadThemes() {
   const s = await get("/api/settings");
   $("#theme").replaceChildren(...Object.entries(s.themes).map(([k, v]) =>
     el("option", { value: k, selected: k === s.settings.theme }, v.name)));
+  $("#density").value = s.settings.density || "compact";
 }
 
 export function init() {
@@ -105,6 +154,13 @@ export function init() {
   $("#chan-off").onclick = () => chan.value && cmd("chan", { channel: +chan.value, value: null, universe: +$("#chanuni").value });
   $("#theme").onchange = async (e) => {
     if (await attempt(() => api("POST", "/api/settings", { theme: e.target.value }))) location.reload();
+  };
+  $("#density").onchange = async (e) => {
+    const d = e.target.value;
+    if (await attempt(() => api("POST", "/api/settings", { density: d }))) {
+      document.body.classList.remove("density-compact", "density-comfortable");
+      document.body.classList.add(`density-${d}`);
+    }
   };
   $("#update-check").onclick = async () => {
     $("#update-result").textContent = t("setup.checking");
@@ -138,5 +194,6 @@ export function init() {
   };
   $("#node-resend").onclick = () => attempt(() => api("POST", "/api/nodes/setup", {}), (r) => t("setup.node_setup", { fw: r.fw || "?", n: Object.keys(r.fallbacks || {}).length }));
   onState(render);
-  onShow("setup", () => { loadAddresses(); loadThemes(); loadAccess(); });
+  onShow("setup", () => { loadAddresses(); loadThemes(); loadAccess(); loadFound(); });
+  setInterval(() => { if ($("#page-setup").classList.contains("on")) loadFound(); }, 2000); // plug / unplug shows up
 }

@@ -9,8 +9,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..engine import Engine
-from .map import ACTIONS, Mapping, MidiMap, validate
-from .monitor import MidiMonitor, MonitorEntry
+from .map import ACTIONS, AUTOPILOT_ACTIONS, CONTINUOUS, Mapping, MidiMap, canonical, validate
+from .monitor import MidiMonitor, MonitorEntry, note_name
+from .named import InputDef, Inputs, suggest
 
 SHOW_ACTIONS = {"select_show", "select_set", "select_scene", "next_step", "next_song", "prev_song", "tap_tempo"}
 
@@ -53,15 +54,26 @@ class Incoming:
         return cls("other", ch, 0, 0, False, t)
 
 
+InputListener = Callable[[InputDef, Incoming, float], None]
+
+
 class MidiRouter:
-    def __init__(self, engine: Engine, midimap: MidiMap, monitor: MidiMonitor | None = None, shows: Any = None) -> None:
+    def __init__(self, engine: Engine, midimap: MidiMap, monitor: MidiMonitor | None = None, shows: Any = None,
+                 inputs: Inputs | None = None) -> None:
         self.engine = engine
         self.shows = shows  # ShowController
         self.map = midimap
+        self.inputs = inputs if inputs is not None else Inputs()
         self.monitor = monitor or MidiMonitor()
         self.busk: Callable[[str, str, bool, float | None], str] | None = None  # App.busk
+        self.flash_fx: Callable[[dict[str, Any], bool, bool], str] | None = None  # App.flash_fx_input
+        self.ride: Callable[[str, dict[str, Any], float | None], str] | None = None  # App.ride_action (v3.4)
         # (action, params, callback, port fragment the mapping is tied to)
         self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None, str | None] | None = None
+        # learn an input's message: (input id, callback with the learned message)
+        self._learn_input: tuple[str, Callable[[dict[str, Any]], None] | None] | None = None
+        self.input_listeners: list[InputListener] = []  # every named input hit (auto show, step scenes, calibration)
+        self.new_inputs: list[str] = []  # inputs MIDI learn made in memory, written when the map is saved
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ learn
@@ -71,6 +83,7 @@ class MidiRouter:
         """Arm learn: the next note-on / PC / CC becomes the input for `action`.
         params may include port: "this" (tie the mapping to whichever port the message comes from)
         or a port-name fragment such as "H2MIDI"."""
+        action = canonical(action)
         if action not in ACTIONS:
             raise ValueError(f"unknown action {action!r}")
         params = dict(params or {})
@@ -81,12 +94,22 @@ class MidiRouter:
         with self._lock:
             self._learn = (action, params, on_learned, port)
 
+    def learn_input(self, name: str, on_learned: Callable[[dict[str, Any]], None] | None = None) -> None:
+        """Arm input learn: the next note-on / PC / CC / OSC message becomes input `name`'s message.
+        `on_learned` gets {type, channel, number, port, address} (the app writes it to inputs.yaml)."""
+        with self._lock:
+            self._learn = None
+            self._learn_input = (name, on_learned)
+
     def cancel_learn(self) -> None:
         with self._lock:
             self._learn = None
+            self._learn_input = None
 
     @property
     def learning(self) -> str | None:
+        if self._learn_input:
+            return f"input {self._learn_input[0]}"
         return self._learn[0] if self._learn else None
 
     # ------------------------------------------------------------------ handling
@@ -99,11 +122,15 @@ class MidiRouter:
 
     def handle(self, m: Incoming, port: str = "") -> str:
         if m.type in ("clock", "start", "continue", "stop"):  # 24 a beat: not worth a monitor row each
+            if m.type == "clock":
+                self.monitor.clock()
             return self._clock(m)
-        result = self._route(m, port)
+        result, names = self._route(m, port)
         kind = f"osc {m.address}" if m.type == "osc" else m.raw_type
+        roles = sorted({r for i in self.inputs.inputs.values() if i.name in names for r in i.roles})
         self.monitor.add(
-            MonitorEntry(time.time(), port, m.channel, kind, m.number, m.value, result)
+            MonitorEntry(time.time(), port, m.channel, kind, m.number, m.value, result, ", ".join(names),
+                         note=note_name(m.number) if m.type == "note" else "", roles=", ".join(roles))
         )
         return result
 
@@ -118,53 +145,157 @@ class MidiRouter:
             tempo.clock_start(now)
         return m.type
 
-    def _route(self, m: Incoming, port: str = "") -> str:
+    def _named(self, m: Incoming, port: str) -> list[InputDef]:
+        if m.type == "osc":
+            return self.inputs.match("osc", 0, 0, port, address=m.address)
+        if m.type not in ("note", "program_change", "control_change"):
+            return []
+        return self.inputs.match(m.type, m.channel, m.number, port, m.value, m.pressed)
+
+    def _is_kick(self, m: Incoming, port: str) -> bool:
+        """Tempo from the kick: any input with the kick role (v3), or the rig's kick note."""
+        if m.type != "note" or not m.pressed:
+            return False
+        tempo = self.shows.tempo
+        if self.inputs.has_role("kick"):
+            return any("kick" in i.roles and i.accepts(m.value, True)
+                       for i in self.inputs.candidates("note", m.channel, m.number, port))
+        return m.number == tempo.config.kick_note
+
+    def _route(self, m: Incoming, port: str = "") -> tuple[str, list[str]]:
         if m.type == "other":
-            return "ignored"
+            return "ignored", []
         tempo = self.shows.tempo if self.shows is not None else None
-        if (tempo is not None and tempo.source == "kick" and m.type == "note" and m.pressed
-                and m.number == tempo.config.kick_note):
+        if tempo is not None and tempo.source == "kick" and self._is_kick(m, port):
             tempo.kick(self.engine.clock())  # and on to whatever the kick is mapped to
+        named = self._named(m, port)
+        names = [i.name for i in named]
         # learn takes any CC or OSC value (a pedal or fader may start low), note-ons and program changes
         learnable = m.pressed or m.type in ("control_change", "osc")
         with self._lock:
-            learn = self._learn
-            if learn and learnable:
+            learn, learn_input = self._learn, self._learn_input
+            if learnable and learn_input:
+                self._learn_input = None
+            elif learn and learnable:
                 action, params, cb, want_port = learn
-                if action in ("grand_master", "sub_master", "flash_level", "speed") and m.type not in ("control_change", "osc"):
-                    return "learn: needs a CC or OSC fader (move a pedal, knob or fader)"
-                if m.type == "osc":
-                    mapping = Mapping("osc", 0, 0, action, params, address=m.address)
-                else:
-                    bind = port if want_port == "this" else want_port
-                    mapping = Mapping(m.type, m.channel, m.number, action, params, port=bind or None)
+                if action in CONTINUOUS and m.type not in ("control_change", "osc"):
+                    return "learn: needs a CC or OSC fader (move a pedal, knob or fader)", names
+                bind = port if want_port == "this" else want_port
+                mapping = self._learned_mapping(m, action, params, named, bind or None)
                 self.map.add(mapping)
+                if m.type == "osc":  # the raw mapping for this message (if any) gives way to the input's
+                    self.map.remove(("osc", 0, 0, m.address))
+                else:
+                    self.map.remove((m.type, m.channel, m.number, bind or ""))
                 self._learn = None
+        if learn_input and learnable:
+            msg = {"type": m.type, "channel": m.channel, "number": m.number,
+                   "port": (port if port and not port.startswith("OSC") else None), "address": m.address}
+            if learn_input[1]:
+                learn_input[1](msg)
+            return f"learned input {learn_input[0]}", names
         if learn and learnable:
             if cb:
                 cb(mapping)
-            return f"learned: {mapping.describe()}"
+            return f"learned: {mapping.describe()}", names
 
+        now = self.engine.clock()
+        for i in named:
+            for fn in list(self.input_listeners):
+                try:
+                    fn(i, m, now)
+                except Exception:  # a listener (auto show, step scene) must never stop the router
+                    pass
+        results = []
+        for i in named:
+            mp = self.map.get_input(i.id)
+            if mp is not None:
+                results.append(self._act(mp, m, i))
+        if results:
+            return "; ".join(results), names
         mp = self.map.get_osc(m.address) if m.type == "osc" else self.map.get(m.type, m.channel, m.number, port)
         if mp is None:
-            return "unmapped"
-        return self._act(mp, m)
+            return "unmapped", names
+        return self._act(mp, m), names
 
-    def _act(self, mp: Mapping, m: Incoming) -> str:
+    def _learned_mapping(self, m: Incoming, action: str, params: dict[str, Any], named: list[InputDef],
+                         port: str | None) -> Mapping:
+        """MIDI learn for an action: an input that already is this message, or a new one in the
+        "learned" device (written to inputs.yaml when the map is saved)."""
+        fit = [i for i in named if (i.port or None) == port] or ([] if port else named)
+        if fit:
+            return Mapping("input", 0, 0, action, dict(params), input=fit[0].id)
+        if m.type == "osc":
+            iid, name, roles = suggest("osc", 0, 0, m.address, taken=set(self.inputs.inputs))
+            new = InputDef(iid, name, "learned", "osc", address=m.address, roles=roles)
+        else:
+            iid, name, roles = suggest(m.type, m.channel, m.number, port=port, taken=set(self.inputs.inputs))
+            new = InputDef(iid, name, "learned", m.type, m.channel, [m.number], port=port, roles=roles)
+        self.inputs.add(new)  # device "learned" ("Learned") is made if new
+        self.new_inputs.append(iid)
+        return Mapping("input", 0, 0, action, dict(params), input=iid)
+
+    def _act(self, mp: Mapping, m: Incoming, inp: InputDef | None = None) -> str:
         e, a, p = self.engine, mp.action, mp.params
         if a == "haze_boost":
             ok = e.haze_boost(m.pressed if m.type != "program_change" else True)
             if m.pressed and not ok:
                 return "haze boost refused (disabled or cooling down)"
             return "haze boost on" if m.pressed else "haze boost release"
-        if a == "busk":
+        if a == "haze_preset":
+            if not m.pressed:
+                return "release"
+            try:
+                e.haze_preset(str(p.get("preset")))
+            except ValueError as err:
+                return f"haze_preset: {err}"
+            return f"haze preset {p.get('preset')}"
+        if a == "override":
             if self.busk is None:
-                return "busk: not running"
+                return "override: not running"
             level = m.level if m.level is not None else (m.value / 127 if m.type == "control_change" else None)
             try:
                 return self.busk(p["panel"], p["widget"], m.pressed, level)
             except Exception as err:  # a bad press must never stop the show
-                return f"busk failed: {err}"
+                return f"override failed: {err}"
+        if a in ("step_speed", "step_fade"):
+            level = m.level if m.level is not None else m.value / 127
+            value = 4 ** (2 * level - 1) if a == "step_speed" else 2 * level
+            if self.shows is None:
+                return f"{a}: no show control running"
+            try:
+                self.shows.step_scene("speed" if a == "step_speed" else "fade", value)
+            except Exception as err:
+                return f"{a}: {err}"
+            return f"{a} x{value:.2f}"
+        if a in AUTOPILOT_ACTIONS:
+            if self.ride is None:
+                return f"{a}: not running"
+            level = None
+            if a in CONTINUOUS:
+                level = m.level if m.level is not None else m.value / 127
+            elif not m.pressed:
+                return "release"
+            try:
+                return self.ride(a, dict(p), level)
+            except Exception as err:  # a bad press must never stop the show
+                return f"{a} failed: {err}"
+        if a == "flash_fx":
+            if self.flash_fx is None:
+                return "flash_fx: not running"
+            try:
+                return self.flash_fx(p, m.pressed, m.type == "program_change")
+            except Exception as err:  # a bad press must never stop the show
+                return f"flash_fx failed: {err}"
+        if a in ("step_next", "step_back"):
+            if not m.pressed:
+                return "release"
+            if self.shows is None:
+                return f"{a}: no show control running"
+            try:
+                return self.shows.step_scene("next" if a == "step_next" else "back")
+            except Exception as err:
+                return f"{a} failed: {err}"
         if a == "speed":
             level = m.level if m.level is not None else m.value / 127
             speed = 4 ** (2 * level - 1)  # fader bottom = quarter speed, middle = as set, top = 4x
@@ -185,6 +316,8 @@ class MidiRouter:
         if a == "flash":
             fixtures = e.rig.patch.resolve(p["fixtures"])
             vel = m.value if m.type == "note" else 127
+            if inp is not None and m.type == "note":
+                vel = max(1, round(inp.strength(vel) * 127))  # calibrated velocity curve (linear = as hit)
             ok = e.flash(fixtures, vel, p.get("colour", "show"), int(p.get("length_ms", 100)), float(p.get("min_level", 0)))
             return f"flash {','.join(p['fixtures'])} vel {vel}" if ok else "flash ignored (MASTER on)"
         if a in SHOW_ACTIONS:

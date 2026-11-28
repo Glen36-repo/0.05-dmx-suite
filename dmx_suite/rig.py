@@ -23,6 +23,34 @@ class HeadLimit:
         return min(max(v, lo), hi)
 
 
+STAGE_X = ("left", "centre", "right")
+STAGE_Y = ("front", "middle", "back")
+STAGE_Z = ("floor", "low", "mid", "high", "ceiling")
+
+
+@dataclass
+class Point:
+    """A named aim point (v3): where each head must point to hit the same spot, per rig config.
+    pan/tilt are 0-1 of the head's range (16-bit through fine channels). Not every head needs it."""
+
+    name: str
+    heads: dict[str, tuple[float, float]] = field(default_factory=dict)
+    description: str = ""
+    tags: list[str] = field(default_factory=list)
+    stage: dict[str, str] = field(default_factory=dict)  # rough place: x left/centre/right, y, z
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {}
+        if self.description:
+            d["description"] = self.description
+        if self.tags:
+            d["tags"] = list(self.tags)
+        if self.stage:
+            d["stage"] = dict(self.stage)
+        d["heads"] = {f: {"pan": round(p, 5), "tilt": round(t, 5)} for f, (p, t) in self.heads.items()}
+        return d
+
+
 SHAPES = ("row", "ring", "grid")  # how a pixel light's pixels are laid out on the layout grid
 GRID_MAX = 200  # layout size limit, cells
 
@@ -39,6 +67,8 @@ class Placement:
     rot: float = 0.0
     shape: str = "row"
     cols: int = 0  # grid shape: pixels across (0 = as square as possible)
+    z: float | None = None  # v4: height above the stage in metres (kept for Claude; not drawn)
+    reverse: bool = False  # v4: pixel light mounted backwards: pixel 1 at the other end
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {"x": self.x, "y": self.y, "rot": self.rot}
@@ -46,6 +76,10 @@ class Placement:
             d["shape"] = self.shape
         if self.shape == "grid" and self.cols:
             d["cols"] = self.cols
+        if self.z is not None:
+            d["z"] = self.z
+        if self.reverse:
+            d["reverse"] = True
         return d
 
 
@@ -62,6 +96,22 @@ class HazeConfig:
     rest_s: float = 30.0  # forced off time after max_on_s
     boost_cooldown_s: float = 20.0
     auto_off_s: float = 0.0  # manual/pulse revert to off after this (0 = never)
+    pulse_level: float | None = None  # v4: pulse output level (None = level)
+    presets: list[dict[str, Any]] = field(default_factory=list)  # v4: [{name, mode, level}], e.g. Haze 4 Med = 41 %
+
+    def to_dict(self) -> dict[str, Any]:
+        """The rig file's `haze:` block (levels in %, auto-off in minutes)."""
+        pc = lambda v: round(v * 100, 1)  # noqa: E731
+        d: dict[str, Any] = {"enabled": self.enabled, "default_mode": self.default_mode, "level": pc(self.level),
+                             "boost_level": pc(self.boost_level), "pulse_on_s": self.pulse_on_s,
+                             "pulse_every_s": self.pulse_every_s, "boost_s": self.boost_s, "max_on_s": self.max_on_s,
+                             "rest_s": self.rest_s, "boost_cooldown_s": self.boost_cooldown_s,
+                             "auto_off_min": round(self.auto_off_s / 60, 2)}
+        if self.pulse_level is not None:
+            d["pulse_level"] = pc(self.pulse_level)
+        if self.presets:
+            d["presets"] = [{**p, "level": pc(p["level"])} for p in self.presets]
+        return d
 
 
 @dataclass
@@ -84,15 +134,33 @@ class Rig:
     kick_colour: dict[str, float] = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
     startup_master: bool = True
     nodes: list[tuple[str, str]] = field(default_factory=list)  # (mac, name)
-    outputs: list[dict[str, Any]] = field(default_factory=list)
+    outputs: list[dict[str, Any]] = field(default_factory=list)  # v4: each has `universe` (0 when not given)
+    output_warnings: list[str] = field(default_factory=list)  # e.g. "no universe: given, assumed 0"
     midi_inputs: list[str] = field(default_factory=list)  # port-name fragments; empty = every port
+    midi_aliases: dict[str, str] = field(default_factory=dict)  # v4: port-name fragment -> alias (Drums, Pedalboard)
+    midi_outputs: list[dict[str, Any]] = field(default_factory=list)  # v4: [{device: midi-out:X, alias}]
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
     osc: OscConfig = field(default_factory=OscConfig)
     change_fade_s: float = 0.0  # crossfade when picking a scene, show or look (0 = cut, as v1)
+    release_fade_s: float = 0.0  # v3.4: MASTER on / blackout off / Flash FX release fade back in (0 = cut, as v1)
     radio_channel: int | None = None  # 0.05 node radio channel (1-13); None = leave it as it is
     tempo: TempoConfig = field(default_factory=TempoConfig)
     profile: Profile = V1_DEFAULT  # which profile rules apply (rules 1-3)
     exempt: frozenset[str] = frozenset()  # fixture ids MASTER never affects (rule 3)
+    points: dict[str, Point] = field(default_factory=dict)  # head position points (v3)
+    auto: Any = None  # classify.AutoConfig: class overrides and lights left out of the auto show (v3.3)
+    autopilot: dict[str, Any] = field(default_factory=dict)  # autopilot settings over the defaults (v3.4)
+
+    def point_problems(self) -> list[str]:
+        """Points with a head outside this rig's head limits (they still clamp at output, rule 8)."""
+        out = []
+        for pt in self.points.values():
+            for fid, (pan, tilt) in pt.heads.items():
+                lim = self.limit(fid)
+                if not (lim.pan[0] <= pan <= lim.pan[1] and lim.tilt[0] <= tilt <= lim.tilt[1]):
+                    out.append(f"point {pt.name}: {fid} is outside its head limits (pan {pan:.0%}, tilt {tilt:.0%}); "
+                               f"it's held at the limit (rule 8): re-aim it")
+        return out
 
     @property
     def fixtures(self):
@@ -156,33 +224,13 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
             _range(lim.get("pan", [0, 100]), f"{fid} pan"),
             _range(lim.get("tilt", [0, 100]), f"{fid} tilt"),
         )
-    h = data.get("haze") or {}
-    if not isinstance(h, dict):
-        raise ConfigError("haze: needs settings like level: 60")
-    mode = h.get("default_mode", "off")
-    if mode is False:  # YAML reads a bare `off` as false
-        mode = "off"
-    haze = HazeConfig(
-        enabled=bool(h.get("enabled", True)),
-        default_mode=mode,
-        level=_pct(h.get("level", 60), "haze level"),
-        boost_level=_pct(h.get("boost_level", 100), "haze boost_level"),
-        pulse_on_s=_secs(h.get("pulse_on_s", 5), "haze pulse_on_s", 0.1),
-        pulse_every_s=_secs(h.get("pulse_every_s", 120), "haze pulse_every_s", 0.2),
-        boost_s=_secs(h.get("boost_s", 0), "haze boost_s"),
-        max_on_s=_secs(h.get("max_on_s", 60), "haze max_on_s", 1),
-        rest_s=_secs(h.get("rest_s", 30), "haze rest_s"),
-        boost_cooldown_s=_secs(h.get("boost_cooldown_s", 20), "haze boost_cooldown_s"),
-        auto_off_s=_secs(h.get("auto_off_min", 0), "haze auto_off_min") * 60,
-    )
-    if haze.default_mode not in ("off", "manual", "pulse"):
-        raise ConfigError("haze default_mode must be off, manual or pulse")
-    if haze.pulse_on_s >= haze.pulse_every_s:
-        raise ConfigError("haze pulse_on_s must be shorter than pulse_every_s")
+    haze = parse_haze(data.get("haze"))
     kick_data = data.get("kick_colour") or {"red": 100, "green": 100, "blue": 100}
     if not isinstance(kick_data, dict) or set(kick_data) - set(EMITTERS):
         raise ConfigError(f"kick_colour: emitter levels in %, from {', '.join(EMITTERS)}")
     kick = {k: _pct(v, f"kick colour {k}") for k, v in kick_data.items()}
+    outputs, out_warn = parse_outputs(data.get("outputs"))
+    midi_in, midi_alias = parse_midi_inputs(data.get("midi_inputs"))
     return Rig(
         name=name,
         patch=patch,
@@ -196,16 +244,90 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         kick_colour=kick,
         startup_master=bool((data.get("startup") or {}).get("master", True)),
         nodes=[(n["mac"].upper(), n.get("name", "")) for n in data.get("nodes") or []],
-        outputs=list(data.get("outputs") or [{"driver": "null"}]),
-        midi_inputs=[str(x) for x in data.get("midi_inputs") or []],
+        outputs=outputs,
+        output_warnings=out_warn,
+        midi_inputs=midi_in,
+        midi_aliases=midi_alias,
+        midi_outputs=_midi_outputs(data.get("midi_outputs")),
         layout=_layout(data.get("layout"), patch),
         profile=profile,
         exempt=resolve_exempt(profile, patch, present),
         osc=_osc(data.get("osc")),
         change_fade_s=_secs(data.get("change_fade_s", 0), "change_fade_s"),
+        release_fade_s=_secs(data.get("release_fade_s", 0), "release_fade_s"),
         radio_channel=_channel(data.get("radio_channel")),
         tempo=_tempo(data.get("tempo")),
+        points=parse_points(data.get("positions"), patch),
+        auto=_auto(data.get("auto"), patch),
+        autopilot=_autopilot(data.get("autopilot")),
     )
+
+
+def _autopilot(d: Any) -> dict[str, Any]:
+    from .autopilot import parse_config
+
+    return parse_config(d)
+
+
+def _auto(d: Any, patch: Patch) -> Any:
+    from .classify import parse_auto
+
+    return parse_auto(d, patch)
+
+
+def _unit(v: Any, what: str) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError) as e:
+        raise ConfigError(f"{what} must be 0-1") from e
+    if isinstance(v, bool) or not 0 <= f <= 1:
+        raise ConfigError(f"{what} must be 0-1")
+    return f
+
+
+def parse_point(name: str, v: Any, patch: Patch) -> Point:
+    import re
+
+    what = f"position {name}"
+    if not re.match(r"^[a-z0-9][a-z0-9_-]{0,39}$", str(name)):
+        raise ConfigError(f"{what}: names use lower case letters, digits, _ or -")
+    if not isinstance(v, dict) or set(v) - {"description", "tags", "stage", "heads"}:
+        raise ConfigError(f"{what}: description, tags, stage and heads: {{head: {{pan, tilt}}}}")
+    heads: dict[str, tuple[float, float]] = {}
+    for fid, pv in (v.get("heads") or {}).items():
+        if fid not in patch.fixtures:
+            raise ConfigError(f"{what}: unknown fixture {fid!r}")
+        t = patch.fixtures[fid].type
+        if t.colour_only:
+            raise ConfigError(f"{what}: {fid} is colour only (rule 7)")
+        if not t.has("pan"):
+            raise ConfigError(f"{what}: {fid} has no pan/tilt")
+        if not isinstance(pv, dict) or set(pv) != {"pan", "tilt"}:
+            raise ConfigError(f"{what} {fid}: needs pan and tilt (0-1)")
+        heads[str(fid)] = (_unit(pv["pan"], f"{what} {fid} pan"), _unit(pv["tilt"], f"{what} {fid} tilt"))
+    tags = v.get("tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+    if not isinstance(tags, list) or not all(isinstance(x, str) and x.strip() for x in tags):
+        raise ConfigError(f"{what}: tags is a list of words, e.g. [band, safe]")
+    stage = v.get("stage") or {}
+    if not isinstance(stage, dict):
+        raise ConfigError(f"{what}: stage is {{x, y, z}}")
+    for k, allowed in (("x", STAGE_X), ("y", STAGE_Y), ("z", STAGE_Z)):
+        if k in stage and stage[k] not in allowed:
+            raise ConfigError(f"{what}: stage {k} is one of {', '.join(allowed)}")
+    if set(stage) - {"x", "y", "z"}:
+        raise ConfigError(f"{what}: stage is {{x, y, z}}")
+    return Point(str(name), heads, str(v.get("description") or ""), [str(x).strip() for x in tags],
+                 {k: str(x) for k, x in stage.items()})
+
+
+def parse_points(d: Any, patch: Patch) -> dict[str, Point]:
+    if d is None:
+        return {}
+    if not isinstance(d, dict):
+        raise ConfigError("positions: named points, each with heads: {head: {pan, tilt}}")
+    return {str(k): parse_point(str(k), v, patch) for k, v in d.items()}
 
 
 def _channel(v: Any) -> int | None:
@@ -257,6 +379,155 @@ def _osc(d: Any) -> OscConfig:
     return OscConfig(port, [str(a) for a in allow])
 
 
+def parse_midi_inputs(d: Any) -> tuple[list[str], dict[str, str]]:
+    """`midi_inputs:` - port-name fragments (v3: [UM-ONE]) and/or devices with an alias (v4:
+    [{device: midi-in:UM-ONE, alias: Drums}]); `all` or nothing = open every port."""
+    if d is None or d == "all":
+        return [], {}
+    if not isinstance(d, list):
+        raise ConfigError("midi_inputs: a list of port names or {device, alias}, or all")
+    names, aliases = [], {}
+    for x in d:
+        if isinstance(x, dict):
+            dev = str(x.get("device") or "")
+            if not dev or set(x) - {"device", "alias"}:
+                raise ConfigError("midi_inputs: each device is {device: midi-in:<port name>, alias: <name>}")
+            name = dev.split(":", 1)[1] if dev.startswith("midi-in:") else dev
+            names.append(name)
+            if x.get("alias"):
+                aliases[name] = str(x["alias"])
+        else:
+            names.append(str(x))
+    return names, aliases
+
+
+def _midi_outputs(d: Any) -> list[dict[str, Any]]:
+    if d is None:
+        return []
+    if not isinstance(d, list) or not all(isinstance(x, dict) and x.get("device") for x in d):
+        raise ConfigError("midi_outputs: a list of {device: midi-out:<port name>, alias: <name>}")
+    return [dict(x) for x in d]
+
+
+CARRIES_ALL = ("node", "log", "null")  # drivers that send every universe (nodes are set per node)
+NETWORK = ("artnet", "sacn")  # every universe unless `universes:` maps some
+
+
+def output_carries(o: dict[str, Any], universe: int) -> bool:
+    if o["driver"] in CARRIES_ALL:
+        return True
+    if o["driver"] in NETWORK:
+        m = o.get("universes")
+        return not m or universe in {int(k) for k in m}
+    return o.get("universe", 0) == universe
+
+
+def routing_problems(rig: Rig) -> list[str]:
+    """Universes with lights but nothing sending them, outputs sending a universe with no lights."""
+    out = list(rig.output_warnings)
+    used = set(rig.universes) if rig.fixtures else set()
+    for u in sorted(used):
+        if not any(output_carries(o, u) for o in rig.outputs):
+            out.append(f"universe {u} has lights but no output sends it; add one or set an output's universe")
+    for i, o in enumerate(rig.outputs):
+        if "universe" in o and o["universe"] not in used and o["driver"] not in CARRIES_ALL:
+            out.append(f"output {i + 1} ({o.get('alias') or o.get('port') or o['driver']}) sends universe "
+                       f"{o['universe']}, which has no lights")
+    return out
+
+
+def parse_outputs(d: Any) -> tuple[list[dict[str, Any]], list[str]]:
+    """The rig's `outputs:`, checked: known driver (v3 ids read), `universe:` 0-15 for interfaces that
+    carry one universe (missing -> 0, with a warning so the routing is confirmed, not guessed)."""
+    from .output import DRIVERS, driver_id
+
+    if d is None:
+        return [{"driver": "null"}], []
+    if not isinstance(d, list):
+        raise ConfigError("outputs: a list, e.g. - {driver: usb_dmx_open, port: COM3, universe: 0}")
+    out, warn = [], []
+    for i, o in enumerate(d):
+        if not isinstance(o, dict) or "driver" not in o:
+            raise ConfigError(f"outputs {i + 1}: needs driver ({', '.join(sorted(DRIVERS))})")
+        o = dict(o)
+        o["driver"] = driver_id(o["driver"])
+        if o["driver"] not in DRIVERS:
+            raise ConfigError(f"outputs {i + 1}: unknown driver {o['driver']!r}; one of {', '.join(sorted(DRIVERS))}")
+        if o["driver"] in CARRIES_ALL or o["driver"] in NETWORK:
+            if o["driver"] in CARRIES_ALL:
+                o.pop("universe", None)
+        elif "universe" not in o:
+            o["universe"] = 0
+            where = o.get("alias") or o.get("port") or o["driver"]
+            warn.append(f"output {i + 1} ({where}) has no universe: given; it sends universe 0. "
+                        "Confirm it in the routing table (Layout page)")
+        if "universe" in o:
+            u = o["universe"]
+            if isinstance(u, bool) or not isinstance(u, int) or not 0 <= u <= 15:
+                raise ConfigError(f"outputs {i + 1}: universe 0-15")
+        out.append(o)
+    return out, warn
+
+
+def parse_haze(d: Any) -> HazeConfig:
+    """The rig's `haze:` block, checked (levels in %, auto-off in minutes)."""
+    h = d or {}
+    if not isinstance(h, dict):
+        raise ConfigError("haze: needs settings like level: 60")
+    bad = set(h) - HAZE_KEYS
+    if bad:
+        raise ConfigError(f"haze: unknown settings {sorted(bad)}; known: {', '.join(sorted(HAZE_KEYS))}")
+    mode = h.get("default_mode", "off")
+    if mode is False:  # YAML reads a bare `off` as false
+        mode = "off"
+    haze = HazeConfig(
+        enabled=bool(h.get("enabled", True)),
+        default_mode=mode,
+        level=_pct(h.get("level", 60), "haze level"),
+        boost_level=_pct(h.get("boost_level", 100), "haze boost_level"),
+        pulse_on_s=_secs(h.get("pulse_on_s", 5), "haze pulse_on_s", 0.1),
+        pulse_every_s=_secs(h.get("pulse_every_s", 120), "haze pulse_every_s", 0.2),
+        boost_s=_secs(h.get("boost_s", 0), "haze boost_s"),
+        max_on_s=_secs(h.get("max_on_s", 60), "haze max_on_s", 1),
+        rest_s=_secs(h.get("rest_s", 30), "haze rest_s"),
+        boost_cooldown_s=_secs(h.get("boost_cooldown_s", 20), "haze boost_cooldown_s"),
+        auto_off_s=_secs(h.get("auto_off_min", 0), "haze auto_off_min") * 60,
+        pulse_level=None if h.get("pulse_level") is None else _pct(h["pulse_level"], "haze pulse_level"),
+        presets=_haze_presets(h.get("presets")),
+    )
+    if haze.default_mode not in ("off", "manual", "pulse"):
+        raise ConfigError("haze default_mode must be off, manual or pulse")
+    if haze.pulse_on_s >= haze.pulse_every_s:
+        raise ConfigError("haze pulse_on_s must be shorter than pulse_every_s")
+    return haze
+
+
+HAZE_KEYS = {"enabled", "default_mode", "level", "boost_level", "pulse_on_s", "pulse_every_s", "boost_s", "max_on_s",
+             "rest_s", "boost_cooldown_s", "auto_off_min", "pulse_level", "presets"}
+
+
+def _haze_presets(d: Any) -> list[dict[str, Any]]:
+    """Named haze settings (v4): [{name: Haze 4 Med, mode: manual, level: 41}] - picked on the Live page
+    or from MIDI (haze_preset). Only the haze controller uses them (rule 5)."""
+    if d is None:
+        return []
+    if not isinstance(d, list):
+        raise ConfigError("haze presets: a list of {name, mode, level}")
+    out, names = [], set()
+    for i, p in enumerate(d):
+        if not isinstance(p, dict) or not p.get("name") or set(p) - {"name", "mode", "level"}:
+            raise ConfigError(f"haze preset {i + 1}: {{name, mode, level}}")
+        name = str(p["name"])
+        if name in names:
+            raise ConfigError(f"haze preset {name!r} twice")
+        names.add(name)
+        mode = str(p.get("mode", "manual"))
+        if mode not in ("off", "manual", "pulse"):
+            raise ConfigError(f"haze preset {name}: mode is off, manual or pulse")
+        out.append({"name": name, "mode": mode, "level": _pct(p.get("level", 60), f"haze preset {name} level")})
+    return out
+
+
 def parse_placement(fid: str, v: Any) -> Placement:
     if not isinstance(v, dict):
         raise ConfigError(f"layout {fid}: needs x and y in grid cells")
@@ -264,8 +535,16 @@ def parse_placement(fid: str, v: Any) -> Placement:
         x, y = float(v["x"]), float(v["y"])
         rot = float(v.get("rot", 0)) % 360
         cols = int(v.get("cols", 0))
+        z = None if v.get("z") is None else float(v["z"])
     except (KeyError, TypeError, ValueError) as e:
-        raise ConfigError(f"layout {fid}: needs x and y in grid cells") from e
+        raise ConfigError(f"layout {fid}: needs x and y in grid cells (z, if given, in metres)") from e
+    bad = set(v) - {"x", "y", "rot", "shape", "cols", "z", "reverse"}
+    if bad:
+        raise ConfigError(f"layout {fid}: unknown keys {sorted(bad)}; a place is x, y, z, rot, shape, cols, reverse")
+    if not isinstance(v.get("reverse", False), bool):
+        raise ConfigError(f"layout {fid}: reverse is true or false")
+    if z is not None and not -10 <= z <= 50:
+        raise ConfigError(f"layout {fid}: z is metres above the stage, -10 to 50")
     shape = v.get("shape", "row")
     if shape not in SHAPES:
         raise ConfigError(f"layout {fid}: shape must be {', '.join(SHAPES)}")
@@ -273,7 +552,7 @@ def parse_placement(fid: str, v: Any) -> Placement:
         raise ConfigError(f"layout {fid}: x/y must be 0-{GRID_MAX} cells")
     if not 0 <= cols <= 64:
         raise ConfigError(f"layout {fid}: cols must be 0-64")
-    return Placement(_half(x), _half(y), round(rot, 1), shape, cols)
+    return Placement(_half(x), _half(y), round(rot, 1), shape, cols, z, bool(v.get("reverse", False)))
 
 
 def _half(n: float) -> float:

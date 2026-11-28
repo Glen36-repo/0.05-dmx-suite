@@ -14,7 +14,7 @@ The band 0.05 is the reference setup: it replaces their Daslight 5 and LR512, an
 - Laptop talks straight to the CoreS3 node by USB serial; node handles DMX out and wireless to the receivers
 - Simple enough for one person to maintain, edit and fix at a gig
 
-Out of scope: video, timecode and audio-reactive BPM (v1 and v2); macOS/Linux builds.
+Out of scope: video, timecode and audio-reactive BPM (v1, v2 and v3: v3 energy comes from MIDI only); macOS/Linux builds.
 
 ## Rig and I/O
 
@@ -262,6 +262,20 @@ Planned 26/11/2026. One release per branch, hardening and features side by side;
 8. **R8 Node and firmware:** per-universe radio sequence, fallback and blackout on every universe, fallback pushed by the app, firmware version check, CoreS3 screen, node LED and identify
 9. **R9 Rehearsal sign-off:** the open items below that need the real rig
 
+## v3 (auto show "Ride")
+
+Planned 26/11/2026; full scope and release list in `docs/V3-SCOPE.md`. A light show from any rig with no programming: the engine picks looks from FX banks and changes them to the band's MIDI, and the user rides it with a few big controls. Stacked branches on top of v2 R8, each with tests including rule tests under both profiles.
+
+1. **V3.1 Foundations:** named MIDI inputs and devices, head position points, colour wheel and palette editor, alerts and banners
+2. **V3.2 Step scenes:** hand-programmed steps with step/fade times, heads move dark or lit
+3. **V3.3 FX and ride:** auto classification, Move/Colour/Flash/drum FX banks, ride controls, look quality rules, rig size scaling
+4. **V3.4 Autopilot:** energy and moods, Ride page, between songs, control priority, decision log
+5. **V3.5 Generator:** presets, scene and show generator, look review page, Claude tools
+
+## v4 (stage view, Layout / Patch, routing, Monitor, step editor)
+
+Brief 27/11/2026, built 26/11/2026 as one release on `v4-stage-layout`; full scope, decisions and open items in `docs/V4-SCOPE.md`. Zoom-to-fit stage view with outlined pixel bars, non-overlapping names and haze as an indicator; overlap warnings; a full-page Layout / Patch page with an address map of live values; explicit universe routing; devices by USB identity; a Monitor page; a real step editor with per-segment selection; haze settings; UI density; Ride -> Autopilot, Busk -> Override.
+
 ## Decisions and open questions
 
 Decided 26/11/2026:
@@ -396,6 +410,44 @@ Decided 26/11/2026 (v2):
 | Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
 | Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
 | MASTER-exempt fixtures | Fixture ids, groups or a kind name (`kick` = every kick-kind fixture, as v1); they ignore MASTER and drum flashes and use the rig's `kick_colour` when the scene leaves them off. Under "generic" nothing is exempt and a kick-kind light is an ordinary light (auto shows use it like a wash) |
+
+Decided 26/11/2026 (v3):
+
+| Item | Decision |
+| --- | --- |
+| v3 releases | V3.1 foundations (named inputs, head points, colour wheel/palettes, alerts), V3.2 step scenes, V3.3 FX banks/ride/quality/scaling (+ classification), V3.4 autopilot/between songs/priority/decision log (+ Ride page), V3.5 generator/review/presets/Claude tools. Stacked branches on v2 R8; v2 to main by one PR |
+| v3 energy | MIDI only (drum MIDI, pedals, MIDI Clock); read from named-input roles, so any MIDI device can drive it. No audio input |
+| Strobe limit (v3) | Still none (v2 decision kept): strobe, lightning and Flash FX run at the rate set |
+| Haze (v3) | Never touched by the autopilot, presets, generator or Flash FX; rule 5 tested against every v3 feature |
+| Heads moving (v3) | Autopilot, generator and Move FX always move dark. Step scenes may glide lit (`move: lit`); the profile sets the default (0.05 band dark, Generic lit) |
+| Moods (v3) | Low / Mid / High drive the autopilot; v1/v2 LOW/MID/HIGH show sets keep loading and running unchanged |
+| Head points (v3) | Named points per rig config with description, tags, optional stage position and per-head pan/tilt as 0-1 of the range (16-bit via fine channels) |
+| Rule tests (v3) | `tests/rulecheck.py` runs every new feature under both profiles and checks every rule on every frame |
+| Named inputs (V3.1) | `inputs.yaml`: devices {name, port, channel, inputs}; input {name, type note/program_change/control_change/osc, notes or number or address, channel 1-16 or any, port, velocity [lo, hi], curve {quiet, normal, loud}, roles, shared, colour}. Ids unique across devices. Port-specific input wins (as mappings did); overlapping messages need `shared` on both. MIDI maps use `{input: id, action, ...}`; raw mappings still load. Calibrated curve maps quiet/normal/loud to 0.25/0.6/1.0 strength (drum flash level now, energy in V3.4). Kick tempo uses inputs with the kick role, else the rig's kick_note. Learn reuses a matching input or makes one in device `learned`. Device profiles shipped in `dmx_suite/midi/devices/`, the show's own in `devices/` |
+| Head points (V3.1) | Rig file `positions: {name: {description, tags, stage {x left/centre/right, y front/middle/back, z floor/low/mid/high/ceiling}, heads {id: {pan, tilt}}}}`, 0-1. Lookup: the running rig's points over legacy palette positions; another rig's point name loads with no heads (warning). A head a point doesn't cover holds position, with a warning. Storing outside head limits refused; existing out-of-limit points are warnings (clamped by rule 8). Rename updates scenes, looks, shows and panels (`position`, `from`, `to`) |
+| Palettes (V3.1) | `palettes.yaml` gains `palettes: {key: {name, tags, colours}}`; colours are named colours or values. Seven curated built-ins (warm, cool, fire, ice, neon, white, band), replaced by a same-name palette in the file. Colour theory in `colourtheory.py` (analogous, complementary, triadic, split, mono, kelvin), shared with the V3.3 quality rules. Named colour / palette deletes refused while used |
+| Alerts (V3.1) | `alerts.py`: one alert per status-bar device; each drop-out is an episode. Dismiss holds for the episode; clears on recovery; snooze 10 min / 1 h / gig; info alerts list-only; critical (engine fault, output down, all outputs lost) minimise only and can't be muted or snoozed. Mutes per rig in app data `alerts.json`, cleared on rig switch. Quiet mode: critical banners only. Log `logs/alerts-YYYY-MM-DD.jsonl`. Banners are fixed-position over the page. Claude reads only |
+| Step scenes (V3.2) | `type: steps` scene: step_s / step_beats / fade_s defaults and per-step overrides; step time is the whole step, fade included (a fade longer than the step is cut to it); playback loop/once/bounce; advance timer / manual / {input}; `set` per light or group takes the static layer keys (no dimmer, no haze); tracking by laying every earlier step's set under the current one. move dark: dim out, move, fade in, at least `dark_s` (0.3 s) on a cut; move lit: eased linear glide, speed channel 1.0 (fastest); default from the profile (master_gate = dark). Head limits are a box, so glides between in-limit points stay in; ends outside are clamped along the edge. Live speed (0.05-8, faders 0.25-4) scales the step clock; fade scale (0-8) scales fades. The newest step scene drawn is the one pedals and inputs move (steps.active) |
+| Classification (V3.3) | `classify.py`: head (pan+tilt, not colour-only), pixel, strobe (no RGB, white or strobe), effect (wheel/gobo, no RGB), else wash; MASTER-exempt lights are class kick and never used; haze never. Rig `auto: {classes, exclude}` overrides (a head must be able to move, a pixel class needs pixels). Left/right halves from the layout |
+| FX banks (V3.3) | `fxbanks.py` items = registry effect templates with needs (heads, colour lights, pixels, lights), busy 0-1, speed still/slow/mid/fast, moods. compose(pick) -> scene: colour item over colour lights (pixel items on the bars, the rest hold the palette), strobe lights white at 60 %, effect lights the first colour, move item on heads, drum item on top (blend max); then parse_scene, so every rule applies. Flash FX are engine overrides (kind `fn`), timed or held, never on exempt lights or haze |
+| Ride controls (V3.3) | speed 0.25-4 divides periods (rates multiply), fan sets spread, size scales movement size / pixel width / sparkle density, shift sets layer `shift` (phase), fade picks fading chases and the crossfade time (fade x 4 s). Per-bank settings ride on the global ones |
+| Quality rules (V3.3) | `quality.py` defaults, overridden by `quality.yaml` (kind quality): max_busy 1.3, lead_busy 0.55 (no two leads), mood speeds, speed_gap 1, contrast (move or colour item change, or palette main hue >= 0.1 round the wheel), palette theory + no muddy, autopilot weights. Manual Ride picks are played with quality notes; the autopilot (V3.4) and generator (V3.5) skip failing picks |
+| Drum bus (V3.3) | Named input note hits with roles go to `drums.BUS` (time, roles, strength after the velocity curve), kept 30 s; effects read it at the engine clock (`Run.now`) |
+| Autopilot (V3.4) | `autopilot.py`; rig `autopilot:` over defaults (moods 60/40/20 s, variation 0.2, no_repeat 4, fade 4/2/0.5 s, energy window 4 s full at 6 hits/s, fill 5 snare/tom hits within 1.2 s then a crash within 1 s, gap 4 s, count-in 4 even hits 0.2-1.5 s apart). Energy = 0.65 rate + 0.3 strength + 0.1 when kick and snare both play. Mood hysteresis low>mid 0.42, mid>high 0.72, high>mid 0.55, mid>low 0.25. Candidates: 320 seeded random picks from the rig's available items for the mood; skip banned, recent, quality failures and non-contrasting; score by weights (mood, busy near the mood's target, ratings) + a random tie-break. Build/breakdown = energy +-0.35 against 8 s ago, at least 6 s after the last change. Picking a show/scene/look by hand turns it off; a Ride page pick keeps it on and restarts its timer. Runs on its own thread every 0.1 s; tests tick it on a fake clock |
+| Between songs (V3.4) | No `activity` input for gap_s -> talking look (low-mood fade); a count-in or any activity -> a new look at once. Setlist load = walk-on, next song past the last = walk-off (when the autopilot is on) |
+| Control priority (V3.4) | Levels: blackout, MASTER off (gated profiles), Flash FX/busk overrides, hold, autopilot/show. Rig `release_fade_s` (default 0 = cut, as before): MASTER on and blackout off ramp the rule layer's gate 0-1 (exempt lights too after a blackout); held Flash FX release with that fade |
+| Decision log (V3.4) | Each change: time, energy, mood, trigger (timer, fill_crash, mood, build, breakdown, song_end, song_start, walk_on/off, next, previous, start), look, reason, candidates and rejections; last 500 in memory, all in app data `logs/decisions-YYYY-MM-DD.jsonl`; on the Ride page and through Claude |
+| Ride page (V3.4) | New left-menu page. Learn arms MIDI learn for the control's action and saves the map when learned. Classification overrides write the rig's `auto:` |
+| Presets (V3.5) | `presets.yaml` {presets: {id: {name, tags, pick}}} + six built-in starters (same id replaces). Composed per running rig at load as scenes `preset:<id>`; show steps `{preset: id}`, setlist songs `{preset: id}` or `{presets: [...], mood}` (autopilot limited to them: no show or scene allowed). Song `mood` and `bpm` are optional, for the generator. Delete refused while a show or setlist uses it; starters can't be deleted |
+| Ratings and review (V3.5) | `ratings.yaml` {looks: {"move|colour|drum|palette": 1 / -1 / -2}}. Autopilot and generator skip -2, weight +2.5 liked, -4 disliked. Review list = palettes x colour items x (no move + move items) the rig can do, in a fixed order, paged |
+| Generator (V3.5) | `generator.py`, seeded (default: the time). Styles limit items, palettes by tag and ride feel (rock, ballad, acoustic, opera, dance). Picks pass the quality rules, contrast with the one before and skip repeats; re-roll keeps locked parts (move, colour, drum, palette, ride); more-like-this keeps the FX and varies palette and ride. Shows: one set `song`, a scene per distinct section, step hold = hold_s x length / 2 with a 2 s fade. Per song: intro/verse/chorus/verse/chorus/outro, 8 bars of 4/4 at the song's BPM (30 s without). Everything written in one checked store change; existing files refused unless overwrite. Capture: a Ride/autopilot look as its composed layers (same frame as live), anything else as a still of every light |
+| Connect to Claude (Setup page) | `claude_setup.py`: Claude Desktop configs (standard and Store) and Claude Code `~/.claude.json`, entry `dmx-suite` = the console exe (`dmx-suite.exe` beside the windowed one) or Python, `--shows <the open .dms or folder> mcp`. Status per app: installed, registered no/current/other, which show. Connect writes only to apps that have been opened; Disconnect removes the entry; others kept, `.bak` beside. API `/api/claude` (status, cached 30 s), `/api/claude/connect|disconnect` from this computer only, never with Claude's token. Status bar Claude tile opens the section |
+| File format 5 (V3.1) | No single-file changes; `ShowStore.upgrade` runs `migrate.py` once on a format-4 folder: raw mappings -> named inputs (GM drum names on ch 10, one input per message across every map), tempo kick note -> a kick-role input, palette positions -> rig points. Golden frames and a MIDI replay are identical before and after |
+| v4 renames (format 6) | `ride` -> `feel`, `bank_ride` -> `bank_feel`, MIDI `busk` -> `override`, `ride_fx` / `ride_palette` -> `autopilot_fx` / `autopilot_palette`, `ride_<x>` -> `feel_<x>`; old names read, new written; `panels.yaml` kept |
+| v4 routing | Every output has `universe:` (missing = 0 + warning; the format 6 step doesn't add it); drivers `usb_dmx_open` / `usb_dmx_pro` / `node` (old ids alias); outputs rebuilt live |
+| v4 devices | Known by `usb:VID:PID:SERIAL` (else `port:COMx`, flagged), MIDI by port name; "use this instead" allowed under gig lock, nothing else; Claude can't make the swap |
+| v4 Monitor | Shows the selected interface's last-sent frame, never the engine's unless chosen and labelled; no frames = no values |
+| v4 pixel selection | `fid:px..`, `group:px..`, `odd/even/firstN/lastN`, pixel groups in `fixtures.yaml` (not the rig); colour only (rule 1) |
 
 Open:
 

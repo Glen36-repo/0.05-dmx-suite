@@ -1,6 +1,6 @@
 # Example setlist: a pedal (next_song) steps through. Each song plays a show/set or a single scene.
 # master: on/off forces MASTER when the song starts (off = drum-flash song).
-version: 4
+version: 6
 name: Example setlist
 songs:
   - {name: Intro, scene: blue_chase}

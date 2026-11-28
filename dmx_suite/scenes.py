@@ -21,19 +21,22 @@ position, gobo, ...) can sit alongside an effect, except a position with a movem
 No layer can set haze (rule 5) or move a colour-only head (rule 7). A layer may set `intensity`
 (0-1) only where the rig's profile doesn't make MASTER own on/off (rule 1, see profile.py).
 Fixtures missing from the active rig are skipped, or moved to the layer's `fallback` group.
+
+`type: steps` makes a step scene (v3.2, steps.py): hand-programmed steps with step and fade times;
+its `layers` (optional) are effects laid over the steps.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from . import effects
 from .effects import BLENDS, ParseCtx, Run, Unit, place_units
 from .effects.base import num as _num_any
-from .fixtures import EMITTERS, ConfigError, Patch
+from .fixtures import EMITTERS, ConfigError, Kind, Patch
 from .layout import cell_positions, full_layout
 from .look import FORBIDDEN, Colour, FixtureLook, Look, LookError
 from .palettes import Palettes
@@ -45,7 +48,7 @@ from .versions import read_doc
 EFFECTS = {name: e.keys() for name, e in effects.REGISTRY.items()}
 MOVEMENT = {name for name, e in effects.REGISTRY.items() if e.movement}
 STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe", "zoom", "focus", "frost", "prism"}
-COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats"}
+COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats", "shift"}
 
 
 # --------------------------------------------------------------------------- model
@@ -61,6 +64,8 @@ class Layer:
     level: float = 1.0  # how strongly this layer's colour counts (0-1)
     blend: str = "replace"  # replace | max | add
     mute: bool = False
+    shift: float = 0.0  # phase offset, part of a cycle (Ride "shift", v3.3)
+    pixel_mask: dict[str, frozenset[int]] = field(default_factory=dict)  # v4: fid -> only these pixels (0-based)
 
     def period(self) -> float | None:
         e = effects.get(self.effect) if self.effect else None
@@ -73,16 +78,22 @@ class Scene:
     layers: list[Layer]
     show_colour: Colour = field(default_factory=lambda: {"red": 1.0, "green": 1.0, "blue": 1.0})
     length_s: float | None = None  # one cycle, if set in the file
+    steps: Any = None  # steps.Steps for a step scene (v3.2)
+    generated: bool = False  # made by the generator / starter (v4: its own section on the Live page)
 
     @property
     def uses_intensity(self) -> bool:
-        return any("intensity" in ly.params for ly in self.layers)
+        step_layers = [ly for st in self.steps.steps for ly in st.layers] if self.steps else []
+        return any("intensity" in ly.params for ly in [*self.layers, *step_layers])
 
     @property
     def length(self) -> float | None:
-        """Seconds for one cycle: `length_s`, else the longest effect period (None if nothing moves)."""
+        """Seconds for one cycle: `length_s`, else the longest effect period (None if nothing moves).
+        A step scene: one pass through its steps (None when a pedal or input moves it on)."""
         if self.length_s:
             return self.length_s
+        if self.steps is not None:
+            return self.steps.length
         periods = [p for ly in self.layers if not ly.mute and (p := ly.period())]
         return max(periods) if periods else None
 
@@ -126,7 +137,9 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     if "fixtures" not in d:
         raise LookError(f"{what}: needs fixtures")
     names = d["fixtures"] if isinstance(d["fixtures"], list) else [d["fixtures"]]
-    fids = patch.resolve(names)
+    sel = patch.resolve_targets(names)  # v4: `bar_1:px1-4`, `bars:odd`, pixel groups
+    fids = list(sel)
+    mask = {f: px for f, px in sel.items() if px is not None}
     fb = patch.resolve(d["fallback"] if isinstance(d.get("fallback"), list) else [d["fallback"]]) if "fallback" in d else []
     targets = fids + [f for f in fb if f not in fids]  # params cover both, checks apply to both
     name = d.get("effect")
@@ -141,6 +154,9 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
         raise LookError(f"{what}: a position can't go with the {name} movement effect; use a separate layer")
 
     moves = (eff is not None and eff.movement) or "position" in d
+    if mask and (moves or "intensity" in d):
+        raise LookError(f"{what}: a pixel selection ({', '.join(sorted(mask))}) is colour only (rule 1: MASTER owns "
+                        "each segment's dimmer and strobe)")
     if moves:
         stuck = [f for f in targets if patch.fixtures[f].type.colour_only]
         if stuck:
@@ -156,7 +172,7 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     if "pixels" in d:
         p["pixels"] = [pal.colour(c, f"{what} pixel {i + 1}") for i, c in enumerate(d["pixels"])]
     if "position" in d:
-        p["position"] = {f: pal.position(d["position"], f, what) for f in targets}
+        p["position"] = pal.positions_for(d["position"], targets, what)
     if "gobo" in d:
         p["gobo"] = _gobos(d["gobo"], patch, pal, targets, what)
     if "colour_wheel" in d:
@@ -186,18 +202,26 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     if blend not in BLENDS:
         raise LookError(f"{what}: blend must be one of {', '.join(BLENDS)}")
     level = _num(d.get("level", 1.0), f"{what} level", 0, 1)
-    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)))
+    shift = _num(d.get("shift", 0.0), f"{what} shift", 0, 1)
+    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)), shift, mask)
 
 
 def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") -> Scene:
+    from .steps import parse_steps
+
     _forbid(data, name)
-    bad = set(data) - {"name", "show_colour", "layers", "length_s"}
-    if bad:
-        raise LookError(f"{name}: unknown keys {sorted(bad)}")
+    kind = data.get("type", "layers")
+    if kind not in ("layers", "steps"):
+        raise LookError(f"{name}: type is layers (the default) or steps")
+    if kind == "layers":
+        bad = set(data) - {"name", "show_colour", "layers", "length_s", "type", "generated"}
+        if bad:
+            raise LookError(f"{name}: unknown keys {sorted(bad)}")
     layers = [parse_layer(d or {}, patch, pal, f"{name} layer {i + 1}") for i, d in enumerate(data.get("layers") or [])]
-    if not layers:
+    steps = parse_steps(data, patch, pal, name) if kind == "steps" else None
+    if not layers and steps is None:
         raise LookError(f"{name}: no layers")
-    sc = Scene(data.get("name", name), layers)
+    sc = Scene(data.get("name", name), layers, steps=steps, generated="generated" in data)
     if "show_colour" in data:
         sc.show_colour = pal.colour(data["show_colour"], f"{name} show_colour")
     if "length_s" in data:
@@ -224,13 +248,15 @@ class ScenePlayer:
     """Callable(now) -> Look. Starts its clock when created."""
 
     def __init__(
-        self, scene: Scene, rig: Rig, start: float, timebase: Callable[[float], float] | None = None
+        self, scene: Scene, rig: Rig, start: float, timebase: Callable[[float], float] | None = None,
+        first_step: int = 0, only_step: int | None = None,
     ) -> None:
         self.scene = scene
         self.rig = rig
         self.timebase = timebase or (lambda now: now)  # tap tempo: effect time vs real time
         self.start = self.timebase(start)
-        present = set(rig.present)
+        # haze machines are never part of a look (rule 5), nor of where an effect runs across the stage
+        present = {f for f in rig.present if rig.patch.fixtures[f].type.kind != Kind.HAZE}
         self._layers: list[tuple[Layer, list[str]]] = []
         for ly in scene.layers:
             fids = [f for f in ly.fixtures if f in present]
@@ -239,14 +265,48 @@ class ScenePlayer:
             self._layers.append((ly, fids))
         self._units: dict[tuple[int, bool], list[Unit]] = {}
         self._cells: dict[str, list[tuple[float, float]]] | None = None
+        self.runner: Any = None
+        if scene.steps is not None:
+            from .steps import StepRunner
+
+            tempo = getattr(self.timebase, "__self__", None)  # tempo.eff: the show's TempoClock
+
+            def beat_s() -> float:
+                bpm = getattr(tempo, "bpm", None)
+                return 60.0 / bpm if bpm else BEAT_S
+
+            self.runner = StepRunner(scene.steps, rig, self._step_look, start, beat_s, first_step, only_step)
+
+    def _step_look(self, i: int) -> Look:
+        """Step i with tracking: every step up to it laid in order (each only sets what changes)."""
+        layers = [ly for st in self.scene.steps.steps[: i + 1] for ly in st.layers]
+        sub = ScenePlayer(Scene(self.scene.name, layers, self.scene.show_colour), self.rig, 0.0)
+        return sub(0.0)
 
     def __call__(self, now: float) -> Look:
         t = self.timebase(now) - self.start
+        if self.runner is not None:
+            from .steps import set_active
+
+            set_active(self.runner)
+            base = self.runner(now)
+            look = Look(show_colour=dict(base.show_colour),
+                        fixtures={k: replace(v, colour=dict(v.colour), pixels=[dict(p) for p in v.pixels] if v.pixels else None)
+                                  for k, v in base.fixtures.items()})
+            top_dark: set[str] = set()
+            for i, (layer, fids) in enumerate(self._layers):
+                if fids and not layer.mute:
+                    self._apply(i, layer, fids, t, look, top_dark, now)
+            for f in top_dark:
+                fl = look.fixtures.get(f)
+                if fl:
+                    fl.colour, fl.pixels = {}, None
+            return look
         look = Look(show_colour=self.scene.show_colour)
         dark: set[str] = set()
         for i, (layer, fids) in enumerate(self._layers):
             if fids and not layer.mute:
-                self._apply(i, layer, fids, t, look, dark)
+                self._apply(i, layer, fids, t, look, dark, now)
         for f in dark:  # heads move between positions dark
             fl = look.fixtures.get(f)
             if fl:
@@ -276,7 +336,12 @@ class ScenePlayer:
             for f in fids:
                 where = cells.get(f) or [(0.0, 0.0)]
                 n = self._pixels(f)
-                if per_pixel and n:
+                only = layer.pixel_mask.get(f)
+                if only is not None:  # a pixel selection: the effect runs over just those pixels
+                    for px in sorted(only):
+                        units.append(Unit(f, px, len(units)))
+                        raw.append(where[px] if px < len(where) else where[0])
+                elif per_pixel and n:
                     for px in range(n):
                         units.append(Unit(f, px, len(units)))
                         raw.append(where[px] if px < len(where) else where[0])
@@ -292,25 +357,27 @@ class ScenePlayer:
             self._units[key] = units
         return self._units[key]
 
-    def _apply(self, i: int, ly: Layer, fids: list[str], t: float, look: Look, dark: set[str]) -> None:
+    def _apply(self, i: int, ly: Layer, fids: list[str], t: float, look: Look, dark: set[str], now: float = 0.0) -> None:
         p = ly.params
+        if ly.shift:
+            t += ly.shift * (ly.period() or 0.0)
         run = Run(t, fids, look, dark, self._pixels, lambda per_pixel: self._units_for(i, per_pixel),
-                  ly.blend, ly.level, f"{self.scene.name}|{i}")
+                  ly.blend, ly.level, f"{self.scene.name}|{i}", now, mask=ly.pixel_mask)
         plain = ly.blend == "replace" and ly.level >= 1
         # static attributes (also allowed alongside an effect's own settings)
         for f in fids:
             fl = self._fl(look, f)
             if "colour" in p and (ly.effect is None or "colour" not in EFFECTS[ly.effect]):
-                if plain:
+                if plain and f not in ly.pixel_mask:
                     fl.colour, fl.pixels = dict(p["colour"]), None
                 else:
-                    run.set_colour(f, p["colour"])
+                    run.set_colour(f, p["colour"])  # also a pixel selection: only those pixels
             if "pixels" in p:
-                if plain:
+                if plain and f not in ly.pixel_mask:
                     fl.pixels = [dict(c) for c in p["pixels"]]
                 else:
                     run.set_pixels(f, [dict(c) for c in p["pixels"]])
-            if "position" in p:
+            if "position" in p and f in p["position"]:
                 fl.pan, fl.tilt = p["position"][f]
             if "gobo" in p and p["gobo"].get(f) is not None:
                 fl.gobo = p["gobo"][f]

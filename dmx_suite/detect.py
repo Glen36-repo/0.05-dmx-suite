@@ -14,11 +14,11 @@ FTDI = 0x0403
 def guess(vid: int | None, pid: int | None, text: str) -> str | None:
     t = text.lower()
     if vid == ESPRESSIF or "esp32" in t or "m5stack" in t:
-        return "node_serial"
+        return "node"
     if "dmx usb pro" in t or "usb pro" in t:
-        return "enttec_pro"
+        return "usb_dmx_pro"
     if vid == FTDI or "ftdi" in t or "open dmx" in t:
-        return "enttec_open"
+        return "usb_dmx_open"
     return None
 
 

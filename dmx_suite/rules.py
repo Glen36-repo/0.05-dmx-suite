@@ -46,6 +46,8 @@ class ControlState:
     flashes: dict[str, Flash]
     haze_level: float
     now: float = 0.0  # clock time of this frame
+    gate: float = 1.0  # MASTER on / blackout off fading the look back in (v3.4 priority release), 0-1
+    gate_all: bool = False  # the fade is from a blackout: exempt lights fade in too
 
 
 def _byte(v: float) -> int:
@@ -108,6 +110,8 @@ class RuleLayer:
             colour = fl.colour if fl and fl.colour else self.rig.kick_colour
             pixels = fl.pixels if fl else None
             use_look = fl is not None
+            if st.gate_all:
+                scale *= st.gate
         elif prof.drum_flash and not st.master and fx.id in st.flashes:  # rule 2: only with MASTER off
             fls = st.flashes[fx.id]
             colour = fls.colour
@@ -117,8 +121,10 @@ class RuleLayer:
                 colour, pixels, use_look = fl.colour, fl.pixels, True
                 if fl.intensity is not None:
                     scale *= fl.intensity
+                scale *= st.gate
         elif st.master and fl is not None and fl.is_on():  # rule 1: MASTER owns on/off
             colour, pixels, use_look = fl.colour, fl.pixels, True
+            scale *= st.gate
 
         if colour is None and pixels is None:
             return  # dark: emitters and dimmer stay 0 (rule 4)

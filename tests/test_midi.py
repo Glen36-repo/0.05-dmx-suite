@@ -88,13 +88,15 @@ def test_learn_maps_next_message(router, midi, tmp_path, engine):
     assert router.learning == "flash"
     assert midi.note(42, 90).startswith("learned: flash")
     assert router.learning is None
-    assert learned[0].key == ("note", 10, 42, "")
+    # v3: learn names the input (GM drum name for ch 10) and maps the action to it
+    assert learned[0].input == "hihat" and router.new_inputs == ["hihat"]
+    assert router.inputs.get("hihat").describe() == "note 42 ch10"
     midi.program(0)  # MASTER off
     assert midi.note(42, 127).startswith("flash wash")
     path = tmp_path / "map.yaml"
     save_map(router.map, path)
     again = load_map(path)
-    assert again.get("note", 10, 42).params == {"fixtures": ["wash"], "colour": "white"}
+    assert again.get_input("hihat").params == {"fixtures": ["wash"], "colour": "white"}
 
 
 def test_learn_continuous_needs_cc(router, midi):
@@ -106,7 +108,9 @@ def test_learn_continuous_needs_cc(router, midi):
 def test_learn_replaces_existing_input(router, midi):
     router.learn("blackout_toggle")
     midi.program(0)
-    assert router.map.get("program_change", 1, 0).action == "blackout_toggle"
+    assert router.map.get("program_change", 1, 0) is None  # the raw mapping gives way
+    assert router.map.get_input("pc_0").action == "blackout_toggle"
+    assert midi.program(0) == "blackout on"
 
 
 def test_learn_rejects_bad_params(router):

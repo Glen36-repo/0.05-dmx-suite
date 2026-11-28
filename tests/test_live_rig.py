@@ -61,14 +61,15 @@ def test_heads_hold_position_across_a_swap(app):
     assert e.rules.position["mh_a"] == (0.3, 0.4)
 
 
-def test_output_changes_still_need_a_restart(app):
+def test_output_changes_apply_without_a_restart(app):
+    # v4: outputs are rebuilt live (test_rebuild.py); the simulator's own outputs are left alone
     rig = app.store.read("rig", "full")
-    before = app.engine.rig.outputs
     rig["outputs"] = [{"driver": "log"}]
     app.store.put("rig", "full", rig)
     notes = app.reload()
-    assert any("after a restart" in n for n in notes)
-    assert app.engine.rig.outputs == before
+    assert not any("after a restart" in n for n in notes)
+    assert any("simulator" in n for n in notes)
+    assert app.engine.rig.outputs == [{"driver": "log"}]
 
 
 def test_scene_edits_dont_restart_the_show(app):

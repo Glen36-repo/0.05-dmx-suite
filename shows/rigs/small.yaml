@@ -1,5 +1,5 @@
 # Small rig: bars and kick light only. Shows skip the missing fixtures automatically.
-version: 4
+version: 6
 name: Small rig
 fixtures: [bars, kick, smoke]
 
@@ -16,4 +16,4 @@ startup:
   master: on
 
 outputs:
-  - {driver: enttec_open, port: COM3}
+  - {driver: usb_dmx_open, port: COM3, universe: 0}

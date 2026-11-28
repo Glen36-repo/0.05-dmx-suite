@@ -89,7 +89,7 @@ def test_show_validation(files):
         parse_show("x", {"default_set": "z", "sets": {"a": {"scenes": ["opera"]}}}, pal, scenes)
     with pytest.raises(ConfigError, match="no set"):
         parse_setlist("x", {"songs": [{"show": "band", "set": "huge"}]}, files.shows, scenes)
-    with pytest.raises(ConfigError, match="either show or scene"):
+    with pytest.raises(ConfigError, match="either show, scene"):
         parse_setlist("x", {"songs": [{"name": "a"}]}, files.shows, scenes)
 
 

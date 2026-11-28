@@ -9,6 +9,8 @@ import functools
 import threading
 import time
 
+import yaml
+
 from .claude_tools import DmxTools
 
 PING_S = 20  # how often Claude Desktop tells the engine the 0.05 tools are loaded
@@ -72,6 +74,101 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.get_midi_map()
 
     @tool
+    def list_fx() -> str:
+        """The FX banks (Move, Colour, Flash, drum-reactive) for the running rig: each item's busy score, speed,
+        moods and whether this rig can run it (rig size scaling); how the lights are classified; the palettes."""
+        return t.list_fx()
+
+    @tool
+    def preview_look(pick_yaml: str, seconds: float = 10) -> str:
+        """Try an auto-show look on the rig: '{move: pan_sweep, colour: colour_chase, drum: kick_pump,
+        palette: cool, feel: {speed: 1, fan: 0.5, size: 0.5}, mood: mid}'. Says what the look quality rules
+        think. Not during gig lock. Haze is never part of a look."""
+        return t.preview_look(pick_yaml, seconds)
+
+    @tool
+    def get_quality_rules() -> str:
+        """The look quality rules (busy scores, mood speeds, contrast, palette rules, autopilot weights)."""
+        return t.quality_rules()
+
+    @tool
+    def save_quality_rules(yaml_text: str) -> str:
+        """Tune the look quality rules (quality.yaml: only the parts you change), e.g. 'max_busy: 1.1' or
+        'busy: {ballyhoo: 1.0}' or 'mood_speeds: {low: [slow]}'."""
+        return t.save_quality_rules(yaml_text)
+
+    @tool
+    def autopilot_status(n: int = 20) -> str:
+        """What the autopilot is doing and why: on/off, mood, energy, next change, control priority, and
+        the last n decisions (time, energy, mood, look, trigger, reason). Engine must be running."""
+        return t.autopilot_status(n)
+
+    @tool
+    def save_autopilot_settings(rig: str, yaml_text: str) -> str:
+        """Tune the autopilot for a rig (merged into its `autopilot:` block), e.g.
+        '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6, gap_s: 5}'."""
+        return t.save_autopilot_settings(rig, yaml_text)
+
+    @tool
+    def generate(kind: str, settings_yaml: str = "{}") -> str:
+        """Generate editable scenes or shows for the running rig from the FX banks. kind: scenes
+        ('{mood: low, style: ballad, palette: cool, count: 5, prefix: slow_blues}'), show
+        ('{name: Opener, plan: [{section: verse, mood: low, length: 2}, {section: chorus, mood: high, length: 2}]}')
+        or setlist ('{setlist: example, style: rock}': a starter show per song from its mood and bpm).
+        Same seed gives the same files. Not during gig lock."""
+        return t.generate(kind, settings_yaml)
+
+    @tool
+    def list_presets() -> str:
+        """Presets (saved auto-show looks): id, name, tags, pick; starters are built in."""
+        return t.list_presets()
+
+    @tool
+    def save_preset(name: str, yaml_text: str) -> str:
+        """Save a preset: '{name: Verse blues, tags: [low], pick: {move: swim, colour: colour_fade, palette: cool,
+        feel: {speed: 0.8}}}'. Use presets in show steps ({preset: id}) and setlist songs ({preset: id} or
+        {presets: [ids], mood: high} to have the autopilot play only those for the song)."""
+        return t.save_preset(name, yaml_text)
+
+    @tool
+    def get_alerts() -> str:
+        """Alerts: what's offline or failing now and recently (time, device, message, state: active,
+        dismissed, muted, snoozed, cleared), and which devices are muted for this rig. Read only."""
+        return t.get_alerts()
+
+    @tool
+    def list_inputs() -> str:
+        """Named MIDI/OSC inputs (inputs.yaml): devices, each input's notes / numbers / OSC address, roles."""
+        return t.list_inputs()
+
+    @tool
+    def save_input(device: str, name: str, value_yaml: str, device_info_yaml: str = "") -> str:
+        """Add or change a named input in a device (made if new), e.g. device 'td25', name 'kick',
+        value_yaml '{name: Kick, type: note, notes: [35], roles: [kick, activity]}'. Every MIDI map
+        entry that names the input follows. Types: note (notes: [...]), program_change / control_change
+        (number), osc (address). Optional: channel (1-16 or any), port, velocity [lo, hi], shared, colour.
+        device_info_yaml names a new device: '{name: TD-25 drums, port: TD-25, channel: 10}'. device is required."""
+        return t.save_input(device, name, value_yaml, device_info_yaml)
+
+    @tool
+    def rename_input(name: str, new_name: str) -> str:
+        """Rename a named input; every file that uses it is updated in the same change."""
+        return t.rename_input(name, new_name)
+
+    @tool
+    def list_points() -> str:
+        """Head position points per rig: description, tags, stage place and each head's pan/tilt (0-1).
+        The reference for aiming heads in scenes (`position: <point>`)."""
+        return t.list_points()
+
+    @tool
+    def save_point(rig: str, name: str, value_yaml: str) -> str:
+        """Add or replace a head point in a rig, e.g. '{description: Lead singer mic, tags: [band, safe],
+        stage: {x: centre, y: front, z: mid}, heads: {mh_a: {pan: 0.45, tilt: 0.4}}}'. A head outside its
+        head limits is refused (rule 8)."""
+        return t.save_point(rig, name, value_yaml)
+
+    @tool
     def validate_scene(scene_yaml: str) -> str:
         """Check a scene (YAML) against the fixtures, palettes and hard rules without saving it."""
         return t.validate_scene(scene_yaml)
@@ -95,8 +192,9 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
 
     @tool
     def save_palette_entry(section: str, name: str, value_yaml: str) -> str:
-        """Add or change one palette entry. section: colours, positions or gobos. value_yaml e.g. '"#ff3300"',
-        '{pan: 0.4, tilt: 0.3}', or per head '{mh_a: {pan: 0.4, tilt: 0.3}, mh_b: {pan: 0.6, tilt: 0.3}}'."""
+        """Add or change one palette entry. section: colours, gobos or palettes. value_yaml e.g. '"#ff3300"'
+        for a colour, or '{name: Warm, tags: [warm, low], colours: [amber, "#ff4000"]}' for a palette.
+        (Head positions are points in the rig file: use save_point.)"""
         return t.save_entry("palettes", section, name, value_yaml)
 
     @tool
@@ -138,19 +236,134 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
 
     @tool
     def now_playing() -> str:
-        """What's running: show/set/song, MASTER, blackout, masters, haze, gig lock. Engine must be running."""
+        """What's running: show/set/song, MASTER, blackout, masters, haze (mode, output, settings, preset),
+        gig lock. Engine must be running."""
         return t.now_playing()
 
     @tool
-    def preview_scene(scene: str, seconds: float = 10) -> str:
+    def preview_scene(scene: str, seconds: float = 10, step: int = 0) -> str:
         """Play a scene on the rig for a few seconds, then go back to what was running. `scene` is a saved
-        scene name or a whole scene as YAML (to try before saving). Not allowed during gig lock."""
-        return t.preview_scene(scene, seconds)
+        scene name or a whole scene as YAML (to try before saving). step: hold a step scene on that step
+        (1 = first). Not allowed during gig lock."""
+        return t.preview_scene(scene, seconds, step)
 
     @tool
-    def set_haze(action: str) -> str:
-        """Haze mode: off, manual or pulse. Not allowed during gig lock. Haze settings live in the rig file."""
-        return t.set_haze(action)
+    def add_step(scene: str, step_yaml: str, at: int = 0) -> str:
+        """Add one step to a saved step scene without rewriting it: '{name: Chorus hit, set: {bars:
+        {colour: red}, "bars:px1,8": {colour: white}, movers: {position: drum_kit}}, step_s: 2}'. at = place
+        (1 = first; default the end). Pixel selectors (bar_1:px1-4, bars:odd) are colour only. Validated
+        and backed up; not during gig lock."""
+        return t.add_step(scene, step_yaml, at)
+
+    @tool
+    def update_step(scene: str, step: str, set_yaml: str = "", timing_yaml: str = "", replace: bool = False) -> str:
+        """Change one step (number, 1 = first, or its name). set_yaml is merged per light/group into the step's
+        set: ('{bars: {colour: blue}, wash_l: null}' - null takes a light out of the step so it tracks the
+        one before); replace=true swaps the whole set:. timing_yaml: '{step_s: 1.5, fade_s: 0.3, move: lit,
+        name: Verse}' (null clears a step's own value)."""
+        return t.update_step(scene, step, set_yaml, timing_yaml, replace)
+
+    @tool
+    def move_step(scene: str, step: str, to: int) -> str:
+        """Move one step (number or name) to place `to` (1 = first)."""
+        return t.move_step(scene, step, to)
+
+    @tool
+    def delete_step(scene: str, step: str) -> str:
+        """Delete one step (number or name). A step scene keeps at least one step."""
+        return t.delete_step(scene, step)
+
+    @tool
+    def set_haze(action: str, settings_yaml: str = "") -> str:
+        """Haze mode: off, manual or pulse (or '' to leave the mode). With settings_yaml, also tune the haze
+        controller and save it to the running rig: '{level: 41, pulse_level: 30, pulse_on_s: 1, pulse_every_s: 61,
+        boost_level: 100, boost_s: 0, boost_cooldown_s: 20, max_on_s: 60, rest_s: 30, auto_off_min: 120,
+        default_mode: off, presets: [{name: Haze 4 Med, mode: manual, level: 41}]}' (levels %). Not during gig
+        lock. Scenes and shows never set haze (rule 5)."""
+        out = []
+        if settings_yaml.strip():
+            out.append(t.save_haze_settings(settings_yaml))
+        if action:
+            out.append(t.set_haze(action))
+        return "; ".join(out) or "nothing to do: give an action or settings"
+
+    @tool
+    def save_haze_settings(settings_yaml: str, rig: str = "") -> str:
+        """Tune the haze controller (same settings as set_haze) for a rig without changing the mode."""
+        return t.save_haze_settings(settings_yaml, rig)
+
+    @tool
+    def get_layout(rig: str = "") -> str:
+        """Where every light sits on the stage plan: {x, y, z, rot} per fixture (x, y in 25 cm cells from the
+        top left, back of the stage at the top; rot degrees, 0 = facing the audience), the stage size, and
+        lights in the same place or touching. Spatial effects use these places. Default: the running rig."""
+        return t.get_layout(rig)
+
+    @tool
+    def set_layout(positions_yaml: str, rig: str = "") -> str:
+        """Place one or many lights: '{par_1: {x: 4, y: 2}, par_4: {x: 30, y: 2, rot: 90}, bar_2: {reverse: true}}'.
+        Only the lights named change; a partial place (just rot) keeps the rest. z = height in metres.
+        Validated and backed up; not during gig lock. Default: the running rig."""
+        return t.set_layout(positions_yaml, rig)
+
+    @tool
+    def save_layout_position(fixture: str, x: float, y: float, rot: float = 0, rig: str = "") -> str:
+        """Place one light (same as set_layout with one entry)."""
+        return t.set_layout(yaml.safe_dump({fixture: {"x": x, "y": y, "rot": rot}}), rig)
+
+    @tool
+    def list_outputs() -> str:
+        """The routing table: which universe goes out which interface (USB DMX, Art-Net/sACN, the 0.05 node
+        link, each wireless node), with state, fps, frames, errors, last frame age and whether the last frame
+        sent was all zeros. Plus routing problems (a universe with lights but no output, an output with no
+        lights, an output with no universe: given). Use it first when the software runs but the rig is dark."""
+        return t.list_outputs()
+
+    @tool
+    def set_output(index: int, driver: str = "", port: str = "", universe: int | None = None, mac: str = "",
+                   alias: str = "") -> str:
+        """Change output `index` (from list_outputs; -1 adds one): driver (usb_dmx_open, usb_dmx_pro, node,
+        artnet, sacn), port (COM3), universe (0-15), alias (e.g. Stage DMX). With mac: set a wireless node's
+        universe instead. Not during gig lock. Applied live: the outputs are rebuilt between frames."""
+        return t.set_output(index, driver, port, universe, mac, alias)
+
+    @tool
+    def monitor_dmx(universe: int = 0, output: str = "", channels: str = "") -> str:
+        """Fault-find 'software running, rig dark': the frame one interface really sent on a universe (default:
+        the first output carrying it; output = an index from list_outputs, or 'engine' for the engine's frame
+        before the outputs), with fps, frames, errors, last frame age, all-zero flag, and each channel's value
+        and name (bar_2 red px5). channels: '1-14, 300' (default: patched and non-zero ones)."""
+        return t.monitor_dmx(universe, output, channels)
+
+    @tool
+    def monitor_midi(direction: str = "in", n: int = 50, port: str = "", channel: int = 0, type: str = "",
+                     unmapped_only: bool = False) -> str:
+        """The last n MIDI events in (from the gear) or out (sent by the app): time, port, channel, type, number
+        and note name, velocity/value, the named input it matched and its roles, and what it triggered (or
+        'unmapped'); plus port states, hits a second and the autopilot's energy. Fault-find 'pedal does nothing'."""
+        return t.monitor_midi(direction, n, port, channel, type, unmapped_only)
+
+    @tool
+    def list_devices() -> str:
+        """Devices plugged into the laptop, as they report themselves: USB DMX interfaces and the 0.05 node
+        (product name, manufacturer, serial number, VID:PID, COM port, driver guess) and MIDI ports (OS name),
+        with their alias and what each is used for (universe, MIDI in/out); configured devices that are
+        missing; new ones not assigned yet. Engine must be running (not the simulator)."""
+        return t.list_devices()
+
+    @tool
+    def set_device(device: str, alias: str = "", universe: int | None = None, driver: str = "", use: bool = True) -> str:
+        """Name a device and say what it's for. device is an id from list_devices (usb:0403:6001:A1B2C3,
+        midi-in:UM-ONE, midi-out:...). A USB interface sends `universe` (driver usb_dmx_open / usb_dmx_pro /
+        node; default from what was detected); a MIDI input is opened; use=false stops using it. Saved to the
+        running rig by device identity, so a new COM number keeps its universe. Not during gig lock."""
+        return t.set_device(device, alias, universe, driver, use)
+
+    @tool
+    def delete_fixture(fixture: str) -> str:
+        """Take a patched light out of the patch and every rig (layout, head limits). Refused if a scene or
+        look names it directly; not during gig lock. Backed up (undo_last_change)."""
+        return t.delete_fixture(fixture)
 
     @tool
     def node_health() -> str:

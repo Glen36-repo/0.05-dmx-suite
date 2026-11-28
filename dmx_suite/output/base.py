@@ -67,8 +67,65 @@ class SenderThread:
         self._thread.join(timeout=1)
 
 
+class Wire:
+    """What an interface actually put out, per universe: the last frame it wrote (after its own
+    universe filter, after a write that didn't fail), when, how often. The Monitor page and the
+    routing table read this, never the engine's frame, so they never show values that didn't go out."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.frames: dict[int, bytes] = {}
+        self.at: dict[int, float] = {}
+        self.count: dict[int, int] = {}
+        self.fps: dict[int, float] = {}
+        self.jitter_ms: dict[int, float] = {}
+
+    def record(self, universe: int, frame: bytes, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            last = self.at.get(universe)
+            if last is not None and now > last:
+                dt = now - last
+                f = self.fps.get(universe)
+                self.fps[universe] = 1.0 / dt if f is None else 0.9 * f + 0.1 / dt
+                avg = 1.0 / self.fps[universe]
+                self.jitter_ms[universe] = 0.9 * self.jitter_ms.get(universe, 0.0) + 0.1 * abs(dt - avg) * 1000
+            self.frames[universe] = bytes(frame)
+            self.at[universe] = now
+            self.count[universe] = self.count.get(universe, 0) + 1
+
+    def stats(self, universe: int, now: float | None = None) -> dict[str, Any]:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            at = self.at.get(universe)
+            frame = self.frames.get(universe)
+            return {"frames": self.count.get(universe, 0),
+                    "fps": round(self.fps.get(universe, 0.0), 1) if at is not None and now - at < 2 else 0.0,
+                    "jitter_ms": round(self.jitter_ms.get(universe, 0.0), 1),
+                    "last_frame_age_ms": None if at is None else round((now - at) * 1000),
+                    "all_zero": None if frame is None else not any(frame)}
+
+    def frame(self, universe: int) -> bytes | None:
+        with self._lock:
+            return self.frames.get(universe)
+
+
 class OutputDriver:
     name = "base"
+    universe: int | None = None  # the one universe this interface carries; None = several (see carries)
+    cfg: dict[str, Any] | None = None  # the rig's `outputs:` entry it was made from
+
+    @property
+    def wire(self) -> Wire:
+        w = self.__dict__.get("_wire")
+        if w is None:
+            w = self.__dict__["_wire"] = Wire()
+        return w
+
+    def carries(self, universe: int) -> bool:
+        """Does this interface send this engine universe? (USB interfaces carry one; nodes and the
+        simulator carry them all; Art-Net / sACN those mapped.)"""
+        return self.universe is None or universe == self.universe
 
     def send(self, universe: int, frame: bytes) -> None:
         """Hand over a full 512-channel frame. Must return quickly."""
@@ -97,6 +154,7 @@ class NullDriver(OutputDriver):
 
     def send(self, universe: int, frame: bytes) -> None:
         self.frames += 1
+        self.wire.record(universe, frame)
 
     def status(self) -> dict[str, Any]:
         return {"driver": self.name, "frames": self.frames}
@@ -118,6 +176,7 @@ class LogDriver(OutputDriver):
 
     def send(self, universe: int, frame: bytes) -> None:
         frame = bytes(frame)
+        self.wire.record(universe, frame)
         self.last[universe] = frame
         self.history.append((time.perf_counter(), universe, frame))
         self.frames += 1

@@ -1,0 +1,29 @@
+# Main band show: LOW / MID / HIGH sets on fixed-timer steps. Each step is a freshly generated
+# scene from the set's style, using only the fixtures in the active rig.
+version: 4
+name: Main band show
+default_set: mid
+sets:
+  low:
+    step_s: 60
+    auto:
+      colours: [blue, deep_blue, purple, amber, cyan]
+      energy: low
+      head_mix: [matching, white, contrast]
+  mid:
+    step_s: 40
+    auto:
+      colours: [blue, purple, magenta, amber, cyan, red]
+      energy: mid
+      head_mix: [matching, white, contrast]
+  high:
+    step_s: 20
+    auto:
+      colours: [red, blue, magenta, amber, cyan]
+      energy: high
+      head_mix: [matching, white, contrast]
+      flash: true
+  cues:                       # hand-built scenes, e.g. for intros
+    step_s: 30
+    scenes: [blue_chase, red_movers, strobe_hit]
+    order: random

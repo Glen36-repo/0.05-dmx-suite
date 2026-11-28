@@ -11,40 +11,63 @@
 <link rel="stylesheet" href="/static/themes/__THEME__/theme.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body class="density-__DENSITY__">
 <header class="top">
   <img src="/static/themes/__THEME__/logo.svg" alt="" class="logo">
   <div class="now" id="now" data-i18n="status.connecting"></div>
   <div class="tempo" id="tempo" data-i18n-title="top.tempo_tip"><span class="beat-dot"></span><span id="tempo-text"></span></div>
-  <button id="master" class="toggle master" data-i18n="top.master"></button>
-  <button id="blackout" class="toggle danger" data-i18n="top.blackout"></button>
+  <button id="master" class="toggle master perform" data-i18n="top.master"></button>
+  <button id="blackout" class="toggle danger perform" data-i18n="top.blackout"></button>
   <button class="lock" id="giglock" data-i18n="top.giglock" data-i18n-title="top.giglock_tip"></button>
+  <button class="bell" id="bell" data-i18n-title="alerts.bell_tip"><span aria-hidden="true">🔔</span><span id="bell-count"></span></button>
 </header>
 <div class="health" id="health" data-i18n-title="top.health_tip"></div>
-<div class="banner hidden" id="banner" role="alert"></div>
+<div class="banners" id="banners" aria-live="assertive"></div>
+<div class="alerts-panel hidden" id="alerts-panel">
+  <div class="row"><h2 data-i18n="alerts.title"></h2><span class="grow"></span>
+    <label class="row"><input type="checkbox" id="alerts-quiet"><span data-i18n="alerts.quiet"></span></label>
+    <button id="alerts-close" class="mini">✕</button></div>
+  <p class="muted" data-i18n="alerts.help"></p>
+  <ul class="alerts-list" id="alerts-list"></ul>
+</div>
 
 <div class="shell">
   <nav class="menu" id="menu" aria-label="Pages">
     <button class="collapse" id="collapse" data-i18n-title="menu.collapse"><span class="ic">☰</span></button>
+    <div class="menu-group" data-i18n="menu.group_perform"></div>
     <button data-page="live" class="on"><span class="ic">◉</span><span class="lbl" data-i18n="menu.live"></span></button>
-    <button data-page="layout"><span class="ic">▦</span><span class="lbl" data-i18n="menu.layout"></span></button>
+    <button data-page="autopilot"><span class="ic">◎</span><span class="lbl" data-i18n="menu.autopilot"></span></button>
+    <button data-page="override"><span class="ic">◍</span><span class="lbl" data-i18n="menu.override"></span></button>
+    <div class="menu-group" data-i18n="menu.group_build"></div>
     <button data-page="scenes"><span class="ic">◆</span><span class="lbl" data-i18n="menu.scenes"></span></button>
     <button data-page="shows"><span class="ic">▶</span><span class="lbl" data-i18n="menu.shows"></span></button>
-    <button data-page="busk"><span class="ic">◍</span><span class="lbl" data-i18n="menu.busk"></span></button>
-    <button data-page="fixtures"><span class="ic">⊞</span><span class="lbl" data-i18n="menu.fixtures"></span></button>
-    <button data-page="heads"><span class="ic">✥</span><span class="lbl" data-i18n="menu.heads"></span></button>
-    <button data-page="midi"><span class="ic">♪</span><span class="lbl" data-i18n="menu.midi"></span></button>
-    <button data-page="setup"><span class="ic">⚙</span><span class="lbl" data-i18n="menu.setup"></span></button>
-    <button data-page="files"><span class="ic">▤</span><span class="lbl" data-i18n="menu.files"></span></button>
+    <button data-page="review" class="extra"><span class="ic">★</span><span class="lbl" data-i18n="menu.review"></span></button>
+    <button data-page="palettes" class="extra"><span class="ic">◐</span><span class="lbl" data-i18n="menu.palettes"></span></button>
+    <div class="menu-group" data-i18n="menu.group_rig"></div>
+    <button data-page="layout" class="extra"><span class="ic">▦</span><span class="lbl" data-i18n="menu.layout"></span></button>
+    <button data-page="fixtures" class="extra"><span class="ic">⊞</span><span class="lbl" data-i18n="menu.fixtures"></span></button>
+    <button data-page="heads" class="extra"><span class="ic">✥</span><span class="lbl" data-i18n="menu.heads"></span></button>
+    <button data-page="midi" class="extra"><span class="ic">♪</span><span class="lbl" data-i18n="menu.midi"></span></button>
+    <div class="menu-group" data-i18n="menu.group_system"></div>
+    <button data-page="monitor" class="extra"><span class="ic">⌁</span><span class="lbl" data-i18n="menu.monitor"></span></button>
+    <button data-page="setup" class="extra"><span class="ic">⚙</span><span class="lbl" data-i18n="menu.setup"></span></button>
+    <button data-page="files" class="extra"><span class="ic">▤</span><span class="lbl" data-i18n="menu.files"></span></button>
+    <button id="menu-more" class="more" aria-expanded="false"><span class="ic">⋯</span><span class="lbl" data-i18n="menu.more"></span></button>
   </nav>
 
   <main>
     <!-- LIVE -->
     <section id="page-live" class="page on">
       <div class="grid-host live" id="live-grid"></div>
-      <h2 data-i18n="live.show"></h2>
-      <div class="row wrap" id="shows"></div>
-      <div class="row wrap" id="sets"></div>
+      <h2 data-i18n="live.shows"></h2>
+      <div class="btn-grid" id="shows" data-order="shows"></div>
+      <div class="btn-grid sets" id="sets"></div>
+      <h2 data-i18n="live.scenes"></h2>
+      <div class="btn-grid" id="scenes" data-order="scenes"></div>
+      <details class="section" id="generated-section" data-remember="live.generated">
+        <summary data-i18n="live.generated"></summary>
+        <div class="btn-grid" id="generated" data-order="generated"></div>
+      </details>
       <ol class="steps" id="steps"></ol>
       <div class="muted" id="step-info"></div>
       <div class="row wrap">
@@ -71,13 +94,109 @@
         <button data-haze="off" data-i18n="haze.off"></button>
         <button data-haze="manual" data-i18n="haze.manual"></button>
         <button data-haze="pulse" data-i18n="haze.pulse"></button>
-        <button id="boost" class="hold" data-i18n="haze.boost"></button>
+        <button id="boost" class="hold perform" data-i18n="haze.boost"></button>
+        <select id="haze-preset" data-i18n-title="haze.preset_tip"></select>
       </div>
       <div class="muted" id="haze"></div>
+      <details class="section haze-settings" id="haze-settings">
+        <summary><span data-i18n="haze.settings"></span> <span class="sum muted" id="haze-rig"></span></summary>
+        <div class="hz-blocks" id="hz-blocks"></div>
+        <div class="row wrap">
+          <button id="hz-save" class="primary" data-i18n="haze.save" disabled></button>
+          <button id="hz-revert" data-i18n="haze.revert" disabled></button>
+          <span class="muted" data-i18n="haze.live_note"></span>
+        </div>
+      </details>
+    </section>
+
+    <!-- MONITOR (v4): watch DMX out, MIDI in, MIDI out; read-only, works under gig lock -->
+    <section id="page-monitor" class="page wide">
+      <div class="mon-panes" id="mon-panes">
+        <div class="mon-pane" id="mon-dmx" data-pane="dmx">
+          <div class="mon-head"><h2 data-i18n="monitor.dmx"></h2><span class="grow"></span>
+            <select id="mon-uni" data-i18n-title="monitor.universe"></select>
+            <select id="mon-out" data-i18n-title="monitor.interface"></select>
+            <div class="seg-row" id="mon-dmx-view">
+              <button data-view="grid" class="sel" data-i18n="monitor.v_grid"></button>
+              <button data-view="fixture" data-i18n="monitor.v_fixture"></button>
+              <button data-view="changed" data-i18n="monitor.v_changed"></button>
+              <button data-view="hex" data-i18n="monitor.v_hex"></button>
+            </div>
+            <button class="mini" data-act="pause" data-i18n="monitor.pause"></button>
+            <button class="mini" data-act="csv" data-i18n="monitor.csv"></button>
+            <button class="mini" data-act="full" data-i18n="monitor.full"></button>
+          </div>
+          <div class="mon-stats" id="mon-dmx-stats"></div>
+          <div class="mon-flag hidden" id="mon-dmx-flag"></div>
+          <div class="mon-body" id="mon-dmx-body"></div>
+        </div>
+        <div class="mon-pane" id="mon-midi-in" data-pane="midi-in">
+          <div class="mon-head"><h2 data-i18n="monitor.midi_in"></h2><span class="grow"></span>
+            <input id="mon-in-port" class="mini" data-i18n-placeholder="monitor.f_port">
+            <input id="mon-in-ch" class="mini num" type="number" min="0" max="16" data-i18n-placeholder="monitor.f_channel">
+            <select id="mon-in-type"><option value="" data-i18n="monitor.f_all_types"></option>
+              <option value="note" data-i18n="monitor.t_note"></option><option value="control_change" data-i18n="monitor.t_cc"></option><option value="program_change" data-i18n="monitor.t_pc"></option>
+              <option value="pitchwheel" data-i18n="monitor.t_bend"></option><option value="sysex" data-i18n="monitor.t_sysex"></option><option value="osc" data-i18n="monitor.t_osc"></option></select>
+            <label class="check"><input type="checkbox" id="mon-in-unmapped"><span data-i18n="monitor.f_unmapped"></span></label>
+            <button class="mini" data-act="pause" data-i18n="monitor.pause"></button>
+            <button class="mini" data-act="clear" data-i18n="monitor.clear"></button>
+            <button class="mini" data-act="csv" data-i18n="monitor.csv"></button>
+            <button class="mini" data-act="full" data-i18n="monitor.full"></button>
+          </div>
+          <div class="mon-stats" id="mon-in-ports"></div>
+          <div class="mon-heat" id="mon-heat"></div>
+          <div class="mon-body"><table class="mon-log"><thead><tr><th data-i18n="monitor.c_time"></th><th data-i18n="monitor.c_port"></th>
+            <th data-i18n="monitor.c_ch"></th><th data-i18n="monitor.c_type"></th><th data-i18n="monitor.c_num"></th>
+            <th data-i18n="monitor.c_val"></th><th data-i18n="monitor.c_input"></th><th data-i18n="monitor.c_action"></th><th></th></tr></thead>
+            <tbody id="mon-in-log"></tbody></table></div>
+        </div>
+        <div class="mon-pane" id="mon-midi-out" data-pane="midi-out">
+          <div class="mon-head"><h2 data-i18n="monitor.midi_out"></h2><span class="grow"></span>
+            <button class="mini" data-act="pause" data-i18n="monitor.pause"></button>
+            <button class="mini" data-act="clear" data-i18n="monitor.clear"></button>
+            <button class="mini" data-act="csv" data-i18n="monitor.csv"></button>
+            <button class="mini" data-act="full" data-i18n="monitor.full"></button>
+          </div>
+          <div class="mon-stats" id="mon-out-ports"></div>
+          <div class="row wrap" id="mon-send">
+            <select id="send-port"></select>
+            <select id="send-type"><option value="note_on" data-i18n="monitor.t_note"></option><option value="control_change" data-i18n="monitor.t_cc"></option><option value="program_change" data-i18n="monitor.t_pc"></option></select>
+            <input id="send-ch" class="mini num" type="number" min="1" max="16" value="1" data-i18n-title="monitor.f_channel">
+            <input id="send-num" class="mini num" type="number" min="0" max="127" value="60" data-i18n-title="monitor.c_num">
+            <input id="send-val" class="mini num" type="number" min="0" max="127" value="100" data-i18n-title="monitor.c_val">
+            <button id="send-go" data-i18n="monitor.send"></button>
+          </div>
+          <div class="mon-body"><table class="mon-log"><thead><tr><th data-i18n="monitor.c_time"></th><th data-i18n="monitor.c_port"></th>
+            <th data-i18n="monitor.c_ch"></th><th data-i18n="monitor.c_type"></th><th data-i18n="monitor.c_num"></th>
+            <th data-i18n="monitor.c_val"></th><th data-i18n="monitor.c_action"></th></tr></thead>
+            <tbody id="mon-out-log"></tbody></table></div>
+        </div>
+      </div>
     </section>
 
     <!-- LAYOUT -->
-    <section id="page-layout" class="page">
+    <section id="page-layout" class="page wide">
+      <div class="lp-head">
+        <div class="tabs uni-tabs" id="lp-uni" role="tablist" data-i18n-title="layout.uni_tip"></div>
+        <div class="lp-status" id="lp-status"></div>
+        <span class="grow"></span>
+        <div class="lp-actions">
+          <span class="dirty-dot hidden" id="layout-dirty" data-i18n-title="layout.unsaved"></span>
+          <button id="layout-save" class="primary" data-i18n="layout.save" data-key="Ctrl+S"></button>
+          <button id="layout-undo" class="icon" data-icon="rotate-l" data-key="Ctrl+Z" data-tip="layout.undo"></button>
+          <button id="layout-redo" class="icon" data-icon="rotate-r" data-key="Ctrl+Shift+Z" data-tip="layout.redo"></button>
+          <button id="layout-reset" class="danger-text" data-i18n="layout.reset"></button>
+          <button id="lp-print" data-i18n="layout.print" data-i18n-title="layout.print_tip"></button>
+          <button id="lp-png" data-i18n="layout.png" data-i18n-title="layout.png_tip"></button>
+        </div>
+      </div>
+      <div class="tabs" id="lp-views" role="tablist">
+        <button data-view="stage" class="on" data-i18n="layout.view_stage"></button>
+        <button data-view="addresses" data-i18n="layout.view_addresses"></button>
+      </div>
+      <div class="lp-body">
+        <div class="lp-main">
+          <div id="lp-stage" class="lp-pane">
       <div class="tabs" id="group-tabs" role="tablist"></div>
       <div class="toolbar">
         <div class="tools" role="group">
@@ -85,41 +204,62 @@
           <button data-tool="lasso" data-i18n-title="layout.tool_lasso_tip"><span data-i18n="layout.tool_lasso"></span></button>
           <button data-tool="move" data-i18n-title="layout.tool_move_tip"><span data-i18n="layout.tool_move"></span></button>
         </div>
-        <label class="zoom"><span data-i18n="layout.zoom"></span><input type="range" id="zoom" min="50" max="300" step="10" value="100"></label>
+        <label class="zoom"><span data-i18n="layout.zoom"></span><input type="range" id="zoom" min="50" max="400" step="10" value="100"></label>
+        <button id="layout-fit" data-i18n="layout.fit" data-i18n-title="layout.fit_tip"></button>
         <label class="check"><input type="checkbox" id="show-names" checked><span data-i18n="layout.names"></span></label>
         <label class="check"><input type="checkbox" id="show-beams"><span data-i18n="layout.beams"></span></label>
       </div>
+      <div class="stage-wrap">
       <div class="grid-host edit" id="layout-grid"></div>
+      <div class="arrange" id="arrange" role="toolbar" aria-orientation="vertical">
+        <div class="ar-group" data-group="align"><div class="ar-h" data-i18n="layout.g_align"></div>
+          <div class="seg seg3">
+            <button class="icon" data-align="left" data-icon="align-left" data-key="Alt+←" data-tip="layout.align_left"></button>
+            <button class="icon" data-align="hcentre" data-icon="align-hcentre" data-tip="layout.align_hcentre"></button>
+            <button class="icon" data-align="right" data-icon="align-right" data-key="Alt+→" data-tip="layout.align_right"></button>
+            <button class="icon" data-align="top" data-icon="align-top" data-key="Alt+↑" data-tip="layout.align_top"></button>
+            <button class="icon" data-align="vcentre" data-icon="align-vcentre" data-tip="layout.align_vcentre"></button>
+            <button class="icon" data-align="bottom" data-icon="align-bottom" data-key="Alt+↓" data-tip="layout.align_bottom"></button>
+          </div></div>
+        <div class="ar-group" data-group="distribute"><div class="ar-h" data-i18n="layout.g_distribute"></div>
+          <div class="seg seg3">
+            <button class="icon" data-distribute="h" data-icon="distribute-h" data-tip="layout.distribute_h"></button>
+            <button class="icon" data-distribute="v" data-icon="distribute-v" data-tip="layout.distribute_v"></button>
+          </div></div>
+        <div class="ar-group" data-group="shape"><div class="ar-h" data-i18n="layout.g_shape"></div>
+          <div class="seg seg3">
+            <button class="icon" data-make="row" data-icon="make-row" data-tip="layout.make_row"></button>
+            <button class="icon" data-make="ring" data-icon="make-ring" data-tip="layout.make_ring"></button>
+            <button class="icon" data-make="grid" data-icon="make-grid" data-tip="layout.make_grid"></button>
+          </div>
+          <label class="ar-param"><span data-i18n="layout.p_spacing"></span><input type="number" id="ar-spacing" min="0" max="20" step="0.5" data-i18n-placeholder="layout.p_auto"></label>
+          <label class="ar-param"><span data-i18n="layout.p_cols"></span><input type="number" id="ar-cols" min="0" max="32" step="1" data-i18n-placeholder="layout.p_auto"></label>
+        </div>
+        <div class="ar-group" data-group="rotate"><div class="ar-h" data-i18n="layout.g_rotate"></div>
+          <div class="seg seg3">
+            <button class="icon" data-rotate="-1" data-icon="rotate-l" data-key="Shift+R" data-tip="layout.rotate_l"></button>
+            <button class="icon" data-rotate="1" data-icon="rotate-r" data-key="R" data-tip="layout.rotate_r"></button>
+            <span></span>
+            <button class="icon" data-flip="h" data-icon="flip-h" data-key="H" data-tip="layout.flip_h"></button>
+            <button class="icon" data-flip="v" data-icon="flip-v" data-key="V" data-tip="layout.flip_v"></button>
+          </div>
+          <label class="ar-param"><span data-i18n="layout.p_step"></span><input type="number" id="ar-step" min="1" max="180" step="1" value="45"></label>
+          <label class="ar-param"><span data-i18n="layout.p_angle"></span><input type="number" id="ar-angle" min="0" max="359" step="1"></label>
+        </div>
+        <div class="ar-group" data-group="pixels"><div class="ar-h" data-i18n="layout.g_pixels"></div>
+          <div class="seg seg3">
+            <button class="icon" data-shape="row" data-icon="pixels-row" data-tip="layout.shape_row"></button>
+            <button class="icon" data-shape="ring" data-icon="pixels-ring" data-tip="layout.shape_ring"></button>
+            <button class="icon" data-shape="grid" data-icon="pixels-grid" data-tip="layout.shape_grid"></button>
+            <button class="icon" data-reverse="1" data-icon="reverse" data-tip="layout.reverse"></button>
+          </div>
+          <label class="ar-param"><span data-i18n="layout.p_pcols"></span><input type="number" id="ar-pcols" min="0" max="64" step="1" data-i18n-placeholder="layout.p_auto"></label>
+        </div>
+      </div>
+      </div>
       <div class="muted" id="layout-sel"></div>
-
-      <h2 data-i18n="layout.arrange"></h2>
-      <div class="row wrap" id="arrange-tools">
-        <button data-align="left" data-i18n="layout.align_left"></button>
-        <button data-align="hcentre" data-i18n="layout.align_hcentre"></button>
-        <button data-align="right" data-i18n="layout.align_right"></button>
-        <button data-align="top" data-i18n="layout.align_top"></button>
-        <button data-align="vcentre" data-i18n="layout.align_vcentre"></button>
-        <button data-align="bottom" data-i18n="layout.align_bottom"></button>
-        <button data-distribute="h" data-i18n="layout.distribute_h"></button>
-        <button data-distribute="v" data-i18n="layout.distribute_v"></button>
-      </div>
-      <div class="row wrap">
-        <button data-make="row" data-i18n="layout.make_row"></button>
-        <button data-make="ring" data-i18n="layout.make_ring"></button>
-        <button data-make="grid" data-i18n="layout.make_grid"></button>
-        <button data-rotate="-45" data-i18n="layout.rotate_l"></button>
-        <button data-rotate="45" data-i18n="layout.rotate_r"></button>
-        <span class="muted" data-i18n="layout.pixels"></span>
-        <button data-shape="row" data-i18n="layout.shape_row"></button>
-        <button data-shape="ring" data-i18n="layout.shape_ring"></button>
-        <button data-shape="grid" data-i18n="layout.shape_grid"></button>
-      </div>
-      <div class="row wrap">
-        <button id="layout-save" data-i18n="layout.save"></button>
-        <button id="layout-undo" data-i18n="layout.undo"></button>
-        <button id="layout-reset" data-i18n="layout.reset"></button>
-      </div>
-
+      <div id="layout-problems-head" class="error hidden"><span data-i18n="layout.problems_help"></span>
+        <ul class="layout-problems" id="layout-problems"></ul></div>
       <h2 data-i18n="groups.title"></h2>
       <div class="row wrap">
         <input id="group-name" maxlength="40" data-i18n-placeholder="groups.name_placeholder">
@@ -129,6 +269,31 @@
         <button id="group-delete" class="danger-text" data-i18n="groups.delete"></button>
       </div>
       <p class="muted" data-i18n="groups.help"></p>
+          </div>
+          <div id="lp-addresses" class="lp-pane hidden">
+            <div class="row wrap"><span class="muted" data-i18n="layout.addr_help"></span><span class="grow"></span>
+              <label class="muted" for="lp-out" data-i18n="layout.addr_source"></label><select id="lp-out"></select></div>
+            <div id="addr-maps"></div>
+          </div>
+        </div>
+        <aside class="lp-side">
+          <h2 data-i18n="layout.fixture_list"></h2>
+          <div class="table-scroll"><table class="lp-fixtures">
+            <thead><tr><th data-i18n="layout.col_id"></th><th data-i18n="layout.col_type"></th><th data-i18n="layout.col_ch"></th>
+              <th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_addr"></th><th data-i18n="layout.col_range"></th>
+              <th data-i18n="layout.col_groups"></th><th data-i18n="layout.col_out"></th></tr></thead>
+            <tbody id="lp-fixtures"></tbody></table></div>
+          <div class="error hidden" id="lp-clash"></div>
+          <div class="row"><button id="lp-patch-save" class="primary" data-i18n="layout.patch_save" disabled></button>
+            <button id="lp-patch-revert" data-i18n="layout.patch_revert" disabled></button></div>
+          <h2 data-i18n="layout.routing"></h2>
+          <div class="table-scroll"><table class="lp-routing">
+            <thead><tr><th data-i18n="layout.col_uni"></th><th data-i18n="layout.col_interface"></th><th data-i18n="layout.col_state"></th>
+              <th data-i18n="layout.col_fps"></th><th data-i18n="layout.col_frames"></th><th data-i18n="layout.col_errors"></th><th data-i18n="layout.col_last"></th></tr></thead>
+            <tbody id="lp-routing"></tbody></table></div>
+          <ul class="layout-problems" id="lp-routing-problems"></ul>
+        </aside>
+      </div>
     </section>
 
     <!-- SCENES -->
@@ -139,13 +304,17 @@
         <button id="scene-dup" data-i18n="scenes.duplicate"></button>
         <button id="scene-del" class="danger-text" data-i18n="scenes.delete"></button>
         <input id="scene-name" maxlength="60" data-i18n-placeholder="scenes.name_placeholder">
+        <label class="check"><input type="checkbox" id="scene-steps"><span data-i18n="steps.toggle"></span></label>
         <button id="scene-save" data-i18n="scenes.save"></button>
         <span class="muted" id="scene-state"></span>
       </div>
+      <div class="steps-bar form hidden" id="steps-bar"></div>
       <div class="builder">
+        <div class="steps-list-pane hidden" id="steps-list-pane"></div>
         <div class="builder-left">
-          <div class="tabs" id="scene-group-tabs" role="tablist"></div>
-          <div class="grid-host" id="scene-grid"></div>
+          <div class="pick-tabs" id="scene-group-tabs" role="tablist"></div>
+          <div class="grid-host pick" id="scene-grid"></div>
+          <div class="pick-tabs pixel-tools" id="pixel-tools"></div>
           <div class="row wrap">
             <span class="muted" id="scene-sel"></span>
           </div>
@@ -155,7 +324,8 @@
           </div>
         </div>
         <div class="builder-right">
-          <h2 data-i18n="scenes.layers"></h2>
+          <div id="steps-editor" class="hidden"></div>
+          <h2 id="layers-title" data-i18n="scenes.layers"></h2>
           <ol class="layers" id="layers"></ol>
           <div class="row wrap">
             <button id="layer-add" data-i18n="scenes.add_layer"></button>
@@ -208,28 +378,28 @@
       <button id="song-add" data-i18n="setlists.add_song"></button>
     </section>
 
-    <!-- BUSK -->
-    <section id="page-busk" class="page">
+    <!-- OVERRIDE (v3 "busk") -->
+    <section id="page-override" class="page">
       <div class="row wrap">
         <select id="panel-pick"></select>
-        <button id="busk-release" class="danger" data-i18n="busk.release_all"></button>
-        <label class="check"><input type="checkbox" id="busk-edit"><span data-i18n="busk.edit"></span></label>
+        <button id="override-release" class="danger" data-i18n="override.release_all"></button>
+        <label class="check"><input type="checkbox" id="override-edit"><span data-i18n="override.edit"></span></label>
       </div>
-      <div class="busk" id="busk"></div>
-      <div id="busk-editor" class="hidden">
+      <div class="override-pads" id="override"></div>
+      <div id="override-editor" class="hidden">
         <div class="row wrap">
-          <input id="panel-key" maxlength="40" data-i18n-placeholder="busk.panel_key">
-          <input id="panel-name" maxlength="60" data-i18n-placeholder="busk.panel_name">
-          <label class="field-inline"><span data-i18n="busk.release_fade"></span><input id="panel-fade" type="number" min="0" max="30" step="0.1" class="narrow"></label>
-          <button id="panel-new" data-i18n="busk.new_panel"></button>
-          <button id="panel-del" class="danger-text" data-i18n="busk.delete_panel"></button>
+          <input id="panel-key" maxlength="40" data-i18n-placeholder="override.panel_key">
+          <input id="panel-name" maxlength="60" data-i18n-placeholder="override.panel_name">
+          <label class="field-inline"><span data-i18n="override.release_fade"></span><input id="panel-fade" type="number" min="0" max="30" step="0.1" class="narrow"></label>
+          <button id="panel-new" data-i18n="override.new_panel"></button>
+          <button id="panel-del" class="danger-text" data-i18n="override.delete_panel"></button>
         </div>
         <ol class="widgets-edit" id="widgets-edit"></ol>
         <div class="row wrap">
           <select id="widget-type"></select>
-          <button id="widget-add" data-i18n="busk.add_widget"></button>
-          <button id="panels-save" data-i18n="busk.save"></button>
-          <span class="muted" id="busk-state"></span>
+          <button id="widget-add" data-i18n="override.add_widget"></button>
+          <button id="panels-save" data-i18n="override.save"></button>
+          <span class="muted" id="override-state"></span>
         </div>
       </div>
     </section>
@@ -237,17 +407,167 @@
     <!-- HEADS -->
     <section id="page-heads" class="page">
       <p class="muted" data-i18n="heads.help"></p>
-      <div class="heads" id="heads"></div>
       <div class="row wrap">
+        <button id="fine" data-i18n="heads.fine" data-i18n-title="heads.fine_tip"></button>
         <button data-cmd="release_positions" data-i18n="heads.release_all"></button>
-        <input id="posname" maxlength="40" data-i18n-placeholder="heads.position_placeholder">
-        <button id="savepos" data-i18n="heads.save_position"></button>
       </div>
-      <div class="row wrap" id="positions"></div>
+      <div class="focus-bar row wrap hidden" id="focus"></div>
+      <div class="heads" id="heads"></div>
+      <h2 data-i18n="heads.store_title"></h2>
+      <div class="cols c150">
+        <input id="point-name" maxlength="40" data-i18n-placeholder="heads.position_placeholder">
+        <input id="point-desc" class="span2" data-i18n-placeholder="heads.desc_placeholder">
+        <input id="point-tags" data-i18n-placeholder="heads.tags_placeholder">
+        <select id="point-x"></select><select id="point-y"></select><select id="point-z"></select>
+        <button id="point-store" data-i18n="heads.save_position"></button>
+      </div>
+      <h2 data-i18n="heads.points"></h2>
+      <div class="row wrap"><button id="point-walk" data-i18n="heads.walk"></button></div>
+      <div id="point-problems"></div>
+      <ul class="point-list" id="point-list"></ul>
+    </section>
+
+    <!-- RIDE -->
+    <section id="page-autopilot" class="page">
+      <div class="row wrap ride-top">
+        <button id="ap-toggle" class="toggle big" data-i18n="autopilot.autopilot_off"></button>
+        <span class="row" id="ride-moods">
+          <button data-mood="low" class="big" data-i18n="autopilot.mood_low"></button>
+          <button data-mood="mid" class="big" data-i18n="autopilot.mood_mid"></button>
+          <button data-mood="high" class="big" data-i18n="autopilot.mood_high"></button>
+          <button data-mood="auto" data-i18n="autopilot.mood_auto"></button>
+        </span>
+        <button id="ap-hold" class="toggle big" data-i18n="autopilot.hold"></button>
+        <button id="ap-prev" class="big" data-i18n="autopilot.prev"></button>
+        <button id="ap-next" class="big" data-i18n="autopilot.next"></button>
+        <button id="ride-learn" data-i18n="autopilot.learn" data-i18n-title="autopilot.learn_help"></button>
+      </div>
+      <div class="row wrap">
+        <div class="energy" data-i18n-title="autopilot.energy"><i id="ap-energy"></i></div>
+        <span class="muted" id="ap-state"></span>
+      </div>
+      <div class="grid-host strip" id="ride-grid"></div>
+      <div class="ride-banks">
+        <div><h2 data-i18n="autopilot.move_fx"></h2><div class="ride-col" id="ride-move"></div></div>
+        <div><h2 data-i18n="autopilot.flash_fx"></h2><div class="ride-col" id="ride-flash"></div></div>
+        <div><h2 data-i18n="autopilot.colour_fx"></h2><div class="ride-col" id="ride-colour"></div></div>
+      </div>
+      <div class="pair">
+        <div><h2 data-i18n="autopilot.drum_fx"></h2><div class="row wrap" id="ride-drum"></div></div>
+        <div><h2 data-i18n="autopilot.palette"></h2>
+          <div class="row wrap"><span id="ride-palettes" class="row wrap"></span><button id="ride-lock" class="toggle" data-i18n="autopilot.lock"></button></div></div>
+      </div>
+      <h2 data-i18n="autopilot.controls"></h2>
+      <div class="tabs" id="ride-tabs" role="tablist"></div>
+      <div class="ride-faders" id="ride-faders"></div>
+      <h2 data-i18n="autopilot.presets"></h2>
+      <div class="row wrap ride-presets" id="ride-presets"></div>
+      <div class="row wrap">
+        <button id="ride-save-preset" data-i18n="autopilot.save_preset"></button>
+        <button id="ride-capture" data-i18n="autopilot.capture"></button>
+        <button id="ride-more" data-i18n="autopilot.more"></button>
+        <span class="sep-v"></span>
+        <button id="ride-reroll" data-i18n="autopilot.reroll"></button>
+        <span class="muted" data-i18n="autopilot.keep"></span>
+        <label class="chip"><input type="checkbox" data-lock="move"><span data-i18n="autopilot.bank_move"></span></label>
+        <label class="chip"><input type="checkbox" data-lock="colour"><span data-i18n="autopilot.bank_colour"></span></label>
+        <label class="chip"><input type="checkbox" data-lock="drum"><span data-i18n="autopilot.bank_drum"></span></label>
+        <label class="chip"><input type="checkbox" data-lock="palette"><span data-i18n="autopilot.palette"></span></label>
+        <label class="chip"><input type="checkbox" data-lock="feel"><span data-i18n="autopilot.controls"></span></label>
+      </div>
+      <div class="row wrap" id="ride-variations"></div>
+      <h2 data-i18n="autopilot.haze"></h2>
+      <div class="row wrap">
+        <button data-haze="off" data-i18n="haze.off"></button>
+        <button data-haze="manual" data-i18n="haze.manual"></button>
+        <button data-haze="pulse" data-i18n="haze.pulse"></button>
+        <button id="ride-boost" class="hold perform" data-i18n="haze.boost"></button>
+        <button id="ride-walk-on" data-i18n="autopilot.walk_on"></button>
+        <button id="ride-walk-off" data-i18n="autopilot.walk_off"></button>
+      </div>
+      <h2 data-i18n="autopilot.why"></h2>
+      <ul class="ride-why" id="ride-why"></ul>
+      <details class="scene-more">
+        <summary data-i18n="autopilot.lights"></summary>
+        <p class="muted" data-i18n="autopilot.lights_help"></p>
+        <ul class="point-list" id="ride-lights"></ul>
+      </details>
+    </section>
+
+    <!-- REVIEW -->
+    <section id="page-review" class="page">
+      <p class="muted" data-i18n="review.help"></p>
+      <div class="row wrap">
+        <select id="rv-mood"><option value="" data-i18n="review.all_moods"></option><option value="low" data-i18n="autopilot.mood_low"></option><option value="mid" data-i18n="autopilot.mood_mid"></option><option value="high" data-i18n="autopilot.mood_high"></option></select>
+        <select id="rv-bank"><option value="" data-i18n="review.both_banks"></option><option value="move" data-i18n="autopilot.move_fx"></option><option value="colour" data-i18n="autopilot.colour_fx"></option></select>
+        <select id="rv-palette"></select>
+        <span class="muted" id="rv-count"></span>
+      </div>
+      <div class="row wrap">
+        <button id="rv-prev" class="big" data-i18n="autopilot.prev"></button>
+        <button id="rv-up" class="big" data-i18n="review.like"></button>
+        <button id="rv-down" class="big" data-i18n="review.dislike"></button>
+        <button id="rv-ban" class="big danger-text" data-i18n="review.ban"></button>
+        <button id="rv-clear" data-i18n="review.clear"></button>
+        <button id="rv-next" class="big" data-i18n="autopilot.next"></button>
+        <button id="rv-auto" data-i18n="review.auto"></button>
+        <input id="rv-every" type="number" min="2" max="60" value="8" class="narrow" data-i18n-title="review.every">
+      </div>
+      <h2 id="rv-now"></h2>
+      <ol class="rv-list" id="rv-list"></ol>
+      <details class="section" open data-remember="review.generator">
+      <summary data-i18n="review.generator"></summary>
+      <p class="muted" data-i18n="review.generator_help"></p>
+      <div class="row wrap">
+        <select id="gen-mood"><option value="low" data-i18n="autopilot.mood_low"></option><option value="mid" selected data-i18n="autopilot.mood_mid"></option><option value="high" data-i18n="autopilot.mood_high"></option></select>
+        <select id="gen-style"><option value="" data-i18n="review.any_style"></option><option value="rock" data-i18n="review.style_rock"></option><option value="ballad" data-i18n="review.style_ballad"></option><option value="acoustic" data-i18n="review.style_acoustic"></option><option value="opera" data-i18n="review.style_opera"></option><option value="dance" data-i18n="review.style_dance"></option></select>
+        <select id="gen-palette"></select>
+        <input id="gen-count" type="number" min="1" max="50" value="4" class="narrow" data-i18n-title="review.how_many">
+        <input id="gen-prefix" maxlength="30" data-i18n-placeholder="review.prefix">
+        <input id="gen-seed" maxlength="30" class="narrow" data-i18n-placeholder="review.seed">
+        <button id="gen-scenes" data-i18n="review.gen_scenes"></button>
+      </div>
+      <div class="row wrap">
+        <input id="gen-show-name" maxlength="40" data-i18n-placeholder="review.show_name">
+        <button id="gen-show" data-i18n="review.gen_show"></button>
+        <select id="gen-setlist-pick"></select>
+        <button id="gen-setlist" data-i18n="review.gen_setlist"></button>
+      </div>
+      <div class="muted" id="gen-out"></div>
+      </details>
+    </section>
+
+    <!-- PALETTES -->
+    <section id="page-palettes" class="page">
+      <p class="muted" data-i18n="palettes.help"></p>
+      <h2 data-i18n="palettes.title"></h2>
+      <div class="row wrap">
+        <input id="palette-new-name" maxlength="40" data-i18n-placeholder="palettes.new_placeholder">
+        <button id="palette-new" data-i18n="palettes.new"></button>
+        <label class="button-like"><span data-i18n="palettes.import"></span><input type="file" id="palette-import" accept=".json,application/json" class="hidden-file"></label>
+      </div>
+      <div id="palette-list"></div>
+      <h2 data-i18n="palettes.named"></h2>
+      <p class="muted" data-i18n="palettes.named_help"></p>
+      <div class="row wrap">
+        <input id="colour-new-name" maxlength="40" data-i18n-placeholder="palettes.colour_placeholder">
+        <button id="colour-new" data-i18n="palettes.new_colour"></button>
+      </div>
+      <ul class="named-colours" id="named-colours"></ul>
     </section>
 
     <!-- MIDI -->
     <section id="page-midi" class="page">
+      <h2 data-i18n="midi.inputs"></h2>
+      <p class="muted" data-i18n="midi.inputs_help"></p>
+      <div class="row wrap">
+        <input id="device-new-id" maxlength="40" data-i18n-placeholder="midi.device_placeholder">
+        <button id="device-new" data-i18n="midi.add_device"></button>
+        <select id="profile-pick"></select>
+      </div>
+      <div id="input-edit"></div>
+      <div id="inputs"></div>
+      <h2 data-i18n="midi.monitor"></h2>
       <div class="row wrap">
         <button id="midi-pause" data-i18n="midi.pause"></button>
         <button id="midi-clear" data-i18n="midi.clear"></button>
@@ -255,7 +575,7 @@
       </div>
       <table class="monitor"><thead><tr>
         <th data-i18n="midi.col_time"></th><th data-i18n="midi.col_port"></th><th data-i18n="midi.col_ch"></th>
-        <th data-i18n="midi.col_type"></th><th>#</th><th data-i18n="midi.col_value"></th><th data-i18n="midi.col_triggered"></th>
+        <th data-i18n="midi.col_type"></th><th>#</th><th data-i18n="midi.col_value"></th><th data-i18n="midi.col_named"></th><th data-i18n="midi.col_triggered"></th>
       </tr></thead><tbody id="monitor"></tbody></table>
       <h2 data-i18n="midi.learn"></h2>
       <div class="row wrap">
@@ -265,11 +585,13 @@
         <button id="learn-cancel" data-i18n="midi.learn_cancel"></button>
         <span id="learn-state" class="muted"></span>
       </div>
-      <h2 data-i18n="midi.mapping"></h2>
-      <table class="map"><thead><tr>
-        <th data-i18n="midi.col_input"></th><th data-i18n="midi.col_ch"></th><th>#</th><th data-i18n="midi.col_action"></th><th></th>
-      </tr></thead><tbody id="map"></tbody></table>
-      <button id="map-save" data-i18n="midi.save"></button>
+      <details class="section" id="map-section" data-remember="midi.map">
+        <summary><span data-i18n="midi.mapping"></span><span class="sum muted" data-i18n="midi.mapping_sum"></span></summary>
+        <table class="map"><thead><tr>
+          <th data-i18n="midi.col_input"></th><th data-i18n="midi.col_message"></th><th>#</th><th data-i18n="midi.col_action"></th><th></th>
+        </tr></thead><tbody id="map"></tbody></table>
+        <button id="map-save" data-i18n="midi.save"></button>
+      </details>
     </section>
 
     <!-- SETUP -->
@@ -287,30 +609,44 @@
       </div>
       <h2 data-i18n="setup.flash_test"></h2>
       <div class="row"><button data-cmd="flash_test" data-i18n="setup.flash_all"></button></div>
-      <h2 data-i18n="setup.devices"></h2>
-      <table class="devices"><thead><tr>
-        <th data-i18n="setup.col_device"></th><th data-i18n="setup.col_type"></th><th data-i18n="setup.col_state"></th><th data-i18n="setup.col_detail"></th>
-      </tr></thead><tbody id="devices"></tbody></table>
-      <h2 data-i18n="setup.nodes"></h2>
-      <table class="nodes"><thead><tr>
-        <th data-i18n="setup.col_name"></th><th>MAC</th><th data-i18n="setup.col_state"></th><th data-i18n="setup.col_signal"></th>
-        <th data-i18n="setup.col_loss"></th><th data-i18n="setup.col_last_data"></th><th></th>
-      </tr></thead><tbody id="nodes"></tbody></table>
-      <div class="row wrap">
-        <span class="muted" id="node-setup"></span>
-        <button id="node-resend" data-i18n="setup.node_resend" data-i18n-title="setup.node_resend_tip"></button>
-        <label class="field-inline"><span data-i18n="setup.radio_channel"></span>
-          <input type="number" id="radio-channel" min="1" max="13" class="num"></label>
-        <button id="radio-move" data-i18n="setup.radio_move"></button>
+      <div class="pair">
+        <div>
+          <h2 data-i18n="setup.devices"></h2>
+          <table class="devices"><thead><tr>
+            <th data-i18n="setup.col_device"></th><th data-i18n="setup.col_type"></th><th data-i18n="setup.col_state"></th><th data-i18n="setup.col_detail"></th>
+          </tr></thead><tbody id="devices"></tbody></table>
+        </div>
+        <div>
+          <h2 data-i18n="setup.found"></h2>
+          <p class="muted" data-i18n="setup.found_help"></p>
+          <table class="devices"><thead><tr>
+            <th data-i18n="setup.col_device"></th><th data-i18n="setup.col_id"></th><th data-i18n="setup.col_alias"></th>
+            <th data-i18n="setup.col_use"></th><th></th>
+          </tr></thead><tbody id="found"></tbody></table>
+          <ul class="layout-problems" id="found-missing"></ul>
+        </div>
+        <div>
+          <h2 data-i18n="setup.nodes"></h2>
+          <table class="nodes"><thead><tr>
+            <th data-i18n="setup.col_name"></th><th>MAC</th><th data-i18n="setup.col_state"></th><th data-i18n="setup.col_signal"></th>
+            <th data-i18n="setup.col_loss"></th><th data-i18n="setup.col_last_data"></th><th></th>
+          </tr></thead><tbody id="nodes"></tbody></table>
+          <div class="row wrap">
+            <span class="muted" id="node-setup"></span>
+            <button id="node-resend" data-i18n="setup.node_resend" data-i18n-title="setup.node_resend_tip"></button>
+            <label class="field-inline"><span data-i18n="setup.radio_channel"></span>
+              <input type="number" id="radio-channel" min="1" max="13" class="num"></label>
+            <button id="radio-move" data-i18n="setup.radio_move"></button>
+          </div>
+        </div>
       </div>
-      <h2 data-i18n="setup.addresses"></h2>
-      <table class="addr"><thead><tr>
-        <th data-i18n="setup.col_fixture"></th><th data-i18n="setup.col_type"></th><th data-i18n="setup.col_uni"></th>
-        <th data-i18n="setup.col_start"></th><th data-i18n="setup.col_end"></th><th data-i18n="setup.col_in_rig"></th><th data-i18n="setup.col_checked"></th>
-      </tr></thead><tbody id="addr"></tbody></table>
-      <div class="muted" id="addrnotes"></div>
-      <h2 data-i18n="wizard.title"></h2>
-      <div class="row wrap"><button id="wizard-open" data-i18n="wizard.open"></button><span class="muted" data-i18n="wizard.open_help"></span></div>
+      <details class="section" id="addr-section" data-remember="setup.addr">
+        <summary><span data-i18n="setup.addresses"></span><span class="sum muted" id="addrnotes"></span></summary>
+        <table class="addr"><thead><tr>
+          <th data-i18n="setup.col_fixture"></th><th data-i18n="setup.col_type"></th><th data-i18n="setup.col_uni"></th>
+          <th data-i18n="setup.col_start"></th><th data-i18n="setup.col_end"></th><th data-i18n="setup.col_in_rig"></th><th data-i18n="setup.col_checked"></th>
+        </tr></thead><tbody id="addr"></tbody></table>
+      </details>
       <h2 data-i18n="access.title"></h2>
       <div class="access" id="access">
         <p class="muted" id="access-state"></p>
@@ -332,16 +668,24 @@
         </div>
         <button id="logout" class="hidden" data-i18n="access.logout"></button>
       </div>
+      <details class="section" id="claude-section">
+        <summary><span data-i18n="claude.title"></span><span class="sum muted" id="claude-sum"></span></summary>
+        <div id="claude-connect" class="claude-connect"></div>
+      </details>
       <h2 data-i18n="setup.appearance"></h2>
       <div class="row wrap">
         <label class="muted" for="theme" data-i18n="setup.theme"></label>
         <select id="theme"></select>
+        <label class="muted" for="density" data-i18n="setup.density"></label>
+        <select id="density"><option value="compact" data-i18n="setup.density_compact"></option><option value="comfortable" data-i18n="setup.density_comfortable"></option></select>
       </div>
       <h2 data-i18n="setup.updates"></h2>
       <div class="row wrap">
         <button id="update-check" data-i18n="setup.update_check"></button>
         <span class="muted" id="update-result"></span>
       </div>
+      <h2 data-i18n="wizard.title"></h2>
+      <div class="row wrap"><button id="wizard-open" data-i18n="wizard.open"></button><span class="muted" data-i18n="wizard.open_help"></span></div>
     </section>
 
     <!-- FIXTURES -->

@@ -9,7 +9,7 @@ See `docs/SCOPE.md` for requirements and `CLAUDE.md` for development rules. The 
 | Path | What |
 | --- | --- |
 | `docs/PROTOCOL.md` | USB serial and ESP-NOW protocol (node link) |
-| `shows/` | Show files: `fixtures.yaml`, `palettes.yaml`, `scenes/`, `shows/`, `setlists/`, `rigs/`, `looks/`, `midi/` |
+| `shows/` | Show files: `fixtures.yaml`, `palettes.yaml`, `inputs.yaml`, `presets.yaml`, `quality.yaml`, `ratings.yaml` (optional), `scenes/`, `shows/`, `setlists/`, `rigs/`, `looks/`, `midi/` |
 | `dmx_suite/engine.py` | Show engine: 40 Hz loop, MASTER, blackout, drum flash, masters, haze |
 | `dmx_suite/rules.py` | Rule layer: enforces the hard rules just before output |
 | `dmx_suite/scenes.py` | Scenes: layered colour, effects (chases, flash, sweep, random move) and positions |
@@ -122,14 +122,19 @@ Simulator console example: `master off`, then `hit 38 110` flashes the bars and 
 
 `dmx-suite run` also starts the UI at http://localhost:8505/ (`--port` to change, `--no-web` to turn off); the desktop app shows the same screens in its own window. Pages are in a menu down the left (a bar along the bottom on a phone); MASTER, blackout, gig lock and the status strip stay along the top.
 
+- **Autopilot** (v3 "Ride"): the auto show: autopilot and mood, Move / Flash / Colour / drum FX, palettes, Feel faders, presets, re-roll, the decision log ("why did it do that?"), haze alongside.
+- **Review:** rate or ban looks at rehearsal; the generator makes scenes and shows from the FX banks.
 - **Live:** the light layout with live colours, show/set/scene buttons, the playing set's steps (tap one to jump to it, with repeat count and time left), next step, tap tempo or type a BPM, speed fader, setlist (tap a song to jump to it), grand master and sub-master faders, haze.
 - **Layout:** arrange the lights and make groups (below).
 - **Scenes:** build scenes on screen (below).
 - **Shows:** build shows from scenes and edit setlists (below).
 - **Fixtures:** the patch, fixture types and rig settings (below).
-- **Busk:** your own panels of buttons and faders to play over the running show (below).
-- **Heads:** drag on a pad to hold a head at a spot (head limits still apply); save held positions as a palette position.
-- **MIDI:** live monitor (what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
+- **Override:** your own panels of buttons and faders to play over the running show (below).
+- **Heads:** drag on a pad to hold a head at a spot (head limits still apply; fine mode for small moves); store held heads to named head points for this rig (description, tags, stage place); focus mode and a re-focus walk.
+- **Palettes:** palettes with tags (seven built in), generate from a colour by colour theory, preview on the rig; named colours.
+- **MIDI:** named inputs and devices (learn, calibrate, device profiles), live monitor (input name and what each message triggered), pause/clear/filter, MIDI learn, mapping table, save.
+
+Alerts lie over the top of the page as banners (dismiss, snooze, minimise); the bell opens the alerts list (mute a device for this rig, quiet mode). Colours are picked with the colour wheel (◐).
 - **Setup:** find a light, channel tester, drum flash test, devices, node health (name/identify nodes), address check, theme, check for updates.
 - **Files:** preview or play scenes, and restore any file from the backups.
 
@@ -224,7 +229,7 @@ USB outputs (node, Enttec Pro) write on their own thread, so a slow or unplugged
 
 ## Show files
 
-**The `.dms` show file:** one file holds the whole show (fixtures, palettes, rigs, looks, scenes, shows, setlists, busk panels, MIDI maps): a zip of the YAML files below plus `dms.json` (file version, app version, when saved). The app works on a copy in app data and saves every change straight back into the `.dms`, so OneDrive syncs one file. Backups stay on the laptop. If the app stopped before a change reached the file, the next open keeps it as `<name> (recovered DD-MM-YYYY).dms`. A `.dms` open in the app on another computer (`<name>.dms.lock` next to it) opens read-only. On the Files page: **Open…**, **Save as…**, **New from starter show…**, **Download**, **Upload and open…** (phones), and recent files; opening another file restarts the app on it (the lights go dark for a few seconds). A show folder still works everywhere a `.dms` does:
+**The `.dms` show file:** one file holds the whole show (fixtures, palettes, rigs, looks, scenes, shows, setlists, Override panels, MIDI maps): a zip of the YAML files below plus `dms.json` (file version, app version, when saved). The app works on a copy in app data and saves every change straight back into the `.dms`, so OneDrive syncs one file. Backups stay on the laptop. If the app stopped before a change reached the file, the next open keeps it as `<name> (recovered DD-MM-YYYY).dms`. A `.dms` open in the app on another computer (`<name>.dms.lock` next to it) opens read-only. On the Files page: **Open…**, **Save as…**, **New from starter show…**, **Download**, **Upload and open…** (phones), and recent files; opening another file restarts the app on it (the lights go dark for a few seconds). A show folder still works everywhere a `.dms` does:
 
 ```bash
 dmx-suite pack shows "My show.dms"
@@ -232,9 +237,9 @@ dmx-suite unpack "My show.dms" my-show-folder
 dmx-suite --shows "My show.dms" run --sim
 ```
 
-All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers and drum pad map (`shows/midi/default.yaml`), and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.
+All placeholders until copied from the Daslight patch: channel maps (`verified: false` in `shows/fixtures.yaml`), DMX addresses, FCB1010 program change numbers (`shows/inputs.yaml`) and drum pad map (`shows/midi/default.yaml`), head points and the MH-A tilt limit (`shows/rigs/full.yaml`). `dmx-suite check` lists the unverified fixture types.
 
-Scenes (`shows/scenes/*.yaml`) are layers applied in order to lights or groups: a colour, position or gobo, an effect, or both. Colours, positions and gobos come from `shows/palettes.yaml`. Like looks, scenes can't set dimmers or haze or move the U'King heads. See the top of `dmx_suite/scenes.py` for every option.
+Scenes (`shows/scenes/*.yaml`) are layers applied in order to lights or groups: a colour, position or gobo, an effect, or both. Colours and gobos come from `shows/palettes.yaml`; positions are the rig's head points (`positions:` in `shows/rigs/*.yaml`). MIDI and OSC inputs are named once in `shows/inputs.yaml` and used by name in the MIDI map. Like looks, scenes can't set dimmers or haze or move the U'King heads. See the top of `dmx_suite/scenes.py` for every option.
 
 **Effects** (each a class in `dmx_suite/effects/`, so the scene builder, auto shows and Claude all see the same list):
 
@@ -267,9 +272,9 @@ sets:
 
 On the **Shows** page: pick or make a show, add sets, add scenes as steps, set each one's repeats, hold (seconds, beats or bars) and fade, reorder them, and set the set's fade, order and loop; or switch a set to auto and fill in its style. Save, play or delete. The setlist editor beside it adds, reorders and removes songs, each a show (and set) or a scene, with MASTER on, off or as it is.
 
-**Beat sync:** the rig file picks a tempo source with `tempo: {source: tap | kick | midi_clock}`. `tap` is a pedal, key or button; `kick` follows the drummer's kick note (`kick_note`, default 36; average of the last 4 beats, fills ignored); `midi_clock` follows MIDI clock from any input. If a kick or clock goes quiet, the last tempo is kept for `timeout_s` (default 30 s), then effects return to fixed timers. With no tempo, everything runs on fixed timers as before. A layer's `beats` sets its effect cycle in beats instead of seconds. A `speed` action (MIDI, OSC or a busk fader) multiplies effect speed 0.25-4×. The top bar shows the tempo, its source and a beat pulse.
+**Beat sync:** the rig file picks a tempo source with `tempo: {source: tap | kick | midi_clock}`. `tap` is a pedal, key or button; `kick` follows the drummer's kick note (`kick_note`, default 36; average of the last 4 beats, fills ignored); `midi_clock` follows MIDI clock from any input. If a kick or clock goes quiet, the last tempo is kept for `timeout_s` (default 30 s), then effects return to fixed timers. With no tempo, everything runs on fixed timers as before. A layer's `beats` sets its effect cycle in beats instead of seconds. A `speed` action (MIDI, OSC or a Override fader) multiplies effect speed 0.25-4×. The top bar shows the tempo, its source and a beat pulse.
 
-**Busking** (Busk page, `shows/panels.yaml`): panels of buttons and faders, one per show (or `default`). Widgets: colour (latch, or while held), flash, solo (everything else dark while held), effect (latch a scene's layers over the show), go (a scene, or a show and set), fader (grand master, a sub-master, flash level or speed) and haze. Tick **Edit panels** to make panels and add, reorder or remove widgets. Busk overrides sit on top of the show and under the rules (colour only under the 0.05 band profile, unlit channels at 0, solo leaves the kick light alone); releasing fades back to the show over the panel's `release_fade_s`. Lights held by busk buttons get a dashed outline on the layout, and **Release all** lets go of everything. Map any widget to MIDI or OSC with the `busk` action (`panel`, `widget`). Setlists (`shows/setlists/`) list songs, each with a show/set or a scene, optionally forcing MASTER. A scene layer can name a `fallback` group to use when its fixtures aren't in the rig.
+**Override panels** (Override page, `shows/panels.yaml`): panels of buttons and faders, one per show (or `default`). Widgets: colour (latch, or while held), flash, solo (everything else dark while held), effect (latch a scene's layers over the show), go (a scene, or a show and set), fader (grand master, a sub-master, flash level or speed) and haze. Tick **Edit panels** to make panels and add, reorder or remove widgets. Override overrides sit on top of the show and under the rules (colour only under the 0.05 band profile, unlit channels at 0, solo leaves the kick light alone); releasing fades back to the show over the panel's `release_fade_s`. Lights held by Override buttons get a dashed outline on the layout, and **Release all** lets go of everything. Map any widget to MIDI or OSC with the `Override` action (`panel`, `widget`). Setlists (`shows/setlists/`) list songs, each with a show/set or a scene, optionally forcing MASTER. A scene layer can name a `fallback` group to use when its fixtures aren't in the rig.
 
 **Rule profiles:** each rig file picks which rig rules apply with `profile:`. `0.05_band` (the shipped rigs) is MASTER on/off with colour-only scenes, drum flash with MASTER off, and the kick light ignoring MASTER. `generic` is standard dimmer behaviour: lights follow the scene, a layer or look can set `intensity: 0-1`, and there's no drum flash. A block (`profile: {base: 0.05_band, master_exempt: [wash]}`) changes single settings. A rig file with no `profile:` runs as `0.05_band`. Safety rules (no glow, haze only from the Haze controls, grand master intensity only, head limits) apply under every profile. `dmx-suite check` refuses a scene or look that sets `intensity` while any rig uses a MASTER on/off profile.
 

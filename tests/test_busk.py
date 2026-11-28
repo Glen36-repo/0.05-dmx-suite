@@ -1,4 +1,4 @@
-"""Busking: panels, overrides over the show, release fades, the rules, MIDI/OSC and the API."""
+"""Override panels (v3 "busking"): panels, overrides over the show, release fades, the rules, MIDI/OSC and the API."""
 
 import shutil
 from pathlib import Path
@@ -79,7 +79,7 @@ def test_colour_latch_and_release_back_to_the_show_exactly(app):
     before = {u: bytes(f) for u, f in app.engine.frames.items()}
     assert app.busk("band", "red") == "All red on"
     assert chans(app, "bar_1")[:3] == [255, 0, 0] and chans(app, "wash_l")[0] == 255
-    assert app.snapshot()["busk"]["lights"]["bar_1"] == ["band/red"]
+    assert app.snapshot()["override"]["lights"]["bar_1"] == ["band/red"]
     assert app.busk("band", "red") == "All red off"  # latch: a second press lets go, fading over 1 s
     app.clock.advance(0.5)
     app.engine.tick()
@@ -129,7 +129,7 @@ def test_release_all(app):
     app.busk("band", "red")
     app.busk("band", "solo", down=True)
     app.engine.release_all(0)
-    assert app.engine.overrides == [] and app.snapshot()["busk"]["held"] == []
+    assert app.engine.overrides == [] and app.snapshot()["override"]["held"] == []
 
 
 def test_busk_from_midi(app, root):

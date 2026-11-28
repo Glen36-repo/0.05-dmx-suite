@@ -2,6 +2,117 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v4: stage view, Layout / Patch, routing, Monitor, step editor)
+
+Scope and decisions: `docs/V4-SCOPE.md`. Show file format 6 (old files upgrade once, with backups).
+
+### Added
+- Layout / Patch page: full width, universe tabs, Stage and Addresses views (each light's channels and the value going out on every channel, from what the interface really sent), a fixture list with inline address / universe edits checked for clashes, the routing table and a status strip; Print and PNG patch sheet.
+- Stage view: zooms to fit the rig (wheel zoom, pan, Fit); a pixel bar is one outlined object; names never overlap (nudged, short name, leader line; full id on hover); the haze machine is a corner indicator, not a square among the lights.
+- Warnings for lights in the same place or touching (show check, status bar, alerts, the Layout page): spatial effects use where the lights are.
+- ARRANGE panel: Align / Distribute / Shape / Rotate (step, angle, flip) / Pixels (shape, reverse order) as grouped icon buttons, disabled with the reason when they can't be used, shortcuts; Redo and Revert to saved.
+- Universe routing: every output has `universe:`; one universe can go out several outputs; problems flagged both ways; outputs change live (no restart).
+- Devices by what they report (product, serial number, VID:PID; MIDI port names), kept by serial number so a new COM port doesn't matter; your own names; missing and new device notices; **Use this instead** for a missing interface works under gig lock.
+- Monitor page: DMX out (the frame an interface sent, per channel with names, flags for no frames / all zero), MIDI in (each event with the named input and what it did, filters, heat map, rates, Learn), MIDI out (log, test send).
+- Step editor: step list, stage and programmer; set vs tracked per value; Record / Record over / as new step / Update step; Live or blind; play, loop a range, tap; undo / redo; YAML panel; problems pinned to their step.
+- Single pixels of a bar in the scene editor (click, shift, ctrl, shift-drag, lasso, double-click, helpers), written as `bar_1:px1-4`, `bars:px1,8`, `bars:odd`; saved pixel groups.
+- Haze settings per mode (pulse has its own level), live, saved per rig; Test; haze presets (and MIDI `haze_preset`).
+- Show and scene buttons as aligned grids in a fixed order; a Starter / generated section.
+- Button size setting: Compact (new default) or Comfortable; MASTER, BLACKOUT, haze boost, moods and pads stay big.
+- Claude: get_layout, set_layout, save_layout_position, delete_fixture, list_outputs, set_output, list_devices, set_device, monitor_dmx, monitor_midi, add_step, update_step, move_step, delete_step, save_haze_settings; set_haze takes settings; preview_scene can hold a step; save_input takes device_info.
+
+### Changed
+- **Ride** is now **Autopilot** (its controls are **Feel**); **Busk** is now **Override**. Old file keys, MIDI actions and API routes still work; files are written with the new ones (`feel:`, `override`, `autopilot_fx`, `feel_speed` ...). `panels.yaml` keeps its name.
+- Driver ids say what the interface does: `usb_dmx_open`, `usb_dmx_pro`, `node` (`enttec_open`, `enttec_pro`, `node_serial` still load). The status bar no longer names a brand.
+- Reloading the rig keeps the haze mode the band picked.
+
+### Fixed
+- Renaming a group also renames it in step scenes' `set:` and in pixel selections.
+- Haze machines no longer stretch where a spatial effect runs.
+- `save_input` over Claude needs the device and keeps it (tested through the MCP layer); if Claude Desktop still drops it, reconnect it (Setup > Connect to Claude > Update) and restart Claude Desktop.
+
+## Unreleased (UI tidy)
+
+### Changed
+- Scene builder: the lights in the picker are about twice the size and fill the box; the group buttons show how many lights each has, with **None** and **Invert**. On a phone the picker scrolls sideways rather than shrink the lights.
+- Live and Ride: the lights fill the picture; scenes sit on their own line under the shows.
+- The menu is grouped (Perform, Build, Rig, System). On a phone the bottom bar has Live, Ride, Busk, Scenes and Shows, and **More** opens the other pages (before, four pages couldn't be reached).
+- Ride: smaller FX buttons with the colour bank four wide, so the page is about 15% shorter.
+- MIDI: each named input fits on one line (long mappings are cut short; hover for the full text); the full mapping table is folded away.
+- Setup: Devices and Nodes side by side; Addresses folded (its summary stays in the heading); Connect to Claude folds away once Claude is connected.
+- Heads: each point on one line. Shows: short settings side by side. Review: the generator folds away.
+- Phones: the top bar fits on one line and the status strip shows just the lights.
+
+### Fixed
+- Alert banners: ✕ and Snooze work with a normal press. The banners were redrawn about ten times a second, so the button changed under your finger and the press was lost. The same goes for the buttons in the bell's list.
+- Fixtures: the empty red bar under the patch no longer shows when nothing clashes.
+- MIDI: the TD-25 buttons no longer run off the side of the card.
+
+## Unreleased (Connect to Claude)
+
+### Added
+- Setup page: Connect to Claude, with a checklist for a new laptop, whether Claude Desktop and Claude Code are connected to this show, Connect / Update / Disconnect, and when Claude last checked in. The status strip's Claude light opens it.
+- Claude Code is connected too (`~/.claude.json`), not only Claude Desktop.
+
+### Fixed
+- Alert banners no longer cover the status strip.
+- The setup wizard no longer redraws over the next step when the port scan answers late.
+- The Scenes page ignores taps made while it's still loading.
+
+## Unreleased (v3, release V3.5)
+
+### Added
+- Presets: save a Ride look, play it from the Ride page or a pedal, use it as a show step or setlist cue, or limit the autopilot to some presets for a song; six starter presets.
+- Look review page: every look the rig can do, filtered by mood, bank or palette; thumbs up / down or ban; auto-advance; open a look from the decision log. The autopilot and generator favour liked looks and never use banned ones.
+- Generator: scenes from a mood, style and palette; a show from a mood plan; a starter show for every song in a setlist (from its mood and BPM); plain YAML with a `generated:` note; same seed, same files.
+- Lock and re-roll, "more like this", and save the current look as a scene, on the Ride page.
+- Claude: generate scenes and shows, list and save presets.
+
+## Unreleased (v3, release V3.4)
+
+### Added
+- Ride page: autopilot, mood, hold, previous/next look; Move FX, Flash FX and Colour FX banks with big touch targets; drum FX; palettes with a lock; ride faders for everything or per bank; haze controls alongside; layout strip; "Why did it do that?"; lights in the auto show; Learn any control from a pad or pedal.
+- Autopilot: looks change on a timer per mood (low 60 s / mid 40 s / high 20 s, with variation), no repeats, contrast with the last look; energy from named input roles (MIDI only); mood follows the energy or a pedal; fill + crash changes early with a colour hit; build and breakdown; pauses while MASTER is off.
+- Between songs: silence fades to a talking look, a count-in or first hit starts the show again; walk-on and walk-off looks from buttons or the setlist.
+- Control priority (blackout > MASTER-off drum flash > Flash FX and busk > hold > autopilot / show) shown on the Ride page; `release_fade_s` fades back in when a higher level lets go.
+- Decision log: every look change with its reason, on screen and per gig in app data.
+- MIDI/OSC actions for all of it; Claude can read what the autopilot is doing and why, and tune its settings.
+
+## Unreleased (v3, release V3.3)
+
+### Added
+- Auto classification: every light sorted into head, wash, pixel, strobe, effect or kick by what it can do; override or leave lights out per rig (`auto:`). Haze never joins.
+- FX banks: Move FX (13), Colour FX (23), drum-reactive (6) and Flash FX (8), each with what it needs, how busy it is, its speed and moods. 18 new registry effects, also in the scene builder.
+- Drum-reactive effects driven by named input roles (kick pump, snare hit, tom roll, cymbal shimmer, fill build, velocity colour).
+- Flash FX from pads and pedals (`flash_fx`): blinder, colour hit, strobe, blackout, freeze, flash and decay, chase hit, rig split hit.
+- Ride controls: speed, fade, fan, size, shift, global and per bank; layer `shift` (phase offset) on any effect.
+- Look quality rules as data (`quality.yaml`): busy scores, one lead at a time, mood speeds, speed matching, contrast between looks, palette theory.
+- Rig size scaling: only what the rig can do is offered.
+- Claude: list the FX banks, preview a look with its quality notes, read and tune the quality rules.
+
+## Unreleased (v3, release V3.2)
+
+### Added
+- Step scenes: steps programmed by hand with a step time and fade time each (or the scene's), tracking (a step only sets what changes), loop / once / bounce, next step on the timer, a pedal or a named input (e.g. every snare hit), beats with beat sync.
+- Heads move dark (the 0.05 band default) or glide lit (the generic default), per scene or step; glides are 16-bit with the head's speed channel at fastest, and stay inside the head limits.
+- Step scene editor in the scene builder: set the selected lights, capture what they show, add/duplicate/reorder steps, preview one step, play from a step; effects on top.
+- Live step speed and fade faders (busk faders and MIDI `step_speed` / `step_fade`), and `step_next` / `step_back` actions.
+
+## Unreleased (v3, release V3.1)
+
+### Added
+- Named inputs: define each pad, pedal, key or OSC control once (`inputs.yaml`), grouped into devices, with roles (kick, snare, tom, cymbal, count-in, activity), velocity range and calibrated velocity curve; MIDI maps name them. Learn an input from the gear; device profiles for the TD-25, SamplePad 4, FCB1010 and GM drums; save your own.
+- Head points: named aim points per rig config with a description, tags and a rough stage place; store held heads to a point on the Heads page, fine mode, focus mode and a re-focus walk.
+- Colour wheel: hue/saturation, brightness, hex and RGB, white/amber/UV for lights that have them, white temperature presets, recent and named swatches, pick from a light, what each light can make, live preview.
+- Palettes page: palettes with tags (seven built in), generate from a colour by colour theory, preview on the rig, rename, duplicate, import and export; named colours renamed everywhere at once.
+- Alerts: banners over the page (no layout jumps) with dismiss, snooze and minimise; a bell with the alerts list; mute a device for this rig; quiet mode; critical alerts can't be dismissed while they last; an alerts log.
+- Claude: list and edit inputs and head points, read alerts; the guide explains inputs and points.
+
+### Changed
+- Show file format 5: MIDI mappings become named inputs and palette positions become head points in each rig, once, with a backup. Everything looks and reacts exactly as before.
+- MIDI learn makes (or reuses) a named input.
+- Deleting a named colour that's in use says where it's used.
+
 ## Unreleased (v2, release R8)
 
 ### Added

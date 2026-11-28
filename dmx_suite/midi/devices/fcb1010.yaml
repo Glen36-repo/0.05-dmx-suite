@@ -1,0 +1,18 @@
+# Behringer FCB1010 foot controller: 10 switches sending program changes 0-9 (bank 0) on
+# channel 1, and the two expression pedals as CC 7 and CC 27 (factory settings).
+version: 5
+name: Behringer FCB1010
+channel: 1
+inputs:
+  switch_1: {name: Switch 1, type: program_change, number: 0}
+  switch_2: {name: Switch 2, type: program_change, number: 1}
+  switch_3: {name: Switch 3, type: program_change, number: 2}
+  switch_4: {name: Switch 4, type: program_change, number: 3}
+  switch_5: {name: Switch 5, type: program_change, number: 4}
+  switch_6: {name: Switch 6, type: program_change, number: 5}
+  switch_7: {name: Switch 7, type: program_change, number: 6}
+  switch_8: {name: Switch 8, type: program_change, number: 7}
+  switch_9: {name: Switch 9, type: program_change, number: 8}
+  switch_10: {name: Switch 10, type: program_change, number: 9}
+  pedal_a: {name: Expression A, type: control_change, number: 7}
+  pedal_b: {name: Expression B, type: control_change, number: 27}

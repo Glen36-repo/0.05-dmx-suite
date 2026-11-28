@@ -1,41 +1,36 @@
-# MIDI map. Channels 1-16 as on the gear.
-# PLACEHOLDER numbers: the FCB1010 keeps its current program changes (SCOPE decision); copy them
-# from Daslight. Drum pads: which pads flash which fixtures is still open (SCOPE). Use MIDI learn
-# (`learn` in the simulator console) to fill these in from the real gear.
-version: 4
+# MIDI map: what each named input (inputs.yaml) does. Notes and program numbers live in
+# inputs.yaml, so a changed pedal or pad is fixed there once.
+# Drum pads: which pads flash which fixtures is still open (SCOPE). Use MIDI learn to fill these in.
+version: 6
 name: Default
 mappings:
   # FCB1010, ch 1
-  - {type: program_change, channel: 1, number: 0, action: master_toggle}
-  - {type: program_change, channel: 1, number: 9, action: blackout_toggle}
-  - {type: program_change, channel: 1, number: 5, action: haze_manual}
-  - {type: program_change, channel: 1, number: 6, action: haze_pulse}
-  - {type: program_change, channel: 1, number: 7, action: haze_off}
-  - {type: control_change, channel: 1, number: 80, action: haze_boost}   # momentary switch: held = boost
-  - {type: control_change, channel: 1, number: 7, action: grand_master}  # expression pedal
+  - {input: master, action: master_toggle}
+  - {input: blackout, action: blackout_toggle}
+  - {input: haze_manual, action: haze_manual}
+  - {input: haze_pulse, action: haze_pulse}
+  - {input: haze_off, action: haze_off}
+  - {input: haze_boost, action: haze_boost}       # momentary switch: held = boost
+  - {input: expression, action: grand_master}     # expression pedal
 
   # TD-25, ch 10 (GM drum notes)
-  - {type: note, channel: 10, number: 38, action: flash, fixtures: [bars], length_ms: 120, colour: show}
-  - {type: note, channel: 10, number: 40, action: flash, fixtures: [bars], length_ms: 120, colour: show}
-  - {type: note, channel: 10, number: 48, action: flash, fixtures: [bar_1, bar_2], length_ms: 150, colour: show}
-  - {type: note, channel: 10, number: 45, action: flash, fixtures: [bar_3, bar_4], length_ms: 150, colour: show}
-  - {type: note, channel: 10, number: 49, action: flash, fixtures: [all], length_ms: 250, colour: white}
-  - {type: note, channel: 10, number: 51, action: flash, fixtures: [washes], length_ms: 200, colour: show}
+  - {input: snare, action: flash, fixtures: [bars], length_ms: 120, colour: show}
+  - {input: snare_rim, action: flash, fixtures: [bars], length_ms: 120, colour: show}
+  - {input: tom_1, action: flash, fixtures: [bar_1, bar_2], length_ms: 150, colour: show}
+  - {input: tom_3, action: flash, fixtures: [bar_3, bar_4], length_ms: 150, colour: show}
+  - {input: crash, action: flash, fixtures: [all], length_ms: 250, colour: white}
+  - {input: ride, action: flash, fixtures: [washes], length_ms: 200, colour: show}
 
   # Shows and setlist (FCB1010, ch 1). PLACEHOLDER program numbers.
-  - {type: program_change, channel: 1, number: 1, action: select_set, set: low}
-  - {type: program_change, channel: 1, number: 2, action: select_set, set: mid}
-  - {type: program_change, channel: 1, number: 3, action: select_set, set: high}
-  - {type: program_change, channel: 1, number: 4, action: select_show, show: opera}
-  - {type: program_change, channel: 1, number: 8, action: select_show, show: acoustic}
-  - {type: program_change, channel: 1, number: 10, action: next_song}
-  - {type: program_change, channel: 1, number: 11, action: prev_song}
-  - {type: program_change, channel: 1, number: 12, action: next_step}
-  - {type: program_change, channel: 1, number: 13, action: tap_tempo}
+  - {input: set_low, action: select_set, set: low}
+  - {input: set_mid, action: select_set, set: mid}
+  - {input: set_high, action: select_set, set: high}
+  - {input: show_opera, action: select_show, show: opera}
+  - {input: show_acoustic, action: select_show, show: acoustic}
+  - {input: next_song, action: next_song}
+  - {input: prev_song, action: prev_song}
+  - {input: next_step, action: next_step}
+  - {input: tap, action: tap_tempo}
 
-  # SamplePad 4 through the H2MIDI Pro (phase 2). `port` ties a mapping to that input, so its pads
-  # can use the same ch 10 notes as the TD-25 and still do their own thing. Use MIDI learn with
-  # port=this to fill these in from the real pads. PLACEHOLDERS:
-  # - {type: note, channel: 10, number: 38, port: H2MIDI, action: flash, fixtures: [movers], length_ms: 150, colour: white}
-  # - {type: note, channel: 10, number: 48, port: H2MIDI, action: flash, fixtures: [washes], length_ms: 200, colour: show}
-  # - {type: note, channel: 10, number: 45, port: H2MIDI, action: select_scene, scene: strobe_hit}
+  # SamplePad 4 (phase 2): add its pads to inputs.yaml (device samplepad), then map them here, e.g.
+  # - {input: pad_1, action: flash, fixtures: [movers], length_ms: 150, colour: white}

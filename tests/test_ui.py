@@ -3,6 +3,7 @@
 Skipped when Playwright or a browser isn't available. CI installs both.
 """
 
+import json
 import os
 import shutil
 import time
@@ -63,6 +64,8 @@ def ui(browser, tmp_path, request):
 
 
 def go(page, name):
+    if not page.is_visible(f"#menu [data-page={name}]"):  # phones: the page sits behind More
+        page.click("#menu-more")
     page.click(f"#menu [data-page={name}]")
     page.wait_for_selector(f"#page-{name}.on")
 
@@ -191,14 +194,107 @@ def test_theme_switch(ui):
     assert page.locator("link[href='/static/themes/005/theme.css']").count() == 1
 
 
+PAGES = ("live", "autopilot", "override", "scenes", "shows", "review", "palettes", "layout", "fixtures", "heads", "midi",
+         "monitor", "setup", "files")
+
+
 def test_phone_layout_has_bottom_menu(ui):
     page, *_ = ui
     page.set_viewport_size({"width": 390, "height": 844})
     time.sleep(0.2)
     box = page.locator("#menu").bounding_box()
     assert box["y"] > 700 and box["width"] >= 380  # a bar along the bottom
-    go(page, "layout")
-    assert page.is_visible("#layout-grid")
+    assert page.is_visible("#menu-more") and not page.is_visible("#menu [data-page=layout]")
+    for name in PAGES:  # every page can be reached from the bar or More
+        go(page, name)
+        assert page.is_visible(f"#page-{name}")
+        assert not page.locator("#menu").evaluate("m => m.classList.contains('open')")  # More closes again
+        # nothing runs off the side of the phone
+        wide = page.evaluate("""() => { const W = document.documentElement.clientWidth;
+            if (document.documentElement.scrollWidth <= W + 1) return [];
+            return [...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > W + 1
+                && e.offsetParent && !e.parentElement.closest('table, .grid-host, .health, .tabs'))
+              .slice(0, 6).map((e) => `${e.tagName}#${e.id}.${e.className} ${Math.round(e.getBoundingClientRect().right)}`)
+              .concat(['page ' + document.documentElement.scrollWidth + ' > ' + W]); }""")
+        assert wide == [], (name, wide)
+    assert "on" in page.get_attribute("#menu-more", "class")  # lit while a More page is showing
+    go(page, "live")
+    assert "on" not in page.get_attribute("#menu-more", "class")
+
+
+def test_menu_groups_on_desktop(ui):
+    page, *_ = ui
+    assert page.locator(".menu-group").count() == 4
+    assert not page.is_visible("#menu-more")
+    assert all(page.is_visible(f"#menu [data-page={n}]") for n in PAGES)
+
+
+def light_boxes(page, host):
+    """Size of one light square, and how much of the host's width and height the lights cover."""
+    return page.evaluate("""(host) => {
+        const h = document.querySelector(host).getBoundingClientRect();
+        const cells = [...document.querySelectorAll(host + ' .cell')].map((c) => c.getBoundingClientRect());
+        const x0 = Math.min(...cells.map((c) => c.left)), x1 = Math.max(...cells.map((c) => c.right));
+        const y0 = Math.min(...cells.map((c) => c.top)), y1 = Math.max(...cells.map((c) => c.bottom));
+        return { cell: cells[0].width, w: (x1 - x0) / h.width, h: (y1 - y0) / h.height };
+    }""", host)
+
+
+def test_scene_picker_lights_are_big(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.wait_for_selector("#scene-grid .cell")
+    b = light_boxes(page, "#scene-grid")
+    assert b["cell"] >= 15 and b["w"] >= 0.8, b  # was ~8 px squares in a third of the box
+    page.set_viewport_size({"width": 390, "height": 844})
+    time.sleep(0.3)
+    b = light_boxes(page, "#scene-grid")
+    assert b["cell"] >= 16, b  # a phone scrolls sideways rather than shrink them
+    page.click("#scene-grid [data-id=bar_1] .cell >> nth=0")
+    assert "bar_1" in page.inner_text("#scene-sel")
+
+
+def test_group_pills_none_and_invert(ui):
+    page, *_ = ui
+    go(page, "scenes")
+    page.click("#scene-group-tabs [data-group=bars]")
+    assert page.inner_text("#scene-group-tabs [data-group=bars] .n") == "4"
+    page.click("#pick-invert")
+    assert "bar_1" not in page.inner_text("#scene-sel") and "mh_a" in page.inner_text("#scene-sel")
+    page.click("#pick-none")
+    assert page.locator("#scene-grid .fx.sel").count() == 0
+
+
+def test_live_and_ride_lights_fill_their_box(ui):
+    page, *_ = ui
+    for name, host in (("live", "#live-grid"), ("autopilot", "#ride-grid")):
+        go(page, name)
+        page.wait_for_selector(f"{host} .cell")
+        b = light_boxes(page, host)
+        assert max(b["w"], b["h"]) >= 0.7, (name, b)  # fills the box one way or the other
+
+
+def test_setup_claude_section_folds(ui):
+    page, *_ = ui
+    go(page, "setup")
+    page.wait_for_selector("#claude-connect .claude-steps")
+    assert page.get_attribute("#claude-section", "open") is not None  # not connected yet: open
+    page.click("#claude-section > summary")
+    assert page.get_attribute("#claude-section", "open") is None
+    go(page, "live")
+    page.click(".tile.link[data-key^='claude:']")  # the Claude tile opens it again
+    page.wait_for_selector("#page-setup.on")
+    assert page.get_attribute("#claude-section", "open") is not None
+
+
+def test_fixtures_clash_bar_only_when_clashing(ui):
+    page, *_ = ui
+    go(page, "fixtures")
+    page.wait_for_selector("#fx-patch tr")
+    assert not page.is_visible("#fx-clash")
+    page.fill("#fx-patch tr >> nth=1 >> input >> nth=2", "1")  # mh_b on mh_a's address
+    page.locator("#fx-patch tr >> nth=1 >> input >> nth=2").dispatch_event("change")
+    page.wait_for_selector("#fx-clash", state="visible")
 
 
 # ------------------------------------------------------------------ scene builder (v2 R3)
@@ -276,7 +372,7 @@ def test_mute_and_reorder(ui):
     assert len(data["layers"]) == n and data["layers"][1].get("mute") is True
 
 
-# ------------------------------------------------------------------ shows, setlists, busk (v2 R5)
+# ------------------------------------------------------------------ shows, setlists, Override (v2 R5 busk)
 
 
 def test_edit_a_show_into_steps_with_repeats(ui):
@@ -341,29 +437,29 @@ def test_setlist_editor(ui):
     assert data["songs"][-1]["name"] == "Encore" and data["songs"][-1]["master"] is False
 
 
-def test_make_and_play_a_busk_panel(ui):
+def test_make_and_play_an_override_panel(ui):
     page, app, root, _ = ui
-    go(page, "busk")
-    page.check("#busk-edit")
-    page.wait_for_selector("#busk-editor[data-ready='1']")
+    go(page, "override")
+    page.check("#override-edit")
+    page.wait_for_selector("#override-editor[data-ready='1']")
     page.fill("#panel-key", "band")
-    page.fill("#panel-name", "Band busk")
+    page.fill("#panel-name", "Band override")
     page.click("#panel-new")
     page.select_option("#widget-type", "colour")
     page.click("#widget-add")
     page.select_option("#widget-type", "solo")
     page.click("#widget-add")
     page.click("#panels-save")
-    page.wait_for_function("document.querySelectorAll('#busk [data-widget]').length === 2")
+    page.wait_for_function("document.querySelectorAll('#override [data-widget]').length === 2")
     assert (root / "panels.yaml").exists() and "band" in app.files.panels
-    page.uncheck("#busk-edit")
-    page.click("#busk [data-widget=colour1]")  # a latch: on
-    page.wait_for_selector("#busk [data-widget=colour1].on")
+    page.uncheck("#override-edit")
+    page.click("#override [data-widget=colour1]")  # a latch: on
+    page.wait_for_selector("#override [data-widget=colour1].on")
     go(page, "live")
     page.wait_for_selector("#live-grid .fx.held")  # the held lights are marked on the layout
-    go(page, "busk")
-    page.click("#busk-release")
-    page.wait_for_selector("#busk [data-widget=colour1]:not(.on)")
+    go(page, "override")
+    page.click("#override-release")
+    page.wait_for_selector("#override [data-widget=colour1]:not(.on)")
     assert app.engine.held() == []
 
 
@@ -568,7 +664,8 @@ def test_rig_settings_and_switch(ui):
 def test_setup_wizard_first_run(ui):
     page, app, root, _ = ui
     page.wait_for_function("document.querySelector('#wizard').textContent.includes('How do your lights connect?')")
-    page.check("#wizard input[type=radio] >> nth=-1")  # simulator
+    page.check("#wizard input[type=radio] >> nth=-1")  # simulator (last, after any ports this computer has)
+    page.wait_for_function("[...document.querySelectorAll('#wizard input[type=radio]')].pop().checked")
     page.click("#wizard-next")
     page.wait_for_function("document.querySelector('#wizard').textContent.includes('Which lights')")
     page.locator("#wizard tr:has-text('StarColor') input").fill("2")
@@ -589,3 +686,298 @@ def test_setup_wizard_first_run(ui):
     from dmx_suite import settings
 
     assert settings.load()["wizard"] == "done"
+
+
+# ------------------------------------------------------------------ v3.1
+
+
+class _Unplugged:
+    connected = False
+
+    def status(self):
+        return [{"name": "UM-ONE", "connected": self.connected, "port": None}]
+
+
+def slow_press(page, selector, hold=0.3):
+    """Press like a finger: down, hold while the state keeps streaming in, then up."""
+    page.hover(selector)
+    page.mouse.down()
+    time.sleep(hold)
+    page.mouse.up()
+
+
+def test_banner_buttons_work_with_a_slow_press(ui):
+    """The banners used to be redrawn ~10 times a second, so a real press never landed on ✕."""
+    page, app, *_ = ui
+    midi = _Unplugged()
+    app.midi_inputs = midi
+    banner = "#banners [data-alert='midi:MIDI UM-ONE']"
+    page.wait_for_selector(banner)
+    slow_press(page, f"{banner} .x")
+    page.wait_for_selector(banner, state="detached", timeout=2000)
+    time.sleep(1)
+    assert not page.is_visible(banner)  # and it stays gone
+    assert app.alert_center.alerts["midi:MIDI UM-ONE"].state == "dismissed"
+    # the bell's list: its buttons take a slow press too
+    page.click("#bell")
+    row = "#alerts-list [data-alert='midi:MIDI UM-ONE']"
+    page.wait_for_selector(row)
+    slow_press(page, f"{row} button:has-text('Not using this today')")
+    deadline = time.time() + 2
+    while time.time() < deadline and not app.alert_center.muted:
+        time.sleep(0.05)
+    assert app.alert_center.muted == {"midi:MIDI UM-ONE"}
+
+
+def test_banners_overlay_without_moving_controls(ui):
+    """A banner lies over the top of the page: no button moves under a finger (scope 18)."""
+    page, app, *_ = ui
+    box = page.locator("#menu [data-page=scenes]").bounding_box()
+    live_box = page.locator("#tap").bounding_box()
+    midi = _Unplugged()
+    app.midi_inputs = midi
+    page.wait_for_selector("#banners [data-alert='midi:MIDI UM-ONE']")
+    assert page.locator("#menu [data-page=scenes]").bounding_box() == box
+    assert page.locator("#tap").bounding_box() == live_box
+    assert int(page.inner_text("#bell-count")) >= 1
+    page.click("#banners [data-alert='midi:MIDI UM-ONE'] .x")  # dismiss
+    page.wait_for_selector("#banners [data-alert]", state="detached")
+    page.click("#bell")
+    page.wait_for_selector("#alerts-list [data-alert='midi:MIDI UM-ONE'].dismissed")
+    page.click("#alerts-list [data-alert='midi:MIDI UM-ONE'] button:has-text('Not using this today')")
+    tile = "#health .tile[data-key='midi:MIDI UM-ONE']"
+    page.wait_for_function(f"document.querySelector(\"{tile}\").classList.contains('muted-dev')")
+    assert app.alert_center.muted == {"midi:MIDI UM-ONE"}
+    midi.connected = True
+    page.wait_for_selector("#alerts-list [data-alert='midi:MIDI UM-ONE'].cleared")
+
+
+def test_colour_wheel_sets_a_layer_colour(ui):
+    page, app, root, _ = ui
+    go(page, "scenes")
+    page.wait_for_selector("#scene-show-colour .swatches", state="attached")  # the builder has loaded
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#layer-add")
+    page.click("#layer-form .wheel-btn >> nth=0")
+    page.wait_for_selector("#wheel-dialog[open]")
+    page.fill("#wheel-dialog input.hex", "#ff8000")
+    page.dispatch_event("#wheel-dialog input.hex", "change")
+    page.wait_for_selector("#wheel-dialog .wheel-fit .fit")  # what the bars make
+    page.click("#wheel-dialog button:has-text('Use this colour')")
+    page.fill("#scene-name", "Orange bars")
+    page.click("#scene-save")
+    page.wait_for_function("document.querySelector('#scene-state').textContent.includes('orange_bars')")
+    data = yaml.safe_load((root / "scenes" / "orange_bars.yaml").read_text(encoding="utf-8"))
+    assert data["layers"][0]["colour"] == "#ff8000"
+
+
+def test_palettes_page_make_and_generate(ui):
+    page, app, root, _ = ui
+    go(page, "palettes")
+    page.wait_for_selector("[data-palette=warm]")  # curated, built in
+    page.fill("#palette-new-name", "verse")
+    page.click("#palette-new")
+    page.wait_for_selector("[data-palette=verse].open")
+    page.select_option("[data-palette=verse] select", "triadic")
+    page.fill("[data-palette=verse] input[type=number]", "3")
+    page.click("[data-palette=verse] button:has-text('Generate')")
+    page.wait_for_function("document.querySelectorAll('[data-palette=verse] .pal-strip i').length === 3")
+    data = yaml.safe_load((root / "palettes.yaml").read_text(encoding="utf-8"))
+    assert len(data["palettes"]["verse"]["colours"]) == 3
+
+
+def test_inputs_learn_from_the_kit(ui):
+    page, app, root, _ = ui
+    from dmx_suite.midi.inputs import FakeMidiIn
+
+    go(page, "midi")
+    page.wait_for_selector("[data-input=snare]")
+    page.click("[data-input=snare] button:has-text('Learn')")
+    page.wait_for_function("document.querySelector('#learn-state').textContent.includes('snare')")
+    FakeMidiIn(app.router.handle_mido).note(39, 100)
+    page.wait_for_function("document.querySelector('[data-input=snare]').textContent.includes('note 39')")
+    data = yaml.safe_load((root / "inputs.yaml").read_text(encoding="utf-8"))
+    assert data["devices"]["td25"]["inputs"]["snare"]["notes"] == [39]
+    FakeMidiIn(app.router.handle_mido).note(39, 98)
+    page.wait_for_function("[...document.querySelectorAll('#monitor .input-name')].some(e => e.textContent === 'Snare')")
+
+
+def test_store_a_head_point(ui):
+    page, app, root, _ = ui
+    go(page, "heads")
+    page.wait_for_selector("[data-point=drum_kit]")
+    area = page.locator("[data-pad=mh_b] .area").bounding_box()
+    page.mouse.click(area["x"] + area["width"] * 0.25, area["y"] + area["height"] * 0.5)
+    page.wait_for_function("document.querySelector('[data-pad=mh_b] .muted').textContent.startsWith('held')")
+    page.fill("#point-name", "singer")
+    page.fill("#point-desc", "Lead vocal, centre front")
+    page.fill("#point-tags", "band, safe")
+    page.select_option("#point-y", "front")
+    page.click("#point-store")
+    page.wait_for_selector("[data-point=singer]")
+    data = yaml.safe_load((root / "rigs" / "full.yaml").read_text(encoding="utf-8"))
+    pt = data["positions"]["singer"]
+    assert pt["description"] == "Lead vocal, centre front" and pt["tags"] == ["band", "safe"] and pt["stage"] == {"y": "front"}
+    assert list(pt["heads"]) == ["mh_b"] and abs(pt["heads"]["mh_b"]["pan"] - 0.25) < 0.02
+    assert "not set for mh_a" in page.inner_text("[data-point=singer]")
+
+
+# ------------------------------------------------------------------ v3.2
+
+
+def test_build_a_step_scene(ui):
+    # v4 editor: select lights, set values in the programmer, Record into the step
+    page, app, root, _ = ui
+    go(page, "scenes")
+    page.wait_for_selector("#scene-pick option", state="attached")
+    time.sleep(0.3)  # the page sets up a new scene when it opens
+    page.check("#scene-steps")
+    page.wait_for_selector("#steps-list-pane .steps-list li")
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#step-programmer .swatches button[title=white]")
+    page.click("#rec-merge")
+    page.wait_for_function("document.querySelector('#steps-list-pane .steps-list li .chip-c')")
+    page.click("#step-add")
+    page.wait_for_function("document.querySelectorAll('#steps-list-pane .steps-list li').length === 2")
+    page.click("#scene-group-tabs [data-group=movers]")
+    page.click("#step-programmer [data-tab=position]")
+    page.click("#step-programmer [data-point=drum_kit]")
+    page.click("#rec-merge")
+    page.fill("#scene-name", "Intro hits")
+    page.click("#scene-save")
+    page.wait_for_function("document.querySelector('#scene-state').textContent.includes('intro_hits')")
+    data = yaml.safe_load((root / "scenes" / "intro_hits.yaml").read_text(encoding="utf-8"))
+    assert data["type"] == "steps" and len(data["steps"]) == 2
+    assert data["steps"][0]["set"] == {"bars": {"colour": "white"}}
+    assert data["steps"][1]["set"] == {"movers": {"position": "drum_kit"}}  # tracking: only what changes
+    page.click("#step-play")
+    deadline = time.time() + 3
+    while app.engine.previewing is None and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.engine.previewing is not None
+
+
+# ------------------------------------------------------------------ v3.4
+
+
+def test_ride_page_autopilot_mood_and_fx(ui):
+    page, app, root, _ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-move [data-fx=pan_sweep]")
+    page.wait_for_selector("#ride-colour [data-fx=comet]")  # the full rig has pixel bars
+    page.click("#ride-colour [data-fx=colour_chase]")
+    page.wait_for_function("document.querySelector('#ride-colour [data-fx=colour_chase]').classList.contains('sel')")
+    assert app.ride_pick.colour == "colour_chase" and app.ctl.mode == "ride"
+    page.click("#ride-palettes [data-palette=fire]")
+    page.wait_for_function("document.querySelector('#ride-palettes [data-palette=fire]').classList.contains('sel')")
+    page.click("#ap-toggle")
+    page.wait_for_function("document.querySelector('#ap-toggle').classList.contains('on')")
+    assert app.autopilot.st.on
+    page.click("#ride-moods [data-mood=high]")
+    page.wait_for_function("document.querySelector('#ride-moods [data-mood=high]').classList.contains('sel')")
+    assert app.autopilot.st.mood == "high" and app.autopilot.st.mood_manual
+    page.wait_for_selector("#ride-why li")  # the decision log shows why
+    page.click("#ap-hold")
+    page.wait_for_function("document.querySelector('#ap-hold').classList.contains('on')")
+    page.click("#ap-toggle")
+    page.wait_for_function("!document.querySelector('#ap-toggle').classList.contains('on')")
+
+
+def test_ride_flash_fx_held_while_pressed(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-flash [data-flash=blinder]")
+    b = page.locator("#ride-flash [data-flash=blinder]").bounding_box()
+    page.mouse.move(b["x"] + 10, b["y"] + 10)
+    page.mouse.down()
+    deadline = time.time() + 3
+    while not any(o.key == "flashfx/blinder" for o in app.engine.overrides) and time.time() < deadline:
+        time.sleep(0.05)
+    assert any(o.key == "flashfx/blinder" for o in app.engine.overrides)
+    page.mouse.up()
+    deadline = time.time() + 3
+    while any(o.key == "flashfx/blinder" for o in app.engine.overrides) and time.time() < deadline:
+        time.sleep(0.05)
+    assert not any(o.key == "flashfx/blinder" for o in app.engine.overrides)
+
+
+def test_ride_learn_maps_a_pad(ui):
+    page, app, root, _ = ui
+    from dmx_suite.midi.inputs import FakeMidiIn
+
+    go(page, "autopilot")
+    page.wait_for_selector("#ap-next")
+    page.click("#ride-learn")
+    page.click("#ap-next")
+    deadline = time.time() + 3
+    while app.router.learning != "look_next" and time.time() < deadline:
+        time.sleep(0.05)
+    FakeMidiIn(app.router.handle_mido).note(51, 100)  # the ride cymbal
+    deadline = time.time() + 3
+    while "look_next" not in (root / "midi" / "default.yaml").read_text(encoding="utf-8") and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.router.map.get_input("ride").action == "look_next"
+
+
+# ------------------------------------------------------------------ v3.5
+
+
+def test_review_rate_and_generate(ui):
+    page, app, root, _ = ui
+    go(page, "review")
+    page.wait_for_selector("#rv-list li")
+    page.click("#rv-list li >> nth=2 >> button")
+    page.click("#rv-ban")
+    deadline = time.time() + 3
+    while not (root / "ratings.yaml").exists() and time.time() < deadline:
+        time.sleep(0.05)
+    data = yaml.safe_load((root / "ratings.yaml").read_text(encoding="utf-8"))
+    assert list(data["looks"].values()) == [-2]
+    page.fill("#gen-count", "3")
+    page.fill("#gen-prefix", "ui_gen")
+    page.fill("#gen-seed", "ui")
+    page.click("#gen-scenes")
+    page.wait_for_function("document.querySelector('#gen-out').textContent.includes('ui_gen_3')")
+    assert (root / "scenes" / "ui_gen_1.yaml").exists()
+
+
+def test_ride_presets_and_reroll(ui):
+    page, app, root, _ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-presets [data-preset=fire_wave]")
+    page.click("#ride-presets [data-preset=fire_wave]")
+    deadline = time.time() + 3
+    while app.ride_pick.colour != "wave" and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.ride_pick.palette == "fire"
+    page.check("[data-lock=colour]")
+    page.click("#ride-reroll")
+    deadline = time.time() + 3
+    while app.ride_pick.key() == "figure8|wave|-|fire" and time.time() < deadline:
+        time.sleep(0.05)
+    assert app.ride_pick.colour == "wave" and app.ride_pick.key() != "figure8|wave|-|fire"
+    page.once("dialog", lambda d: d.accept("my_look"))
+    page.click("#ride-save-preset")
+    page.wait_for_selector("#ride-presets [data-preset=my_look]")
+
+
+# ------------------------------------------------------------------ Connect to Claude
+
+
+def test_connect_to_claude_from_setup(ui, monkeypatch, tmp_path):
+    page, app, root, _ = ui
+    for k in ("APPDATA", "LOCALAPPDATA"):
+        monkeypatch.setenv(k, str(tmp_path / k))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "APPDATA" / "Claude").mkdir(parents=True)
+    page.click("#health .tile[data-key='claude:Claude']")  # the status bar tile opens the section
+    page.wait_for_selector("#page-setup.on #claude-connect .claude-steps")
+    assert "Claude Desktop: not connected" in page.inner_text("#claude-connect")
+    page.click("#claude-connect-btn")
+    page.wait_for_function("document.querySelector('#claude-connect').textContent.includes('Claude Desktop: connected')")
+    cfg = json.loads((tmp_path / "APPDATA" / "Claude" / "claude_desktop_config.json").read_text())
+    assert cfg["mcpServers"]["dmx-suite"]["args"][-1] == "mcp"
+    assert page.is_disabled("#claude-connect-btn")
+    page.click("#claude-disconnect-btn")
+    page.wait_for_function("document.querySelector('#claude-connect').textContent.includes('Claude Desktop: not connected')")

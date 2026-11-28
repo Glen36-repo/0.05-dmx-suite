@@ -90,6 +90,7 @@ class Show:
     name: str
     sets: dict[str, ShowSet]
     default_set: str
+    generated: bool = False  # made by the generator / starter (v4)
 
 
 @dataclass
@@ -99,6 +100,9 @@ class Song:
     set: str | None = None
     scene: str | None = None
     master: bool | None = None  # optionally force MASTER on/off for this song
+    presets: list[str] | None = None  # v3.5: the autopilot plays only these presets for this song
+    mood: str | None = None  # v3.5: low / mid / high (autopilot songs; the generator's starter shows)
+    bpm: float | None = None  # v3.5: for the generator
 
 
 @dataclass
@@ -137,7 +141,7 @@ def parse_show(key: str, d: dict, pal: Palettes, scenes: dict[str, Scene]) -> Sh
     default = d.get("default_set", next(iter(sets)))
     if default not in sets:
         raise ConfigError(f"show {key}: default_set {default!r} isn't a set")
-    return Show(key, d.get("name", key), sets, default)
+    return Show(key, d.get("name", key), sets, default, generated="generated" in d or key == "starter")
 
 
 def _secs(v: object, what: str, lo: float = 0.0) -> float:
@@ -159,8 +163,10 @@ def _scene_key(sc: object, scenes: dict[str, Scene], what: str) -> str:
 def _parse_step(d: object, scenes: dict[str, Scene], what: str) -> Step:
     if isinstance(d, str):
         d = {"scene": d}
+    if isinstance(d, dict) and "preset" in d and "scene" not in d:  # v3.5: a preset as a step
+        d = {**{k: v for k, v in d.items() if k != "preset"}, "scene": f"preset:{d['preset']}"}
     if not isinstance(d, dict) or "scene" not in d:
-        raise ConfigError(f"{what}: needs a scene")
+        raise ConfigError(f"{what}: needs a scene or a preset")
     bad = set(d) - {"scene", "repeats", "hold_s", "hold_beats", "hold_bars", "fade_s"}
     if bad:
         raise ConfigError(f"{what}: unknown keys {sorted(bad)}")
@@ -190,19 +196,37 @@ def parse_setlist(key: str, d: dict, shows: dict[str, Show], scenes: dict[str, S
     songs = []
     for i, sd in enumerate(d.get("songs") or []):
         what = f"setlist {key} song {i + 1}"
-        bad = set(sd) - {"name", "show", "set", "scene", "master"}
+        bad = set(sd) - {"name", "show", "set", "scene", "master", "preset", "presets", "mood", "bpm"}
         if bad:
             raise ConfigError(f"{what}: unknown keys {sorted(bad)}")
-        song = Song(sd.get("name", f"Song {i + 1}"), sd.get("show"), sd.get("set"), sd.get("scene"), sd.get("master"))
-        if (song.show is None) == (song.scene is None):
-            raise ConfigError(f"{what}: give either show or scene")
+        scene = f"preset:{sd['preset']}" if "preset" in sd else sd.get("scene")
+        song = Song(sd.get("name", f"Song {i + 1}"), sd.get("show"), sd.get("set"), scene, sd.get("master"))
+        if sd.get("mood") is not None:
+            if sd["mood"] not in ("low", "mid", "high"):
+                raise ConfigError(f"{what}: mood is low, mid or high")
+            song.mood = sd["mood"]
+        if sd.get("bpm") is not None:
+            song.bpm = _secs(sd["bpm"], f"{what} bpm", 20)
+        if sd.get("presets") is not None:
+            if not isinstance(sd["presets"], list) or not sd["presets"]:
+                raise ConfigError(f"{what}: presets is a list of preset names")
+            for pk in sd["presets"]:
+                if f"preset:{pk}" not in scenes:
+                    raise ConfigError(f"{what}: unknown preset {pk!r}")
+            song.presets = [str(x) for x in sd["presets"]]
+        if song.presets is not None:
+            if song.show is not None or song.scene is not None:
+                raise ConfigError(f"{what}: a song with presets is run by the autopilot: no show or scene")
+        elif (song.show is None) == (song.scene is None):
+            raise ConfigError(f"{what}: give either show, scene, preset or presets")
         if song.show is not None:
             if song.show not in shows:
                 raise ConfigError(f"{what}: unknown show {song.show!r}")
             if song.set is not None and song.set not in shows[song.show].sets:
                 raise ConfigError(f"{what}: show {song.show} has no set {song.set!r}")
-        elif song.scene not in scenes:
-            raise ConfigError(f"{what}: unknown scene {song.scene!r}")
+        elif song.scene is not None and song.scene not in scenes:
+            raise ConfigError(f"{what}: unknown {'preset' if song.scene.startswith('preset:') else 'scene'} "
+                              f"{song.scene.removeprefix('preset:')!r}")
         songs.append(song)
     if not songs:
         raise ConfigError(f"setlist {key}: no songs")

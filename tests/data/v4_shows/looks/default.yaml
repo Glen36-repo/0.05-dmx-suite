@@ -1,0 +1,11 @@
+# Static look used until scenes arrive in phase 3. No dimmer and no haze here: MASTER and the
+# Haze controls own those (rules 1 and 5), and the loader rejects them.
+version: 4
+show_colour: "#2050ff"
+fixtures:
+  heads: {colour: {blue: 1.0, white: 0.2}}
+  mh_a: {colour: {blue: 1.0, white: 0.2}, pan: 0.5, tilt: 0.3}
+  mh_b: {colour: {blue: 1.0, white: 0.2}, pan: 0.5, tilt: 0.3}
+  bars: {colour: "#2050ff"}
+  washes: {colour: [0.1, 0.2, 1.0]}
+  kick: {colour: [1, 1, 1]}

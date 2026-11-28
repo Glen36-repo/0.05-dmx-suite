@@ -14,7 +14,12 @@ const half = (v) => Math.round(v * 2) / 2;
 const clamp = (v) => Math.min(GRID_MAX, Math.max(0, v));
 
 // where each pixel sits relative to the light's centre, in cells, before rotation
-export function cellOffsets(n, shape = "row", cols = 0) {
+export function cellOffsets(n, shape = "row", cols = 0, reverse = false) {
+  const out = offsets(n, shape, cols);
+  return reverse ? out.reverse() : out; // mounted backwards: pixel 1 at the other end
+}
+
+function offsets(n, shape, cols) {
   n = Math.max(1, n || 1);
   if (n === 1) return [[0, 0]];
   if (shape === "ring") {
@@ -30,6 +35,56 @@ export function cellOffsets(n, shape = "row", cols = 0) {
     return [...Array(n)].map((_, i) => [(i % w) - (w - 1) / 2, Math.floor(i / w) - (h - 1) / 2]);
   }
   return [...Array(n)].map((_, i) => [i - (n - 1) / 2, 0]);
+}
+
+// ---------------------------------------------------------------- labels
+
+const CH_W = 0.23, LABEL_H = 0.52; // label size in cells (9 px text and its halo on a 24 px cell)
+
+// a short name for a crowded spot: "uking_l" -> "UK L", "bar_3" -> "BA 3", "mh_a" -> "MH A"
+export function shortName(id) {
+  const parts = String(id).split(/[_\s-]+/).filter(Boolean);
+  if (parts.length < 2) return String(id).slice(0, 5);
+  return `${parts[0].slice(0, 2).toUpperCase()} ${parts.slice(1).join("").slice(0, 3).toUpperCase()}`;
+}
+
+const hits = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+
+/** Where each light's name goes so that no two names and no name and light overlap.
+ * items: [{id, icon: [x0, y0, x1, y1] (cells), full, short}]. Tries under the light, then a little
+ * lower, then beside; then the short name (full id on hover); last resort, further down with a leader
+ * line. Returns {id: {x (centre), y (top), text, short, leader}}. Pure, so it's tested on its own. */
+export function placeLabels(items) {
+  const out = {};
+  const icons = items.map((it) => it.icon);
+  const placed = [];
+  const order = items.slice().sort((a, b) => a.icon[1] - b.icon[1] || a.icon[0] - b.icon[0]);
+  const box = (cx, top, text) => { const w = text.length * CH_W; return [cx - w / 2, top, cx + w / 2, top + LABEL_H]; };
+  const free = (b, it) => !placed.some((p) => hits(p, b)) && !icons.some((ic) => ic !== it.icon && hits(ic, b));
+  for (const it of order) {
+    const [x0, , x1, y1] = it.icon, cx = (x0 + x1) / 2, top = y1 + 0.05;
+    const spots = (text) => {
+      const w = text.length * CH_W;
+      const r = LABEL_H + 0.04; // one label row lower
+      return [[cx, top], [cx, top + r], [cx - w / 2 - 0.3, top], [cx + w / 2 + 0.3, top], [cx, top + 2 * r]];
+    };
+    let done = null;
+    for (const [text, short] of [[it.full, false], [it.short, true]]) {
+      for (const [x, y] of spots(text)) {
+        const b = box(x, y, text);
+        if (free(b, it)) { done = { x, y, text, short, leader: Math.abs(x - cx) > 0.01 || y > top + 0.01 }; placed.push(b); break; }
+      }
+      if (done) break;
+    }
+    if (!done) { // crowded: go further down until there's room, with a line back to the light
+      let y = top + 3 * (LABEL_H + 0.04);
+      while (!free(box(cx, y, it.short), it) && y < top + 8) y += LABEL_H + 0.04;
+      done = { x: cx, y, text: it.short, short: true, leader: true };
+      placed.push(box(cx, y, it.short));
+    }
+    out[it.id] = done;
+  }
+  return out;
 }
 
 function rotated([x, y], deg) {
@@ -53,12 +108,19 @@ export class LightGrid {
     this.host = host;
     this.edit = !!opts.edit;
     this.selectable = this.edit || !!opts.select;
+    // v4 (scene editor only): each segment of a pixel light is its own target; pxSel holds the lights
+    // with only some pixels selected (fid -> Set of 0-based pixels); `selected` the whole lights
+    this.pixelSelect = !!opts.pixelSelect;
+    this.pxSel = new Map();
     this.onChange = opts.onChange || (() => {});
     this.tool = "select"; // select | lasso | move
     this.selected = new Set();
     this.items = {};
     this.history = [];
+    this.future = []; // redo
     this.zoom = 100;
+    this.view = null; // null: fit to the lights; else [x, y, w, h] in cells (zoomed / panned by hand)
+    this.onView = opts.onView || (() => {});
     this.showBeams = false;
     this.showNames = true;
   }
@@ -78,12 +140,27 @@ export class LightGrid {
     this.gMarquee = svg("g");
     this.gArrow = svg("g", { class: "arrow" });
     this.root.append(this.gGrid, this.gBeams, this.gLights, this.gArrow, this.gMarquee);
+    this.patchKey = this.patchKey === undefined ? null : this.patchKey;
+    const key = cat.fixtures.map((f) => f.id).join(",");
+    if (key !== this.patchKey) this.view = null; // patch changed: fit again
+    this.patchKey = key;
     this.items = {};
-    for (const f of cat.fixtures) if (this.layout[f.id]) this.drawLight(f.id);
+    // haze machines aren't lights on the stage: a fixed indicator in the corner shows them instead
+    this.hazeIds = cat.fixtures.filter((f) => f.kind === "haze").map((f) => f.id);
+    this.gHaze = svg("g", { class: "haze-ind" + (this.hazeIds.length ? "" : " hidden") });
+    this.gHaze.append(svg("rect", { class: "hz-box", rx: 4 }), svg("text", { class: "hz-text" }));
+    this.root.append(this.gHaze);
+    for (const f of cat.fixtures) if (this.layout[f.id] && f.kind !== "haze") this.drawLight(f.id);
     this.fit();
     this.applyView();
     if (this.selectable) this.bindPointer();
+    if (this.edit) this.bindView();
     this.host.replaceChildren(this.root);
+    // window or box resized: the drawing scales itself (view box); the corner indicator follows
+    this.resizer?.disconnect();
+    this.resizer = new ResizeObserver(() => this.placeHaze());
+    this.resizer.observe(this.root);
+    this.placeHaze();
     if (this.arrow) this.setArrow(this.arrow);
     this.markSelection();
     if (this.lastFixtures) this.update(this.lastFixtures);
@@ -91,7 +168,7 @@ export class LightGrid {
 
   cellsOf(id) {
     const f = this.fixtures[id], p = this.layout[id];
-    return cellOffsets(f.pixels || 1, p.shape, p.cols).map((o) => {
+    return cellOffsets(f.pixels || 1, p.shape, p.cols, p.reverse).map((o) => {
       const [dx, dy] = rotated(o, p.rot || 0);
       return [p.x + dx, p.y + dy];
     });
@@ -100,9 +177,24 @@ export class LightGrid {
   drawLight(id) {
     const f = this.fixtures[id];
     const old = this.items[id];
-    const g = svg("g", { class: `fx ${f.kind}`, "data-id": id });
-    const cells = this.cellsOf(id).map(([x, y]) => {
-      const r = svg("rect", { x: (x - SIZE / 2) * C, y: (y - SIZE / 2) * C, width: SIZE * C, height: SIZE * C, rx: 3, class: "cell" });
+    const g = svg("g", { class: `fx ${f.kind}` + ((f.pixels || 1) > 1 ? " pixel" : ""), "data-id": id });
+    const p0 = this.layout[id];
+    if ((f.pixels || 1) > 1) {
+      // a pixel light is one object: an outline round its segments, drawn in the light's own frame and turned with it
+      const offs = cellOffsets(f.pixels, p0.shape, p0.cols);
+      const xs = offs.map(([x]) => x), ys = offs.map(([, y]) => y), m = 0.46; // bars end to end still show a gap
+      const [x0, x1, y0, y1] = [Math.min(...xs) - m, Math.max(...xs) + m, Math.min(...ys) - m, Math.max(...ys) + m];
+      g.append(svg("rect", { class: "outline", x: (p0.x + x0) * C, y: (p0.y + y0) * C, width: (x1 - x0) * C, height: (y1 - y0) * C, rx: 5,
+                             transform: `rotate(${p0.rot || 0} ${p0.x * C} ${p0.y * C})` }));
+    }
+    const cs = (f.pixels || 1) > 1 ? 0.74 : SIZE; // segments sit inside the outline
+    const many = (f.pixels || 1) > 1;
+    const cells = this.cellsOf(id).map(([x, y], i) => {
+      const r = svg("rect", { x: (x - cs / 2) * C, y: (y - cs / 2) * C, width: cs * C, height: cs * C, rx: 3, class: "cell" });
+      if (many) {
+        r.dataset.px = String(i);
+        if (this.pixelSelect) r.append(Object.assign(svg("title"), { textContent: `${id} px${i + 1}` }));
+      }
       g.append(r);
       return r;
     });
@@ -116,46 +208,195 @@ export class LightGrid {
     const ys = this.cellsOf(id).map(([, y]) => y);
     const label = svg("text", { x: p.x * C, y: (Math.max(...ys) + 0.95) * C, class: "name", "text-anchor": "middle" });
     label.textContent = id;
-    g.append(label);
+    const tip = svg("title");
+    tip.textContent = f.type ? `${id} (${f.type})` : id; // full id on hover, whatever the label shows
+    g.append(tip, label);
     const beam = f.moves ? svg("line", { class: "beam" }) : null;
     if (old) {
       old.g.replaceWith(g);
       if (old.beam) old.beam.remove();
     } else this.gLights.append(g);
     if (beam) this.gBeams.append(beam);
-    this.items[id] = { g, cells, beam };
+    this.items[id] = { g, cells, beam, label };
   }
 
-  // size the drawing to what's on it (plus room to drag things further when editing)
-  fit() {
-    let maxX = 16, maxY = 10;
+  // the box round what's on it, in cells: tight round the lights when only showing or picking them
+  // (so they fill the box), with room round the edge when arranging them
+  contentBox() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const id of Object.keys(this.items)) {
       for (const [x, y] of this.cellsOf(id)) {
-        maxX = Math.max(maxX, x + 1.5);
-        maxY = Math.max(maxY, y + 2);
+        minX = Math.min(minX, x); minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
       }
     }
-    if (this.edit) {
-      maxX += 6;
-      maxY += 4;
-    }
-    this.size = [Math.ceil(maxX), Math.ceil(maxY)];
+    if (minX === Infinity) [minX, minY, maxX, maxY] = [0, 0, 8, 4];
+    const pad = this.edit ? 2 : 0.6; // cells
+    const names = this.showNames ? (this.edit ? 1 : 0.6) : 0;
+    return [minX - pad, minY - pad, maxX - minX + 2 * pad, maxY - minY + 2 * pad + names];
+  }
+
+  // zoom to fit (the default), re-fitted whenever the lights change; a hand zoom / pan keeps its view
+  // until Fit (or the patch changes)
+  fit() {
+    const box = this.contentBox();
+    this.box = box;
+    this.size = [box[0] + box[2], box[1] + box[3]];
     const m = this.showBeams ? 3 : 0; // room round the edge for beam lines
-    this.root.setAttribute("viewBox", `${-m * C} ${-m * C} ${(this.size[0] + 2 * m) * C} ${(this.size[1] + 2 * m) * C}`);
+    const vb = this.view || [box[0] - m, box[1] - m, box[2] + 2 * m, box[3] + 2 * m];
+    this.root.setAttribute("viewBox", vb.map((v) => v * C).join(" "));
+    this.root.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    // the narrowest it may be drawn (a phone scrolls sideways rather than shrink the lights below --min-cell)
+    this.root.style.setProperty("--cells", String(box[2] + 2 * m));
     this.gGrid.replaceChildren();
     if (this.edit) {
-      for (let x = 0; x <= this.size[0]; x++) this.gGrid.append(svg("line", { x1: x * C, y1: 0, x2: x * C, y2: this.size[1] * C }));
-      for (let y = 0; y <= this.size[1]; y++) this.gGrid.append(svg("line", { x1: 0, y1: y * C, x2: this.size[0] * C, y2: y * C }));
+      // grid lines over everything that can be on screen, whatever the box's shape
+      const [x0, y0, w, h] = vb, ext = Math.max(w, h);
+      const gx0 = Math.floor(x0 - ext), gx1 = Math.ceil(x0 + w + ext), gy0 = Math.floor(y0 - ext), gy1 = Math.ceil(y0 + h + ext);
+      for (let x = gx0; x <= gx1; x++) this.gGrid.append(svg("line", { x1: x * C, y1: gy0 * C, x2: x * C, y2: gy1 * C }));
+      for (let y = gy0; y <= gy1; y++) this.gGrid.append(svg("line", { x1: gx0 * C, y1: y * C, x2: gx1 * C, y2: y * C }));
     }
+    if (this.layoutLabels) this.layoutLabels();
+    this.placeHaze();
+  }
+
+  // the haze indicator sits in the top right corner of what's on screen
+  placeHaze() {
+    if (!this.gHaze || !this.hazeIds.length) return;
+    const [vx, vy, vw, vh] = this.root.getAttribute("viewBox").split(" ").map(Number);
+    const r = this.root.getBoundingClientRect();
+    // with "meet" the box may be wider/taller than the view box: find the visible top right
+    const s = r.width && r.height ? Math.max(vw / r.width, vh / r.height) : 1;
+    const right = vx + vw / 2 + (r.width * s) / 2, top = vy + vh / 2 - (r.height * s) / 2;
+    const w = 3.4 * C, h = 0.8 * C, pad = 0.25 * C;
+    const rect = this.gHaze.querySelector("rect"), txt = this.gHaze.querySelector("text");
+    rect.setAttribute("x", right - w - pad); rect.setAttribute("y", top + pad);
+    rect.setAttribute("width", w); rect.setAttribute("height", h);
+    txt.setAttribute("x", right - w / 2 - pad); txt.setAttribute("y", top + pad + h * 0.68);
+    txt.setAttribute("text-anchor", "middle");
+    this.drawHaze();
+  }
+
+  // haze status from the live state: {mode, on, level, resting, boosting}
+  setHaze(h) { this.haze = h; this.drawHaze(); }
+
+  drawHaze() {
+    if (!this.gHaze || !this.hazeIds.length) return;
+    const h = this.haze || {}, lvl = this.hazeLevel;
+    const pct = lvl !== undefined ? Math.round(lvl * 100) : h.on ? Math.round(h.level ?? 0) : 0;
+    const state = h.boosting ? "boost" : h.resting ? "rest" : h.mode || "off";
+    this.gHaze.querySelector("text").textContent = `HZ ${pct}% · ${state}`;
+    this.gHaze.classList.toggle("on", pct > 0);
+  }
+
+  get fitted() { return !this.view; }
+
+  // the box a light takes up (cells), segments and outline included
+  iconBox(id) {
+    const f = this.fixtures[id], pts = this.cellsOf(id), r = (f.pixels || 1) > 1 ? 0.5 : SIZE / 2;
+    const xs = pts.map(([x]) => x), ys = pts.map(([, y]) => y);
+    return [Math.min(...xs) - r, Math.min(...ys) - r, Math.max(...xs) + r, Math.max(...ys) + r];
+  }
+
+  // lights in the same place or touching (same test as layout.layout_problems on the server)
+  problems(minGap = 0.25) {
+    const ids = Object.keys(this.items), out = [];
+    const bx = Object.fromEntries(ids.map((id) => [id, this.iconBox(id)]));
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = bx[ids[i]], b = bx[ids[j]];
+        const gap = Math.max(b[0] - a[2], a[0] - b[2], b[1] - a[3], a[1] - b[3]);
+        if (gap < minGap - 1e-9) out.push({ a: ids[i], b: ids[j], kind: gap < -1e-9 ? "overlap" : "close" });
+      }
+    }
+    return out.sort((x, y) => (x.kind === "overlap" ? 0 : 1) - (y.kind === "overlap" ? 0 : 1));
+  }
+
+  layoutLabels() {
+    if (!this.showNames) return;
+    const ids = Object.keys(this.items).filter((id) => this.items[id].label);
+    const spots = placeLabels(ids.map((id) => ({ id, icon: this.iconBox(id), full: id, short: shortName(id) })));
+    for (const id of ids) {
+      const it = this.items[id], s = spots[id], icon = this.iconBox(id);
+      it.label.textContent = s.text;
+      it.label.setAttribute("x", s.x * C);
+      it.label.setAttribute("y", (s.y + LABEL_H * 0.72) * C);
+      it.label.classList.toggle("short", s.short);
+      it.g.querySelector(".leader")?.remove();
+      if (s.leader) {
+        it.g.insertBefore(svg("line", { class: "leader", x1: ((icon[0] + icon[2]) / 2) * C, y1: icon[3] * C, x2: s.x * C, y2: s.y * C }), it.label);
+      }
+    }
+  }
+
+  fitView() {
+    this.view = null;
+    this.zoom = 100;
+    this.fit();
+    this.onView();
+  }
+
+  // zoom by `factor` round a point (cells; default the middle of what's showing)
+  zoomBy(factor, at = null) {
+    const vb = this.view || this.currentBox();
+    const [cx, cy] = at || [vb[0] + vb[2] / 2, vb[1] + vb[3] / 2];
+    const w = Math.min(GRID_MAX * 2, Math.max(2, vb[2] / factor)), h = vb[3] * (w / vb[2]);
+    this.view = [cx - (cx - vb[0]) * (w / vb[2]), cy - (cy - vb[1]) * (h / vb[3]), w, h];
+    this.zoom = Math.round((this.box[2] / w) * 100);
+    this.fit();
+    this.onView();
+  }
+
+  panBy(dx, dy) {
+    const vb = this.view || this.currentBox();
+    this.view = [vb[0] - dx, vb[1] - dy, vb[2], vb[3]];
+    this.fit();
+    this.onView();
+  }
+
+  currentBox() {
+    const m = this.showBeams ? 3 : 0, b = this.box || this.contentBox();
+    return [b[0] - m, b[1] - m, b[2] + 2 * m, b[3] + 2 * m];
+  }
+
+  // wheel = zoom round the pointer; middle button, or Space + drag, pans
+  bindView() {
+    this.root.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      this.zoomBy(ev.deltaY < 0 ? 1.15 : 1 / 1.15, this.toCells(ev));
+    }, { passive: false });
+    let pan = null;
+    const spaceDown = () => document.body.classList.contains("space-held");
+    this.root.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 1 && !(ev.button === 0 && spaceDown())) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      pan = { at: this.toCells(ev) };
+      this.root.setPointerCapture(ev.pointerId);
+    }, true);
+    this.root.addEventListener("pointermove", (ev) => {
+      if (!pan) return;
+      ev.stopImmediatePropagation();
+      const [x, y] = this.toCells(ev);
+      this.panBy(x - pan.at[0], y - pan.at[1]);
+    }, true);
+    const end = (ev) => { if (pan) { pan = null; ev.stopImmediatePropagation(); } };
+    this.root.addEventListener("pointerup", end, true);
+    this.root.addEventListener("pointercancel", end, true);
   }
 
   applyView() {
-    if (this.edit) this.root.style.width = this.zoom + "%"; // the live view always fits its box
     this.root.classList.toggle("no-names", !this.showNames);
     this.gBeams.style.display = this.showBeams ? "" : "none";
   }
 
-  setZoom(pct) { this.zoom = pct; this.applyView(); }
+  // the zoom slider (%): 100 = fit
+  setZoom(pct) {
+    if (pct === 100) return this.fitView();
+    const cur = this.view ? this.box[2] / this.view[2] * 100 : 100;
+    this.zoomBy(pct / cur);
+  }
+
 
   // which way an effect runs across the layout: {angle} (degrees, 0 = left to right) or
   // {radial: "out" | "in"}; null hides it
@@ -163,8 +404,8 @@ export class LightGrid {
     this.arrow = arrow;
     this.gArrow.replaceChildren();
     if (!arrow || !this.size) return;
-    const [w, h] = this.size;
-    const cx = (w / 2) * C, cy = (h / 2) * C, len = Math.min(w, h) * 0.38 * C;
+    const [x0, y0, w, h] = this.box;
+    const cx = (x0 + w / 2) * C, cy = (y0 + h / 2) * C, len = Math.min(w, h) * 0.38 * C;
     if (arrow.radial) {
       for (const a of [0, 90, 180, 270]) {
         const r = (a * Math.PI) / 180;
@@ -184,15 +425,17 @@ export class LightGrid {
       this.root.prepend(defs);
     }
   }
-  setNames(on) { this.showNames = on; this.applyView(); }
+  setNames(on) { this.showNames = on; this.fit(); this.applyView(); }
   setBeams(on) { this.showBeams = on; this.fit(); this.applyView(); }
 
   // ---------------------------------------------------------------- live colours + beams
 
-  update(fixtures) {
+  update(fixtures, haze) {
     this.lastFixtures = fixtures;
+    if (haze) this.haze = haze;
     const lit = (c) => c && c !== "#000000";
     for (const f of fixtures) {
+      if (f.haze !== undefined && this.hazeIds?.includes(f.id)) { this.hazeLevel = f.haze; this.drawHaze(); continue; }
       const it = this.items[f.id];
       if (!it) continue;
       if (f.pixels) {
@@ -200,8 +443,6 @@ export class LightGrid {
           const c = f.pixels[i];
           r.style.fill = lit(c) ? c : "";
         });
-      } else if (f.haze !== undefined) {
-        it.g.classList.toggle("on", f.haze > 0);
       } else {
         for (const r of it.cells) r.style.fill = lit(f.colour) ? f.colour : "";
       }
@@ -227,27 +468,71 @@ export class LightGrid {
   // ---------------------------------------------------------------- selection
 
   select(ids, add = false) {
-    if (!add) this.selected.clear();
-    for (const id of ids) if (this.layout[id]) this.selected.add(id);
+    if (!add) { this.selected.clear(); this.pxSel.clear(); }
+    for (const id of ids) this.pxSel.delete(id); // a whole light now
+    for (const id of ids) if (this.layout[id] && this.items[id]) this.selected.add(id); // not the haze machine
     this.markSelection();
     this.onChange("select");
   }
 
   toggle(id) {
+    this.pxSel.delete(id);
     if (this.selected.has(id)) this.selected.delete(id);
     else this.selected.add(id);
     this.markSelection();
     this.onChange("select");
   }
 
-  // a dashed outline on lights something is holding (busk buttons)
+  // a dashed outline on lights something is holding (Override buttons)
   mark(ids) {
     const set = new Set(ids);
     for (const [id, it] of Object.entries(this.items)) it.g.classList.toggle("held", set.has(id));
   }
 
   markSelection() {
-    for (const [id, it] of Object.entries(this.items)) it.g.classList.toggle("sel", this.selected.has(id));
+    for (const [id, it] of Object.entries(this.items)) {
+      it.g.classList.toggle("sel", this.selected.has(id));
+      const px = this.pxSel.get(id);
+      it.g.classList.toggle("psel-some", !!px);
+      it.cells.forEach((r, i) => r.classList.toggle("psel", !!px && px.has(i)));
+    }
+  }
+
+  // ---------------------------------------------------------------- pixel selection (v4, scene editor)
+
+  /** [{id, px: null | [0-based pixels]}] in patch order: whole lights and lights with some pixels */
+  selection() {
+    const order = (this.cat?.fixtures || []).map((f) => f.id);
+    const ids = [...new Set([...this.selected, ...this.pxSel.keys()])].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    return ids.map((id) => ({ id, px: this.selected.has(id) ? null : [...this.pxSel.get(id)].sort((a, b) => a - b) }));
+  }
+
+  /** map: {fid: [pixels]} - replaces the selection unless add; a full set of pixels is the whole light */
+  selectPixels(map, add = false) {
+    if (!add) { this.selected.clear(); this.pxSel.clear(); }
+    for (const [id, pxs] of Object.entries(map)) {
+      if (!this.items[id]) continue;
+      const n = this.fixtures[id].pixels || 1;
+      const set = new Set([...(this.pxSel.get(id) || []), ...pxs].filter((p) => p >= 0 && p < n));
+      this.selected.delete(id);
+      if (set.size >= n) this.selected.add(id);
+      else if (set.size) this.pxSel.set(id, set);
+      else this.pxSel.delete(id);
+    }
+    this.markSelection();
+    this.onChange("select");
+  }
+
+  togglePixel(id, px) {
+    const n = this.fixtures[id].pixels || 1;
+    const set = this.selected.has(id) ? new Set([...Array(n).keys()]) : new Set(this.pxSel.get(id) || []);
+    if (set.has(px)) set.delete(px); else set.add(px);
+    this.selected.delete(id);
+    if (set.size >= n) this.selected.add(id);
+    else if (set.size) this.pxSel.set(id, set);
+    else this.pxSel.delete(id);
+    this.markSelection();
+    this.onChange("select");
   }
 
   toCells(ev) {
@@ -259,13 +544,28 @@ export class LightGrid {
   }
 
   bindPointer() {
-    let drag = null, marquee = null;
+    let drag = null, marquee = null, pxDrag = null, lastPx = null;
     this.root.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0) return;
       ev.preventDefault();
       const hit = ev.target.closest("[data-id]");
       const at = this.toCells(ev);
       this.root.setPointerCapture(ev.pointerId);
+      const cell = ev.target.closest?.("rect.cell[data-px]");
+      if (hit && cell && this.pixelSelect) {
+        const id = hit.dataset.id, px = +cell.dataset.px;
+        const now = performance.now(); // the same segment pressed twice quickly (a double-click): the whole light
+        if (lastPx && lastPx.id === id && lastPx.px === px && now - lastPx.at < 400) {
+          lastPx = null;
+          this.select([id], ev.shiftKey);
+          return;
+        }
+        lastPx = ev.shiftKey || ev.ctrlKey || ev.metaKey ? null : { id, px, at: now };
+        if (ev.ctrlKey || ev.metaKey) { this.togglePixel(id, px); return; }
+        this.selectPixels({ [id]: [px] }, ev.shiftKey);
+        pxDrag = ev.shiftKey ? { id, from: px } : null; // shift-drag along a bar: a range
+        return;
+      }
       if (hit) {
         const id = hit.dataset.id;
         if (this.tool === "move" && this.edit) {
@@ -280,6 +580,15 @@ export class LightGrid {
       this.gMarquee.replaceChildren(marquee.shape);
     });
     this.root.addEventListener("pointermove", (ev) => {
+      if (pxDrag) {
+        const over = document.elementFromPoint(ev.clientX, ev.clientY);
+        const c = over?.closest?.(`[data-id="${CSS.escape(pxDrag.id)}"] rect.cell[data-px]`);
+        if (c) {
+          const to = +c.dataset.px, [a, b] = [Math.min(pxDrag.from, to), Math.max(pxDrag.from, to)];
+          this.selectPixels({ [pxDrag.id]: [...Array(b - a + 1).keys()].map((k) => a + k) }, true);
+        }
+        return;
+      }
       if (drag) {
         const [x, y] = this.toCells(ev);
         const dx = half(x - drag.at[0]), dy = half(y - drag.at[1]);
@@ -307,9 +616,11 @@ export class LightGrid {
       }
     });
     const end = (ev) => {
+      pxDrag = null;
       if (drag) {
         if (drag.moved) {
           this.history.push(drag.before);
+          this.future = [];
           this.fit();
           this.onChange("move");
         }
@@ -318,6 +629,22 @@ export class LightGrid {
         const pts = marquee.points;
         const last = pts[pts.length - 1];
         let ids;
+        if (this.tool === "lasso" && pts.length > 2 && this.pixelSelect) {
+          // lasso over bars picks just the pixels inside it; other lights by their middle
+          const map = {};
+          for (const id of Object.keys(this.items)) {
+            const cells = this.cellsOf(id);
+            if (cells.length > 1) {
+              const inside = cells.map((c, i) => (inPolygon(c, pts) ? i : -1)).filter((i) => i >= 0);
+              if (inside.length) map[id] = inside;
+            } else if (inPolygon([this.layout[id].x, this.layout[id].y], pts)) map[id] = [0];
+          }
+          this.selectPixels(map, marquee.add);
+          this.gMarquee.replaceChildren();
+          marquee = null;
+          if (ev && this.root.hasPointerCapture?.(ev.pointerId)) this.root.releasePointerCapture(ev.pointerId);
+          return;
+        }
         if (this.tool === "lasso" && pts.length > 2) {
           ids = Object.keys(this.items).filter((id) => inPolygon([this.layout[id].x, this.layout[id].y], pts));
         } else {
@@ -336,6 +663,7 @@ export class LightGrid {
       if (ev && this.root.hasPointerCapture?.(ev.pointerId)) this.root.releasePointerCapture(ev.pointerId);
     };
     this.root.addEventListener("pointerup", end);
+
     this.root.addEventListener("pointercancel", end);
   }
 
@@ -348,6 +676,7 @@ export class LightGrid {
     fn(ids);
     if (JSON.stringify(this.layout) === before) return false;
     this.history.push(before);
+    this.future = [];
     for (const id of ids) this.drawLight(id);
     this.fit();
     this.markSelection();
@@ -385,14 +714,16 @@ export class LightGrid {
     });
   }
 
-  // put the selected lights in a row, a ring or a grid around where they are now
-  make(shape) {
+  // put the selected lights in a row, a ring or a grid around where they are now. opts.spacing:
+  // cells between lights (default: the biggest light + 1.5); opts.cols: grid columns
+  make(shape, opts = {}) {
     return this.change((ids) => {
       ids.sort((a, b) => this.layout[a].x - this.layout[b].x || this.layout[a].y - this.layout[b].y);
       const cx = ids.reduce((s, id) => s + this.layout[id].x, 0) / ids.length;
       const cy = ids.reduce((s, id) => s + this.layout[id].y, 0) / ids.length;
-      const step = Math.max(...ids.map((id) => { const e = this.extent(id); return Math.max(e.right - e.left, e.bottom - e.top); })) + 1.5;
-      const spots = cellOffsets(ids.length, shape, 0).map(([x, y]) => [x * step, y * step]);
+      const size = Math.max(...ids.map((id) => { const e = this.extent(id); return Math.max(e.right - e.left, e.bottom - e.top); }));
+      const step = size + 1 + (opts.spacing > 0 ? opts.spacing : 0.5);
+      const spots = cellOffsets(ids.length, shape, opts.cols || 0).map(([x, y]) => [x * step, y * step]);
       ids.forEach((id, i) => {
         this.layout[id].x = clamp(half(cx + spots[i][0]));
         this.layout[id].y = clamp(half(cy + spots[i][1]));
@@ -404,14 +735,64 @@ export class LightGrid {
     return this.change((ids) => ids.forEach((id) => (this.layout[id].rot = (((this.layout[id].rot || 0) + deg) % 360 + 360) % 360)));
   }
 
-  setShape(shape) {
-    return this.change((ids) => ids.filter((id) => (this.fixtures[id].pixels || 1) > 1).forEach((id) => (this.layout[id].shape = shape)));
+  setAngle(deg) {
+    return this.change((ids) => ids.forEach((id) => (this.layout[id].rot = ((deg % 360) + 360) % 360)));
+  }
+
+  // mirror the selection's places about its middle (and turn each light to match)
+  flip(axis) {
+    return this.change((ids) => {
+      const k = axis === "h" ? "x" : "y";
+      const mid = ids.reduce((s, id) => s + this.layout[id][k], 0) / ids.length;
+      ids.forEach((id) => {
+        const p = this.layout[id];
+        p[k] = clamp(half(2 * mid - p[k]));
+        p.rot = ((((axis === "h" ? 360 - (p.rot || 0) : 180 - (p.rot || 0)) % 360) + 360) % 360);
+      });
+    });
+  }
+
+  pixelIds(ids = [...this.selected]) { return ids.filter((id) => (this.fixtures[id].pixels || 1) > 1); }
+
+  setShape(shape, cols = 0) {
+    return this.change((ids) => this.pixelIds(ids).forEach((id) => {
+      this.layout[id].shape = shape;
+      if (shape === "grid" && cols > 0) this.layout[id].cols = cols;
+      else delete this.layout[id].cols;
+    }));
+  }
+
+  toggleReverse() {
+    return this.change((ids) => {
+      const px = this.pixelIds(ids);
+      const on = !px.every((id) => this.layout[id].reverse);
+      px.forEach((id) => { if (on) this.layout[id].reverse = true; else delete this.layout[id].reverse; });
+    });
   }
 
   undo() {
     const prev = this.history.pop();
     if (!prev) return false;
-    this.layout = JSON.parse(prev);
+    this.future.push(JSON.stringify(this.layout));
+    return this.restore(prev);
+  }
+
+  redo() {
+    const next = this.future.pop();
+    if (!next) return false;
+    this.history.push(JSON.stringify(this.layout));
+    return this.restore(next);
+  }
+
+  // back to the last saved layout (no undo history left)
+  revert() {
+    this.history = [];
+    this.future = [];
+    return this.restore(this.saved);
+  }
+
+  restore(json) {
+    this.layout = JSON.parse(json);
     for (const id of Object.keys(this.items)) this.drawLight(id);
     this.fit();
     this.markSelection();

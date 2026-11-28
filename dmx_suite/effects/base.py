@@ -134,7 +134,7 @@ def parse_value(prm: Param, v: Any, ctx: ParseCtx) -> Any:
             raise LookError(f"{ctx.what}: {prm.key} needs a list of at least {max(1, prm.min_items)} colours")
         return [ctx.pal.colour(c, what) for c in v]
     if k == "position":
-        return {f: ctx.pal.position(v, f, what) for f in ctx.targets}
+        return ctx.pal.positions_for(v, ctx.targets, what)
     if k == "range":
         if not isinstance(v, (list, tuple)) or len(v) != 2:
             raise LookError(f"{what} must be [min, max]")
@@ -252,13 +252,32 @@ class Run:
     blend_mode: str = "replace"
     level: float = 1.0
     seed_text: str = ""
+    now: float = 0.0  # the engine's clock (drum-reactive effects read hits by it, v3.3)
     _pending: dict[str, list[Colour | None]] = field(default_factory=dict)
+    mask: dict[str, frozenset[int]] = field(default_factory=dict)  # v4: pixel selections - only these pixels change
+
+    def _masked(self, fid: str, cols: list[Colour | None]) -> None:
+        """Write a pixel selection: the selected pixels get `cols` (blended as the layer says), the
+        others keep what lower layers / earlier steps gave them, else off (rule 4)."""
+        fl = self.fl(fid)
+        n = max(1, self.pixels(fid))
+        row = [dict(p) for p in fl.pixels] if fl.pixels else [dict(fl.colour) for _ in range(n)]
+        row += [{} for _ in range(n - len(row))]
+        plain = self.blend_mode == "replace" and self.level >= 1
+        for px in self.mask[fid]:
+            c = cols[px] if px < len(cols) else None
+            if c is None:
+                continue
+            row[px] = dict(c) if plain else blend(row[px], c, self.blend_mode, self.level)
+        fl.pixels, fl.colour = row, {}
 
     def fl(self, fid: str) -> FixtureLook:
         return self.look.fixtures.setdefault(fid, FixtureLook())
 
     # colour out, mixed with what lower layers set (blend + level)
     def set_colour(self, fid: str, c: Colour) -> None:
+        if fid in self.mask:
+            return self._masked(fid, [c] * max(1, self.pixels(fid)))
         fl = self.fl(fid)
         if self.blend_mode == "replace" and self.level >= 1:
             fl.colour, fl.pixels = dict(c), None
@@ -268,6 +287,8 @@ class Run:
             fl.colour = blend(fl.colour, c, self.blend_mode, self.level)
 
     def set_pixels(self, fid: str, cols: list[Colour]) -> None:
+        if fid in self.mask:
+            return self._masked(fid, list(cols))
         fl = self.fl(fid)
         if self.blend_mode == "replace" and self.level >= 1:
             fl.pixels, fl.colour = cols, {}
@@ -285,7 +306,10 @@ class Run:
 
     def flush(self) -> None:
         for fid, row in self._pending.items():
-            self.set_pixels(fid, [dict(c) if c is not None else {} for c in row])
+            if fid in self.mask:  # only the selected pixels were coloured; the rest keep theirs
+                self._masked(fid, [dict(c) if c is not None else None for c in row])
+            else:
+                self.set_pixels(fid, [dict(c) if c is not None else {} for c in row])
         self._pending.clear()
 
 

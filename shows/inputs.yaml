@@ -1,0 +1,54 @@
+# Named inputs (v3): each MIDI/OSC input is defined once here and used by name everywhere
+# (MIDI map, step scenes, the auto show). Change a note here and everything follows.
+# Channels 1-16 as on the gear; `channel: any` matches every channel.
+# Roles tell the auto show what an input is: kick, snare, tom, cymbal, count_in, activity.
+# PLACEHOLDER numbers: the FCB1010 keeps its current program changes (SCOPE decision); copy them
+# from Daslight. Use the Inputs tab on the MIDI page (learn) to set them from the real gear.
+version: 6
+devices:
+  fcb1010:
+    name: FCB1010
+    channel: 1
+    inputs:
+      master: {name: MASTER, type: program_change, number: 0}
+      blackout: {name: Blackout, type: program_change, number: 9}
+      haze_manual: {name: Haze manual, type: program_change, number: 5}
+      haze_pulse: {name: Haze pulse, type: program_change, number: 6}
+      haze_off: {name: Haze off, type: program_change, number: 7}
+      haze_boost: {name: Haze boost, type: control_change, number: 80}   # momentary switch: held = boost
+      expression: {name: Expression pedal, type: control_change, number: 7}
+      set_low: {name: Set LOW, type: program_change, number: 1}
+      set_mid: {name: Set MID, type: program_change, number: 2}
+      set_high: {name: Set HIGH, type: program_change, number: 3}
+      show_opera: {name: Opera show, type: program_change, number: 4}
+      show_acoustic: {name: Acoustic show, type: program_change, number: 8}
+      next_song: {name: Next song, type: program_change, number: 10}
+      prev_song: {name: Previous song, type: program_change, number: 11}
+      next_step: {name: Next step, type: program_change, number: 12}
+      tap: {name: Tap tempo, type: program_change, number: 13}
+
+  td25:
+    name: TD-25 kit
+    channel: 10        # GM drum notes
+    inputs:
+      kick: {name: Kick, type: note, notes: [36], roles: [kick, activity], colour: "#ff3030"}
+      snare: {name: Snare, type: note, notes: [38], roles: [snare, activity]}
+      snare_rim: {name: Snare rim, type: note, notes: [40], roles: [snare, activity]}
+      side_stick: {name: Side stick, type: note, notes: [37], roles: [count_in, activity]}
+      tom_1: {name: Tom 1, type: note, notes: [48], roles: [tom, activity]}
+      tom_2: {name: Tom 2, type: note, notes: [47], roles: [tom, activity]}
+      tom_3: {name: Tom 3, type: note, notes: [45], roles: [tom, activity]}
+      floor_tom: {name: Floor tom, type: note, notes: [43], roles: [tom, activity]}
+      hihat: {name: Hi-hat, type: note, notes: [42, 46], roles: [activity]}
+      hihat_pedal: {name: Hi-hat pedal, type: note, notes: [44], roles: [count_in, activity]}
+      crash: {name: Crash, type: note, notes: [49], roles: [cymbal, activity]}
+      ride: {name: Ride, type: note, notes: [51], roles: [cymbal, activity]}
+
+  # SamplePad 4 through the H2MIDI Pro (phase 2): `port` ties its pads to that input, so they can
+  # use the same ch 10 notes as the TD-25 and still do their own thing. PLACEHOLDERS:
+  # samplepad:
+  #   name: SamplePad 4
+  #   port: H2MIDI
+  #   channel: 10
+  #   inputs:
+  #     pad_1: {name: Pad 1, type: note, notes: [38], roles: [activity]}

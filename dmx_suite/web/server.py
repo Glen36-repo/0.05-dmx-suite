@@ -26,11 +26,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+import yaml
+
 from .. import qr, settings
 from ..access import Access, lan_addresses
 from ..access import claude_token as default_claude_token
 from ..app import App
 from ..fixtures import ConfigError
+from ..midi.named import device_profiles, load_device_profile
 from ..paths import app_token_file
 from ..setup import patch_report
 from ..store import LockedError, StoreError
@@ -45,9 +48,13 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
 DEFAULT_PORT = 8505
 # what Claude's token may change (everything else is the people at the laptop's call)
 MAX_UPLOAD = 20 * 1024 * 1024
-CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/claude/haze", "/api/nodes/assign", "/api/validate/scene",
-                 "/api/undo/claude")
+CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/steps/edit", "/api/steps/view",
+                 "/api/routing/output", "/api/claude/haze",
+                 "/api/haze/settings", "/api/devices/set",
+                 "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
+                 "/api/autopilot/check", "/api/generate")
 SESSION_COOKIE = "dmx_session"
+FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
 
 def _same(a: str, b: str) -> bool:
@@ -98,8 +105,13 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
                 raise ApiError(409, "boost refused (disabled or cooling down)")
         elif act == "release":
             e.haze_boost(False)
+        elif act == "preset":
+            try:
+                e.haze_preset(str(a.get("preset", "")))
+            except ValueError as err:
+                raise ApiError(400, str(err)) from err
         else:
-            raise ApiError(400, "haze action: off, manual, pulse, toggle_manual, boost, release")
+            raise ApiError(400, "haze action: off, manual, pulse, toggle_manual, boost, release, preset")
     elif cmd == "show":
         c.select_show(a["show"], a.get("set"))
     elif cmd == "set":
@@ -117,9 +129,14 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
         {"next": c.next_song, "prev": c.prev_song}.get(which, lambda: c.go_song(int(which)))()
     elif cmd == "step":
         c.go_step(int(a["step"]))
+    elif cmd == "steps":  # step scene playing (v3.2): next, back, go, speed, fade
+        v = a.get("value")
+        return {"result": c.step_scene(str(a.get("action", "next")), None if v is None else float(v))}
+    elif cmd == "scene_step":  # play a step scene from one of its steps
+        c.select_scene(a["scene"], int(a.get("step", 0)))
     elif cmd == "speed":
         c.set_speed(float(a["value"]))
-    elif cmd == "busk":
+    elif cmd in ("override", "busk"):  # Override panels ("busk" before v4)
         v = a.get("value")
         return {"result": app.busk(str(a["panel"]), str(a["widget"]), bool(a.get("down", True)),
                                    None if v is None else float(v))}
@@ -343,6 +360,25 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, interfaces())
             if path == "/api/state":
                 return self._json(200, app.snapshot())
+            if path == "/api/layout":
+                return self._json(200, app.layout_view())
+            if path == "/api/routing":
+                return self._json(200, app.routing())
+            if path == "/api/devices/list":  # v4: devices plugged in, by USB identity / MIDI port name
+                return self._json(200, app.devices_view())
+            if path == "/api/monitor/status":  # v4 Monitor page: MIDI ports, rates, energy
+                return self._json(200, app.monitor_status())
+            if path == "/api/monitor/midi":
+                ch = q.get("channel")
+                return self._json(200, app.monitor_midi(q.get("dir", "in"), int(q.get("n", 200)), int(q.get("since", 0)),
+                                                        q.get("port") or None, int(ch) if ch else None, q.get("type") or None,
+                                                        q.get("unmapped") == "1"))
+            if path == "/api/monitor/channels":
+                return self._json(200, app.channel_names(int(q.get("u", 0))))
+            if path == "/api/frame":  # one look at what an interface sent (Monitor, Claude)
+                return self._json(200, app.frame_view(int(q.get("u", 0)), q.get("out")))
+            if path == "/api/events/frames":  # live frames, only while a page shows them
+                return self._frames(int(q.get("u", 0)), q.get("out"))
             if path == "/api/catalogue":
                 return self._json(200, app.catalogue())
             if path == "/api/events":
@@ -352,6 +388,53 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, [asdict(e) for e in app.monitor.since(since)])
             if path == "/api/midi/map":
                 return self._json(200, app.router.map.to_dict())
+            if path == "/api/inputs":  # named inputs (v3), with where each is used
+                ins = app.router.inputs
+                input_rows = ins.summary()
+                for row in input_rows:
+                    m = app.router.map.get_input(row["id"])
+                    row["mapped"] = m.describe() if m else None
+                devices = [{"id": d.id, "name": d.name, "port": d.port, "channel": d.channel, "inputs": d.inputs}
+                           for d in ins.devices.values()]
+                return self._json(200, {"devices": devices, "inputs": input_rows, "profiles": device_profiles(app.files.root)})
+            if path == "/api/points":  # head points of the running rig, plus what each is used by
+                rig = app.engine.rig
+                return self._json(200, {"rig": app.names[0], "points": [
+                    {"name": pt.name, "description": pt.description, "tags": pt.tags, "stage": pt.stage,
+                     "heads": {f: {"pan": v[0], "tilt": v[1]} for f, v in pt.heads.items()},
+                     "missing": [f.id for f in rig.fixtures if f.type.has("pan") and not f.type.colour_only
+                                 and f.id not in pt.heads]} for pt in rig.points.values()],
+                    "problems": rig.point_problems()})
+            if path == "/api/alerts":
+                return self._json(200, app.alerts_view())
+            if path == "/api/claude":  # Connect to Claude (Setup page)
+                if who == "claude":
+                    raise ApiError(403, "not available to Claude")
+                return self._json(200, app.claude_status(fresh=q.get("fresh") == "1"))
+            if path == "/api/fx":  # FX banks for this rig (v3.3)
+                return self._json(200, app.fx_catalogue())
+            if path == "/api/presets":  # presets (v3.5): starters + the show's own
+                return self._json(200, {k: {"name": v["name"], "tags": v["tags"], "pick": v["pick"], "builtin": v["builtin"]}
+                                        for k, v in (app.files.presets or {}).items()})
+            if path == "/api/review":  # look review: every look the rig can do, with ratings
+                return self._json(200, app.review_looks(q.get("mood") or None, q.get("bank") or None, q.get("palette") or None,
+                                                        int(q.get("offset", 0)), int(q.get("limit", 40))))
+            if path == "/api/autopilot":  # status and the decision log (v3.4)
+                n = int(q.get("n", 50))
+                return self._json(200, {"status": app.autopilot.status(app.engine.clock()), "log": app.autopilot.log_since(n),
+                                        "priority": app.priority(), "config": app.autopilot.cfg})
+            if path == "/api/kelvin":
+                from ..colourtheory import KELVIN_PRESETS, hex_of, kelvin
+
+                return self._json(200, [{"name": n, "kelvin": k, "hex": hex_of(kelvin(k))} for n, k in KELVIN_PRESETS])
+            if path.startswith("/api/palette/export/"):
+                return self._json(200, app.store.export_palette(path.rsplit("/", 1)[1]))
+            if path.startswith("/api/colours/used/"):
+                return self._json(200, {"used": app.store.colour_users(path.rsplit("/", 1)[1])})
+            if path.startswith("/api/points/used/"):
+                return self._json(200, {"used": app.store.point_users(path.rsplit("/", 1)[1])})
+            if path.startswith("/api/inputs/used/"):
+                return self._json(200, {"used": app.store.input_users(path.rsplit("/", 1)[1])})
             if path == "/api/addresses":
                 rows, notes = patch_report(app.files.patch, app.engine.rig)
                 return self._json(200, {"rows": [asdict(r) for r in rows], "notes": notes})
@@ -379,7 +462,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
         def _page(self, name: str) -> None:
             key, meta = settings.theme()
             html = (STATIC / name).read_text(encoding="utf-8")
-            for k, v in (("__TOKEN__", self._page_token()), ("__THEME__", key),
+            density = settings.load().get("density")
+            density = density if density in settings.DENSITIES else "compact"
+            for k, v in (("__TOKEN__", self._page_token()), ("__THEME__", key), ("__DENSITY__", density),
                          ("__APP_NAME__", html_escape(meta["app_name"]))):
                 html = html.replace(k, v)
             self._send(200, html.encode(), TYPES[".html"])
@@ -562,6 +647,28 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             finally:
                 app.screens.pop(sid, None)
 
+        def _frames(self, universe: int, out: str | None) -> None:
+            """Server-sent events: one interface's frame on one universe, 10 times a second."""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+            self.connection.settimeout(5.0)
+            local, sid = self._local(), self._sid()
+            last = None
+            quiet = time.monotonic()
+            while not app_stopping.is_set() and not live.stopped:
+                if not local and (not access.lan or access.session(sid, touch=False) is None):
+                    return
+                body = json.dumps(app.frame_view(universe, out), default=str)
+                if body != last or time.monotonic() - quiet > HEARTBEAT_S:
+                    self.wfile.write(f"data: {body}\n\n".encode())
+                    self.wfile.flush()
+                    last, quiet = body, time.monotonic()
+                time.sleep(FRAMES_S)
+
         def _stream(self, seq: int) -> None:
             """Send the shared state when it changes, new MIDI monitor lines, else a heartbeat."""
             local, sid = self._local(), self._sid()
@@ -604,6 +711,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._dispatch(method, path, body)
 
         def _dispatch(self, method: str, path: str, body: dict) -> None:
+            if method == "POST" and path.startswith("/api/autopilot/"):  # v4 names for the Ride page's routes
+                rest = path[len("/api/autopilot/"):]
+                path = "/api/ride" if rest == "play" else f"/api/ride/{rest}"
             if path == "/api/access" and method == "POST":
                 return self._json(200, self._access_change(body))
             if path == "/api/starter" and method == "POST":
@@ -633,6 +743,48 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/layout" and method == "PUT":
                 bid = app.save_layout(body.get("layout") or {})
                 return self._json(200, {"ok": True, "backup": bid})
+            if path == "/api/monitor/send" and method == "POST":  # MIDI test send (gig-locked)
+                sent = app.midi_send(str(body.get("port", "")), str(body.get("type", "note_on")), int(body.get("channel", 1)),
+                                     int(body.get("number", 60)), int(body.get("value", 100)))
+                return self._json(200, {"ok": True, "port": sent})
+            if path == "/api/devices/replace" and method == "POST":  # mid-gig recovery: allowed under gig lock
+                r = app.replace_device(str(body.get("missing", "")), str(body.get("use", "")))
+                return self._json(200, {"ok": True, **r})
+            if path == "/api/devices/set" and method == "POST":
+                uni = body.get("universe")
+                r = app.set_device(str(body.get("id", "")), body.get("alias"), None if uni in (None, "") else int(uni),
+                                   body.get("driver") or None, bool(body.get("use", True)))
+                return self._json(200, {"ok": True, **r})
+            if path == "/api/yaml/dump" and method == "POST":  # v4 step editor: the YAML side panel
+                from ..yamlio import plain_dump
+
+                return self._json(200, {"text": plain_dump(body.get("data"))})
+            if path == "/api/yaml/load" and method == "POST":
+                try:
+                    data = yaml.safe_load(str(body.get("text", "")))
+                except yaml.YAMLError as e:
+                    raise ApiError(400, f"not valid YAML: {e}") from e
+                if not isinstance(data, dict):
+                    raise ApiError(400, "a scene is a mapping (name, type, steps ...)")
+                return self._json(200, {"data": data})
+            if path == "/api/steps/view" and method == "POST":  # v4 step editor: set vs tracked per light
+                return self._json(200, app.step_view(body.get("scene") or {}, int(body.get("index", 0))))
+            if path == "/api/steps/edit" and method == "POST":  # one step of a saved step scene (Claude, editor)
+                return self._json(200, {"ok": True, **app.edit_step(str(body.get("op")), str(body.get("scene")), body)})
+            if path == "/api/haze/settings" and method == "POST":  # Haze settings panel (and Claude, saving)
+                r = app.haze_settings(body.get("changes") or {}, bool(body.get("save")))
+                return self._json(200, {"ok": True, **r})
+            if path == "/api/haze/revert" and method == "POST":
+                return self._json(200, {"ok": True, **app.haze_revert()})
+            if path == "/api/haze/test" and method == "POST":
+                span = app.haze_test(str(body.get("mode", "")))
+                return self._json(200, {"ok": True, "seconds": span})
+            if path == "/api/routing/output" and method == "POST":
+                r = app.set_output(int(body.get("index", -1)), body.get("set") or {})
+                return self._json(200, {"ok": True, **r})
+            if path == "/api/layout/positions" and method == "POST":  # some lights (Claude: set_layout)
+                bid = app.set_positions(body.get("positions") or {})
+                return self._json(200, {"ok": True, "backup": bid})
             if path == "/api/claude/haze" and method == "POST":
                 app.require_unlocked("changing haze")
                 return self._json(200, control(app, "haze", body))
@@ -640,7 +792,105 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 scene = body.get("scene") or body.get("scene_data")
                 if not isinstance(scene, (str, dict)):
                     raise ApiError(400, "preview needs a scene name or scene data")
-                msg = app.preview_scene(scene, float(body.get("seconds", 10)))
+                step, start = body.get("step"), body.get("play_from")
+                msg = app.preview_scene(scene, float(body.get("seconds", 10)), None if step is None else int(step),
+                                        None if start is None else int(start))
+                return self._json(200, {"ok": True, "message": msg})
+            if path in ("/api/claude/connect", "/api/claude/disconnect") and method == "POST":
+                if not self._local():  # it changes this computer's Claude settings: only from this computer
+                    raise ApiError(403, "connect Claude from the laptop itself")
+                try:
+                    return self._json(200, app.claude_connect(path.endswith("/connect")))
+                except (OSError, ValueError) as e:
+                    raise ApiError(400, f"couldn't change the Claude settings: {e}") from e
+            if path == "/api/alerts" and method == "POST":  # banners: dismiss, minimise, snooze, mute, quiet
+                ac, a = app.alert_center, str(body.get("action", ""))
+                try:
+                    if a == "dismiss":
+                        ac.dismiss(str(body["id"]))
+                    elif a == "minimise":
+                        ac.minimise(str(body["id"]))
+                    elif a == "snooze":
+                        ac.snooze(str(body["id"]), str(body.get("for", "10min")))
+                    elif a == "mute":
+                        ac.mute(str(body["id"]), bool(body.get("on", True)))
+                    elif a == "quiet":
+                        ac.set_quiet(bool(body.get("on", True)))
+                    else:
+                        raise ApiError(400, "alerts action: dismiss, minimise, snooze, mute or quiet")
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+                return self._json(200, {"ok": True, **app.alerts_view()})
+            if path == "/api/ride" and method == "POST":  # play a Ride look: FX + palette + ride settings (v3.3)
+                try:
+                    return self._json(200, app.ride_play(body.get("pick") or {}, body.get("fade_s")))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/ride/action" and method == "POST":  # Ride page controls (v3.4)
+                try:
+                    a = str(body.get("action", ""))
+                    params = {k: v for k, v in body.items() if k not in ("action", "level")}
+                    lvl = body.get("level")
+                    result = app.ride_action(a, params, None if lvl is None else float(lvl))
+                    return self._json(200, {"ok": True, "result": result})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/generate" and method == "POST":  # generator (v3.5): writes through the store
+                try:
+                    return self._json(200, app.generate(str(body.get("kind", "scenes")), body))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if method == "POST" and path in ("/api/capture", "/api/ride/reroll", "/api/ride/more", "/api/rate",
+                                             "/api/preset/play"):
+                try:
+                    if path == "/api/capture":
+                        return self._json(200, {"ok": True, "backup": app.capture_look(str(body["key"]), body.get("name"))})
+                    if path == "/api/ride/reroll":
+                        return self._json(200, app.reroll(list(body.get("locks") or []), body.get("mood"), body.get("seed")))
+                    if path == "/api/ride/more":
+                        return self._json(200, {"picks": app.more_like_this(int(body.get("n", 4)), body.get("seed"))})
+                    if path == "/api/rate":
+                        return self._json(200, {"ok": True, "backup": app.rate_look(body.get("key") or body.get("pick") or {},
+                                                                                   int(body.get("value", 0)))})
+                    return self._json(200, app.play_preset(str(body["preset"])))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/ride/learn" and method == "POST":  # MIDI learn a Ride control, saved when learned
+                return self._json(200, {"ok": True, "message": app.learn_and_save(str(body["action"]), body.get("params") or {})})
+            if path == "/api/flashfx" and method == "POST":
+                try:
+                    lm = body.get("length_ms")
+                    msg = app.flash_fx(str(body.get("fx", "")), bool(body.get("down", True)), body.get("colour"),
+                                       str(body.get("side", "left")), None if lm is None else int(lm))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+                return self._json(200, {"ok": True, "result": msg})
+            if path == "/api/ride/check" and method == "POST":  # a pick as a scene + quality notes, nothing played
+                from ..fxbanks import BY_ID, Pick
+
+                pick = Pick.from_dict(body.get("pick") or {})
+                bad = [x for x in (pick.move, pick.colour, pick.drum) if x and x not in BY_ID]
+                if bad:
+                    raise ApiError(400, f"unknown FX item(s): {', '.join(bad)}")
+                _, scene = app.compose(pick)
+                return self._json(200, {"issues": app.quality().combo_issues(pick, str(body.get("mood", "mid"))),
+                                        "scene": scene})
+            if path == "/api/steps/capture" and method == "POST":  # read only: the lights as a step's `set`
+                try:
+                    return self._json(200, {"set": app.capture_step(list(body.get("fixtures") or []))})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/colour/preview" and method == "POST":  # read-only: what each light makes of a colour
+                return self._json(200, app.colour_preview(body.get("colour"), list(body.get("fixtures") or [])))
+            if path == "/api/colour/generate" and method == "POST":
+                from ..colourtheory import generate, hex_of
+                from ..look import parse_colour
+
+                base = parse_colour(body.get("base", "#ff0000"), "base colour")
+                return self._json(200, {"colours": [hex_of(c) for c in generate(base, str(body.get("scheme", "analogous")),
+                                                                                   int(body.get("count", 4)))]})
+            if path == "/api/palette/preview" and method == "POST":
+                msg = app.palette_preview(str(body["palette"]), str(body.get("mode", "static")), float(body.get("seconds", 10)))
                 return self._json(200, {"ok": True, "message": msg})
             if path.startswith("/api/midi/") and method == "POST":
                 return self._json(200, self._midi(path.rsplit("/", 1)[1], body))
@@ -666,13 +916,17 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 app.require_unlocked("removing a mapping")
                 if b["type"] == "osc":
                     r.map.remove(("osc", 0, 0, b["address"]))
+                elif b["type"] == "input":
+                    r.map.remove(("input", 0, 0, b["input"]))
                 else:
                     r.map.remove((b["type"], int(b["channel"]), int(b["number"]), b.get("port") or ""))
-            elif action == "save":
-                app.require_unlocked("saving the MIDI map")
-                path = app.files.midimap_path  # validated and backed up like every other edit
-                bid = app.store.put("midi", path.stem, r.map.to_dict(), f"save MIDI map {path.stem}")
-                return {"ok": True, "saved": str(path.name), "backup": bid}
+            elif action == "save":  # validated and backed up like every other edit, with learned inputs
+                bid = app.save_midi_map()
+                return {"ok": True, "saved": str(app.files.midimap_path.name), "backup": bid}
+            elif action == "learn_input":
+                return {"ok": True, "message": app.learn_input(str(b["input"]), b.get("device"), bool(b.get("add")))}
+            elif action == "calibrate":
+                return app.calibrate(str(b["input"]), str(b.get("level", "normal")), str(b.get("step", "start")))
             else:
                 raise ApiError(404, "unknown MIDI action")
             return {"ok": True}
@@ -708,6 +962,66 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 bid = s.remove_fixture(str(b.get("id", "")))
             elif parts == ["patch"] and method == "PUT":
                 bid = s.put_patch(b.get("fixtures"))
+            elif parts == ["input"] and method == "POST":  # named inputs (v3)
+                a = str(b.get("action", "put"))
+                if a == "put":
+                    bid = s.put_input(str(b["device"]), str(b["name"]), b.get("value") or {}, b.get("device_info"))
+                elif a == "rename":
+                    bid = s.rename_input(str(b["name"]), str(b["new_name"]))
+                elif a == "delete":
+                    bid = s.delete_input(str(b["name"]))
+                else:
+                    raise ApiError(400, "input action: put, rename or delete")
+            elif parts == ["colour"] and method == "POST" and b.get("action") == "rename":  # named colours (v3)
+                bid = s.rename_colour(str(b["name"]), str(b["new_name"]))
+            elif parts == ["palette"] and method == "POST":
+                a = str(b.get("action", ""))
+                if a == "rename":
+                    bid = s.rename_palette(str(b["name"]), str(b["new_name"]))
+                elif a == "import":
+                    bid = s.import_palette(b.get("data") or {}, bool(b.get("overwrite")))
+                else:
+                    raise ApiError(400, "palette action: rename or import")
+            elif parts == ["point"] and method == "POST":  # head position points (v3)
+                a = str(b.get("action", "put"))
+                rig = str(b.get("rig") or app.names[0])
+                if a in ("put", "store"):
+                    bid = s.put_point(rig, str(b["name"]), b.get("value") or {}, merge=a == "store")
+                elif a == "rename":
+                    bid = s.rename_point(str(b["name"]), str(b["new_name"]))
+                elif a == "delete":
+                    bid = s.delete_point(rig, str(b["name"]))
+                else:
+                    raise ApiError(400, "point action: put, store, rename or delete")
+            elif parts == ["preset"] and method == "POST":  # presets (v3.5)
+                try:
+                    if b.get("action", "put") == "delete":
+                        bid = app.delete_preset(str(b["id"]))
+                    else:
+                        bid = app.save_preset(str(b["id"]), b.get("name"), b.get("tags"), b.get("pick"))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            elif parts == ["auto"] and method == "POST":  # classification overrides for the running rig (v3.3)
+                rig_name = str(b.get("rig") or app.names[0])
+                data = s.read("rig", rig_name)
+                auto = {k: v for k, v in (("classes", b.get("classes") or {}), ("exclude", b.get("exclude") or [])) if v}
+                if auto:
+                    data["auto"] = auto
+                else:
+                    data.pop("auto", None)
+                bid = s.put("rig", rig_name, data, f"auto show lights on rig {rig_name}")
+            elif parts == ["device"] and method == "POST":
+                a = str(b.get("action", "put"))
+                if a == "put":
+                    bid = s.put_device(str(b["device"]), b.get("value") or {})
+                elif a == "delete":
+                    bid = s.delete_device(str(b["device"]))
+                elif a == "load":  # a device profile (shipped or the show's devices/ folder)
+                    bid = s.put_device(str(b.get("as") or b["profile"]), load_device_profile(app.files.root, str(b["profile"])))
+                elif a == "export":
+                    bid = s.export_device(str(b["device"]))
+                else:
+                    raise ApiError(400, "device action: put, delete, load or export")
             elif parts == ["group"] and method == "POST":
                 bid = s.edit_group(str(b.get("action", "")), str(b.get("name", "")), b.get("fixtures"), b.get("new_name"))
             elif len(parts) == 3 and parts[0] in ("palettes", "fixtures") and method in ("PUT", "DELETE"):

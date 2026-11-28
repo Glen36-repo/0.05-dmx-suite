@@ -21,7 +21,7 @@ from .haze import Haze, HazeMode
 from .look import Colour, FixtureLook, Look
 from .output import NodeSerialDriver, OutputDriver
 from .output.timer import high_res
-from .rig import Rig
+from .rig import HazeConfig, Rig
 from .rules import ControlState, Flash, RuleLayer
 from .scenes import Scene, ScenePlayer
 
@@ -91,7 +91,7 @@ class Engine:
                 if fid in held and fid in old.present:
                     self.rules.position[fid] = held[fid]
             if rig.haze != old.haze:
-                self.haze = Haze(rig.haze, self.clock())
+                self.haze.reconfigure(rig.haze, self.clock())  # the mode the band picked carries on
             if self.source is None:  # the static look is what's playing
                 self.base_look = look
             self.static_look = look
@@ -109,7 +109,12 @@ class Engine:
     # ------------------------------------------------------------------ output
 
     def _state(self, now: float) -> ControlState:
-        return ControlState(self.master, self.blackout, self.flashes, self.haze.tick(now), now)
+        gate, gate_all = 1.0, False
+        start = getattr(self, "_gate_start", None)
+        fade = self.rig.release_fade_s
+        if start is not None and fade > 0 and now - start < fade:
+            gate, gate_all = max(0.0, (now - start) / fade), self._gate_all
+        return ControlState(self.master, self.blackout, self.flashes, self.haze.tick(now), now, gate, gate_all)
 
     def output(self) -> dict[int, bytearray]:
         """Render and send now. Called by the loop and directly by anything that must not wait."""
@@ -417,6 +422,8 @@ class Engine:
 
     def set_master(self, on: bool) -> None:
         with self.lock:
+            if on and not self.master:  # control priority: MASTER back on fades the show in (release_fade_s)
+                self._gate_start, self._gate_all = self.clock(), False
             self.master = on
             if on:
                 self.flashes.clear()
@@ -427,6 +434,8 @@ class Engine:
 
     def set_blackout(self, on: bool) -> None:
         with self.lock:
+            if self.blackout and not on:  # blackout released: everything fades back in (release_fade_s)
+                self._gate_start, self._gate_all = self.clock(), True
             self.blackout = on
         self._changed()
 
@@ -497,6 +506,23 @@ class Engine:
                 ok = True
         self._changed()
         return ok
+
+    def haze_preset(self, name: str) -> None:
+        with self.lock:
+            self.haze.apply_preset(name, self.clock())
+        self._changed()
+
+    def haze_test(self, mode: str) -> float:
+        with self.lock:
+            span = self.haze.test(mode, self.clock())
+        self._changed()
+        return span
+
+    def haze_settings(self, cfg: HazeConfig) -> None:
+        """Try haze settings live (the Haze settings panel) without saving them."""
+        with self.lock:
+            self.haze.reconfigure(cfg, self.clock())
+        self._changed()
 
     def haze_stop(self) -> None:
         with self.lock:

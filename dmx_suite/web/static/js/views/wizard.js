@@ -6,7 +6,7 @@ import { api, attempt, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
 import { live, refreshCatalogue } from "../state.js";
-import { autoPatch } from "./fixtures.js";
+import { autoPatch } from "../patch.js";
 
 const STEPS = ["interface", "lights", "profile", "starter", "pin"];
 let step = 0;
@@ -48,7 +48,10 @@ function nav(onNext) {
     } }, t(step === STEPS.length - 1 ? "wizard.finish" : "wizard.next")));
 }
 
+let renderId = 0; // a slow check (port scan) mustn't draw over a newer step
+
 async function render() {
+  const mine = ++renderId;
   const name = STEPS[step];
   const body = el("div", { class: "wizard-body" });
   const head = el("div", {}, el("p", { class: "muted", text: t("wizard.step", { n: step + 1, of: STEPS.length }) }),
@@ -58,7 +61,7 @@ async function render() {
 
   if (name === "interface") {
     const found = await get("/api/interfaces");
-    const options = [...found.map((f) => ({ key: `${f.driver || "serial"}|${f.port}`, label: `${f.port}: ${f.description}` + (f.driver ? ` (${t("wizard.looks_like", { what: t("wizard.drv_" + f.driver) })})` : ""), out: { driver: f.driver || "enttec_open", port: f.port } })),
+    const options = [...found.map((f) => ({ key: `${f.driver || "serial"}|${f.port}`, label: `${f.port}: ${f.description}` + (f.driver ? ` (${t("wizard.looks_like", { what: t("wizard.drv_" + f.driver) })})` : ""), out: { driver: f.driver || "usb_dmx_open", port: f.port, universe: 0 } })),
       { key: "artnet", label: t("wizard.drv_artnet"), out: { driver: "artnet" }, host: true },
       { key: "sacn", label: t("wizard.drv_sacn"), out: { driver: "sacn" }, host: true },
       { key: "log", label: t("wizard.drv_log"), out: { driver: "log" } }];
@@ -144,6 +147,7 @@ async function render() {
     };
   }
 
+  if (mine !== renderId) return;
   dialog().replaceChildren(el("form", { method: "dialog", class: "wizard", onsubmit: (e) => e.preventDefault() }, head, body, nav(next)));
 }
 
