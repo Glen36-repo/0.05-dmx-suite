@@ -325,6 +325,7 @@ class Run:
     lit: float = 1.0  # v6: how much of the effect is lit (darkness already applied)
     lit_exempt: float = 1.0  # the same for exempt lights (the kick light): the look's own lit, no darkness
     exempt: frozenset[str] = frozenset()
+    lit_by: dict[str, float] = field(default_factory=dict)  # v8: lights with their own share of the darkness
     edge: float = 0.0  # soft black edges, 0 = hard cut (the look's fade)
     shift: float = 0.0  # the layer's shift, 0-1 (static black patterns move with it)
     auto_gate: bool = False  # the effect doesn't shape its own black: Run puts a static pattern on it
@@ -332,10 +333,12 @@ class Run:
     _index: dict[tuple[str, int | None], int] | None = None
 
     def lit_of(self, fid: str) -> float:
-        return self.lit_exempt if fid in self.exempt else self.lit
+        if fid in self.exempt:
+            return self.lit_exempt
+        return self.lit_by.get(fid, self.lit)
 
     def gating(self) -> bool:
-        return self.lit < 1.0 or self.lit_exempt < 1.0
+        return self.lit < 1.0 or self.lit_exempt < 1.0 or any(v < 1.0 for v in self.lit_by.values())
 
     def _offset(self, n: int) -> int:
         return round(self.shift * n)

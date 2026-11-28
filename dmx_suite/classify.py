@@ -108,6 +108,7 @@ class AutoRig:
     excluded_palettes: frozenset[str] = frozenset()  # palettes it leaves out (v8: palette_settings priority 0)
     items: dict[str, Any] = field(default_factory=dict)  # v8: bank items with this rig's settings + variants
     palette_priority: dict[str, int] = field(default_factory=dict)  # v8: palette tiles not at the default 3
+    palette_darkness: dict[str, Any] = field(default_factory=dict)  # v8: palette tiles not on Follow
 
     def item(self, id_: str | None) -> Any:
         """A bank item as this rig runs it (overrides applied; variants too). None if unknown."""
@@ -173,7 +174,9 @@ def auto_rig(rig: Any) -> AutoRig:
 
     ap = getattr(rig, "autopilot", None) or {}
     items = rig_items(ap)
-    pal_prio = {k: int(v["priority"]) for k, v in (ap.get("palette_settings") or {}).items() if "priority" in v}
+    ps = ap.get("palette_settings") or {}
+    pal_prio = {k: int(v["priority"]) for k, v in ps.items() if "priority" in v}
+    pal_dark = {k: v["darkness"] for k, v in ps.items() if v.get("darkness", "follow") != "follow"}
     return AutoRig(classes, of, excluded, left, right, pixels, True,
                    frozenset(k for k, i in items.items() if i.priority == 0 and i.bank != "flash"),
-                   frozenset(k for k, v in pal_prio.items() if v == 0), items, pal_prio)
+                   frozenset(k for k, v in pal_prio.items() if v == 0), items, pal_prio, pal_dark)

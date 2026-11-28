@@ -625,7 +625,10 @@ class Autopilot:
             self.st.layer_next.pop(layer, None)
             return
         sp = float(self.cfg["layers"][layer].get("spread", 0)) / 100
-        self.st.layer_next[layer] = now + base * part * (1 + self.rng.uniform(-sp, sp))
+        dur = base * part * (1 + self.rng.uniform(-sp, sp))
+        if layer in ("move", "colour") and part >= 1.0:  # v8: that layer's FX min / max time on screen
+            dur = self._screen_time(self.st.pick, dur, (layer,))
+        self.st.layer_next[layer] = now + dur
 
     def _schedule_all(self, now: float, layers: tuple[str, ...] = LAYERS) -> None:
         """After a whole-look change: the clocks start a quarter apart, so they never line up."""
@@ -727,6 +730,8 @@ class Autopilot:
         elif mood == "high":
             ride = RideSettings(speed=1.25, size=0.7, fade=0.2)
         cands: list[Pick]
+        prio: dict[str, dict[Any, int]] = {}
+        weighted: list[str] = []
         if self.st.allowed:  # limited to presets
             pres = self.presets()
             cands = [Pick.from_dict(pres[k]) for k in self.st.allowed if k in pres]
@@ -738,9 +743,15 @@ class Autopilot:
                        or [i.id for i in available(ar, "colour", None, skip_excluded=True)] or ["static"])
             drums = [None, None] + ([i.id for i in available(ar, "drum", mood, skip_excluded=True)] if mood != "low" else [])
             pals = self._palettes_for(mood)
+            # v8 priority: see _by_priority (after the quality rules)
+            prio = {"move": {x: ar.item(x).priority if x else 3 for x in moves},
+                    "colour": {x: ar.item(x).priority for x in colours},
+                    "palette": {x: ar.palette_priority.get(x, 3) for x in pals}}
+            weighted = [k for k, v in prio.items() if len(set(v.values())) > 1]
             cands = []
             cur: Any = self.st.pick or self.playing()
             keep = set() if layers is None or cur is None else {k for k in PICK_LAYERS if k not in layers}
+            weighted = [k for k in weighted if k not in keep]
             if not keep:  # a whole look (v6 order of random draws, so seeded runs replay identically)
                 for _ in range(320):
                     cands.append(Pick(self.rng.choice(moves), self.rng.choice(colours), self.rng.choice(drums),
@@ -760,6 +771,7 @@ class Autopilot:
         rejected = 0
         seen = 0
         w = q.r["weights"]
+        passing: list[tuple[Any, float]] = []
         for p in cands:
             seen += 1
             r = ratings.get(p.key(), 0)
@@ -768,6 +780,9 @@ class Autopilot:
                 continue
             if p.key() in recent and not self.st.allowed:
                 rejected += 1
+                continue
+            if last is not None and not self.st.allowed and self._sibling(ar, last, p):
+                rejected += 1  # v8: a variant and its original count as one type: never back to back
                 continue
             if q.combo_issues(p, mood) and not self.st.allowed:
                 rejected += 1
@@ -778,11 +793,56 @@ class Autopilot:
             busy = sum(q.busy(_item(x)) for x in (p.move, p.colour, p.drum) if x)
             score = (w["mood_match"] + w["busy_fit"] * (1 - min(1.0, abs(busy - TARGET_BUSY[mood])))
                      + (w["liked"] if r > 0 else w["disliked"] if r < 0 else 0) + self.rng.random())
+            passing.append((p, score))
             if score > best_score:
                 best, best_score = p, score
+        if weighted and passing:
+            best, best_score = self._by_priority(passing, weighted, prio)
         if best is None:  # everything refused (tiny rig, long no-repeat): the least-bad option
             best = cands[0] if cands else Pick(colour="static", ride=ride)
         return best, seen, rejected, best_score
+
+    def _by_priority(self, passing: list[tuple[Any, float]], layers: list[str],
+                     prio: dict[str, dict[Any, int]]) -> tuple[Any, float]:
+        """v8 priority as pick weight: for each layer whose tiles aren't all at the same priority, draw a type
+        from those with a look that passed the quality / contrast / no-repeat rules, weighted by priority (a 5
+        about 5x as often as a 1); then the best-scoring look with those types plays. Layers with every tile
+        at one priority are chosen by score as before (so an untouched bank replays exactly)."""
+        for k in ("colour", "move", "palette"):
+            if k not in layers:
+                continue
+            types = sorted({getattr(p, k) for p, _ in passing}, key=lambda x: (x is None, str(x)))
+            wts = [max(0, prio[k].get(x, 3)) for x in types]
+            if len(types) > 1 and any(wts):
+                pickt = self.rng.choices(types, wts)[0]
+                passing = [(p, sc) for p, sc in passing if getattr(p, k) == pickt]
+        return max(passing, key=lambda x: x[1])
+
+    @staticmethod
+    def _sibling(ar: Any, last: Any, p: Any) -> bool:
+        """The same Move or Colour FX family as the playing look but a different member (variant / original)."""
+        from .fxoverrides import family
+
+        for k in ("move", "colour"):
+            a, b = getattr(last, k), getattr(p, k)
+            if a and b and a != b:
+                ia, ib = ar.item(a), ar.item(b)
+                if ia is not None and ib is not None and family(ia) == family(ib):
+                    return True
+        return False
+
+    def _screen_time(self, pick: Any, dur: float, layers: tuple[str, ...] = ("move", "colour")) -> float:
+        """v8: a look stays at least the longest min_s and at most the shortest max_s of its FX."""
+        ar = self.rig_auto()
+        lo, hi = 0.0, float("inf")
+        for k in layers:
+            it = ar.item(getattr(pick, k, None)) if pick is not None else None
+            if it is not None:
+                if it.min_s is not None:
+                    lo = max(lo, float(it.min_s))
+                if it.max_s is not None:
+                    hi = min(hi, float(it.max_s))
+        return max(lo, min(hi, dur)) if lo <= hi else lo
 
     def change(self, now: float, trigger: str, extra: str = "", layers: tuple[str, ...] | None = None,
                fade: float | None = None) -> Decision:
@@ -825,7 +885,7 @@ class Autopilot:
         st.last_change = now
         base = float(self.cfg["moods"][st.mood])
         var = float(self.cfg["variation"])
-        st.next_change = now + base * (1 + self.rng.uniform(-var, var))
+        st.next_change = now + self._screen_time(pick, base * (1 + self.rng.uniform(-var, var)))
         d = Decision(now, self.energy.level(now), st.mood, trigger, pick.to_dict(), why, seen, rejected, score, layers)
         self.decisions.append(d)
         self._log(d)

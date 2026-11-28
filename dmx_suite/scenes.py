@@ -49,7 +49,7 @@ from .versions import read_doc
 EFFECTS = {name: e.keys() for name, e in effects.REGISTRY.items()}
 MOVEMENT = {name for name, e in effects.REGISTRY.items() if e.movement}
 STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe", "zoom", "focus", "frost", "prism"}
-COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats", "shift", "lit"}
+COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats", "shift", "lit", "darkness"}
 
 
 # --------------------------------------------------------------------------- model
@@ -68,6 +68,9 @@ class Layer:
     shift: float = 0.0  # phase offset, part of a cycle (Ride "shift", v3.3)
     pixel_mask: dict[str, frozenset[int]] = field(default_factory=dict)  # v4: fid -> only these pixels (0-based)
     lit: float = 1.0  # v6: how much of the effect is lit, 0-1 (YAML `lit:` in %); the rest black (colour off)
+    # v8: how much of the Autopilot's Darkness applies (FX settings: Follow 1, Exempt 0, Reduced 0-1), per
+    # light with "*" for the rest. YAML `darkness: 0.5` or `darkness: {"*": 0.5, mh_a: 0}`; empty = all of it
+    dark: dict[str, float] = field(default_factory=dict)
 
     def period(self) -> float | None:
         e = effects.get(self.effect) if self.effect else None
@@ -206,7 +209,22 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
     level = _num(d.get("level", 1.0), f"{what} level", 0, 1)
     shift = _num(d.get("shift", 0.0), f"{what} shift", 0, 1)
     lit = _num(d.get("lit", 100), f"{what} lit (%)", 0, 100) / 100
-    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)), shift, mask, lit)
+    dark = _dark_share(d.get("darkness"), set(targets), what)
+    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)), shift, mask, lit, dark)
+
+
+def _dark_share(v: Any, targets: set[str], what: str) -> dict[str, float]:
+    """A layer's `darkness:` (v8): the share of the Autopilot's Darkness it takes, 0-1, or per light."""
+    if v is None:
+        return {}
+    if not isinstance(v, dict):
+        v = {"*": v}
+    out: dict[str, float] = {}
+    for k, x in v.items():
+        if k != "*" and k not in targets:
+            raise LookError(f"{what} darkness: {k!r} isn't one of this layer's lights")
+        out[str(k)] = _num(x, f"{what} darkness {k}", 0, 1)
+    return out
 
 
 def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") -> Scene:
@@ -375,7 +393,8 @@ class ScenePlayer:
         eff = effects.REGISTRY[ly.effect] if ly.effect is not None else None
         run = Run(t, fids, look, dark, self._pixels, lambda per_pixel: self._units_for(i, per_pixel),
                   ly.blend, ly.level, f"{self.scene.name}|{i}", now, mask=ly.pixel_mask,
-                  lit=ly.lit * (1 - d), lit_exempt=ly.lit, exempt=self.rig.exempt,
+                  lit=ly.lit * (1 - d * ly.dark.get("*", 1.0)), lit_exempt=ly.lit, exempt=self.rig.exempt,
+                  lit_by={f: ly.lit * (1 - d * s) for f, s in ly.dark.items() if f != "*"},
                   edge=self.edge or (1.0 if p.get("fade") is True else 0.0), shift=ly.shift,
                   auto_gate=eff is not None and not eff.lit_aware and not eff.movement)
         plain = ly.blend == "replace" and ly.level >= 1

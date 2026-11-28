@@ -219,7 +219,11 @@ def family(item: Any) -> str:
 
 def darkness_share(item: Any) -> float:
     """How much of the Darkness value applies to this item: 1 follow, 0 exempt, else the Reduced share."""
-    d = getattr(item, "darkness", "follow")
+    return share(getattr(item, "darkness", "follow"))
+
+
+def share(d: Any) -> float:
+    """A Darkness setting as a share: follow 1, exempt 0, Reduced its number."""
     if d == "exempt":
         return 0.0
     if d == "follow" or d is None:

@@ -348,4 +348,32 @@ def compose(pick: Pick, ar: AutoRig, palette_colours: list[Any], name: str = "Au
         layers.append({"fixtures": colour_ids, **_apply_ride(lay, di, ride)})
     if not layers:
         layers.append({"fixtures": ["all"], "colour": "off"})
+    _darkness_shares(layers, ar, pick, ci, mi, di)
     return {"name": name, "layers": layers}
+
+
+def _darkness_shares(layers: list[dict[str, Any]], ar: AutoRig, pick: Pick, ci: Item | None, mi: Item | None,
+                     di: Item | None) -> None:
+    """v8 FX settings: Darkness Follow / Exempt / Reduced per item and per palette, as each layer's
+    `darkness:` share (left out when everything follows, so looks are exactly as before)."""
+    from .fxoverrides import darkness_share, share
+
+    ps = share(ar.palette_darkness.get(pick.palette, "follow"))
+    cs = (darkness_share(ci) if ci is not None and ci.bank == "colour" else 1.0) * ps
+    ms = darkness_share(mi) if mi is not None and mi.bank == "move" else 1.0
+    ds = (darkness_share(di) if di is not None and di.bank == "drum" else 1.0) * ps
+    heads = set(ar.classes.get("head", []))
+    drum_fx = di.layer.get("effect") if di is not None and di.bank == "drum" else None
+    for ly in layers:
+        if ly.get("effect") == "move" or "fixtures" not in ly or ly["fixtures"] == ["all"]:
+            continue
+        sh = ds if drum_fx is not None and ly.get("effect") == drum_fx else cs
+        d: dict[str, float] = {}
+        if sh != 1.0:
+            d["*"] = round(sh, 4)
+        if ms != 1.0:  # a Move FX's own setting: its heads' colour
+            for f in ly["fixtures"]:
+                if f in heads:
+                    d[f] = round(sh * ms, 4)
+        if d:
+            ly["darkness"] = d if set(d) != {"*"} else d["*"]
