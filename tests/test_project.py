@@ -125,6 +125,7 @@ def test_every_ui_text_key_exists():
     used |= {f"wizard.{s}_{x}" for s in ("interface", "lights", "profile", "starter", "pin") for x in ("title", "help")}
     used |= {f"wizard.drv_{d}" for d in ("node", "usb_dmx_open", "usb_dmx_pro")}
     used |= {f"timing.{d}" for d in ("vcp", "d2xx", "unknown")}  # v5: driver type in the timing line
+    used |= {f"ff.a_{a}" for a in ("yes", "no", "pass", "fail", "restart")}  # v5: fault-find answers
     # v3.1
     used |= {f"alerts.state_{s}" for s in ("active", "dismissed", "minimised", "snoozed", "muted", "cleared")}
     used |= {f"heads.stage_{k}" for k in "xyz"}

@@ -77,6 +77,7 @@ class App:
         self._health_wake = threading.Event()
         self._health_thread: threading.Thread | None = None
         self.health_probe: Any = None  # tests: a fake output.ftdi.Probe
+        self._faultfind: Any = None  # v5 fault-find wizard (faultfind.FaultFinder)
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
         self.store = ShowStore(files.root, self._store_locked)
@@ -774,6 +775,23 @@ class App:
         return {"result": h["result"], "driver_type": h["driver_type"], "latency_ms": h["latency_ms"],
                 "d2xx_available": h["d2xx_available"],
                 "problems": [f"{c['name']}: {c['detail']}" for c in h["checks"] if c["result"] in ("fail", "warn")]}
+
+    def fault_find(self, action: str, answer: str = "", fixture: str | None = None, by: str = "ui") -> dict[str, Any]:
+        """The "Rig not responding" wizard (v5 item 3): start, answer, test, status."""
+        from .faultfind import FaultFinder
+
+        if self._faultfind is None:
+            self._faultfind = FaultFinder(self)
+        ff = self._faultfind
+        if action == "start":
+            return ff.start(by)
+        if action == "answer":
+            return ff.answer(answer, fixture)
+        if action == "test":
+            return {**ff.view(), **ff.run_test()}
+        if action == "status":
+            return ff.view()
+        raise ValueError("fault_find action: start, answer, test or status")
 
     def set_output_latency(self, index: int, ms: int = 1) -> dict[str, Any]:
         self.require_unlocked("changing the latency timer")

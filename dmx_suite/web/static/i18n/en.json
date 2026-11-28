@@ -1334,5 +1334,18 @@
  "checks.latency": "Set latency to 1 ms",
  "checks.latency_confirm": "Set the FTDI latency timer on this interface to 1 ms now (through D2XX)? The setting stays on the interface.",
  "checks.latency_done": "Latency timer now {ms} ms",
- "checks.all_pass": "Interface checks: all pass"
+ "checks.all_pass": "Interface checks: all pass",
+ "ff.open": "Rig not responding",
+ "ff.title": "Rig not responding",
+ "ff.copy": "Copy summary",
+ "ff.close": "Close",
+ "ff.copied": "Summary copied",
+ "ff.test": "Run test",
+ "ff.step": "Step {n} of {of}",
+ "ff.a_yes": "Yes",
+ "ff.a_no": "No",
+ "ff.a_pass": "Pass (works now)",
+ "ff.a_fail": "Fail (still not)",
+ "ff.a_restart": "Start again",
+ "ff.locked": "Gig lock: tests are off"
 }

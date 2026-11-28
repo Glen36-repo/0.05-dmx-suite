@@ -4,10 +4,10 @@ import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
 import { go } from "../nav.js";
 import { openClaude } from "./claude.js";
-import { focusPane } from "./monitor.js";
+import { focusPane, openFaultFind } from "./monitor.js";
 
 // status bar tiles that open a Monitor pane (v4)
-const PANE = { output: "dmx", routing: "dmx", device: "dmx", midi: "midi-in", device_new: "midi-in" };
+const PANE = { output: "dmx", routing: "dmx", device: "dmx", midi: "midi-in", device_new: "midi-in", dmx_check: "dmx", test: "test" };
 import { live, onConnection, onState } from "../state.js";
 
 let lastNewBanner = null;
@@ -64,7 +64,12 @@ function render(s) {
     ...s.devices.map((d) =>
       el("div", { class: "tile" + (d.kind === "claude" || PANE[d.kind] ? " link" : ""),
         title: `${d.name}: ${d.detail}` + (d.model ? ` (${d.model})` : ""), "data-key": `${d.kind}:${d.name}`,
-        onclick: d.kind === "claude" ? openClaude : PANE[d.kind] ? () => { go("monitor"); focusPane(PANE[d.kind]); } : undefined },
+        onclick: d.kind === "claude" ? openClaude : PANE[d.kind] ? () => {
+          go("monitor");
+          focusPane(PANE[d.kind]);
+          // v5: a red / amber DMX badge opens the "Rig not responding" wizard
+          if ((d.kind === "output" || d.kind === "dmx_check") && (d.state === "bad" || d.state === "warn")) openFaultFind();
+        } : undefined },
         el("span", { class: `dot ${d.state}${d.active ? " active" : ""}`, "aria-label": d.state }),
         el("span", { text: d.name }),
         el("span", { class: "muted", text: d.state === "ok" && d.kind !== "claude" ? short(d) : d.detail }))),

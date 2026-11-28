@@ -124,3 +124,38 @@ def test_timing_and_checks_shown(open_ui):
     page.wait_for_function("[...document.querySelectorAll('#lp-routing td')].some(td => td.textContent.includes('break'))")
     cell = page.locator("#lp-routing td.amber")
     assert cell.count() == 1 and "Latency timer" in cell.get_attribute("title")
+
+
+def test_fault_find_wizard(open_ui):
+    from test_v5_checks import FakeProbe, FakeRegistry
+
+    page, app, p = open_ui
+    app.registry = FakeRegistry("COM_NONE")
+    app.health_probe = FakeProbe(latency=1, suspend_plan=False)
+    go(page, "monitor")
+    page.click("#ff-open")
+    page.wait_for_selector("#ff:not(.hidden)")
+    page.wait_for_function("document.querySelector('#ff-text').textContent.includes('auto / sound')")
+    page.click("#ff-answers button:has-text('Yes')")
+    page.wait_for_function("document.querySelector('#ff-where').textContent === 'Step 1 of 5'")
+    assert "cycle test" in page.inner_text("#ff-text")
+    assert page.locator("#ff-answers button:has-text('Run test')").count() == 1
+    page.click("#ff-answers button:has-text('Fail')")
+    page.wait_for_function("document.querySelector('#ff-where').textContent === 'Step 2 of 5'")
+    page.click("#ff-answers button:has-text('Pass')")
+    page.wait_for_function("document.querySelector('#ff-text').textContent.startsWith('found at')")
+    assert page.locator("#ff-history li").count() == 4
+    assert "Start again" in page.inner_text("#ff-answers")
+
+
+def test_red_dmx_badge_opens_the_wizard(open_ui):
+    from test_v5_checks import FakeProbe, FakeRegistry
+
+    page, app, p = open_ui
+    app.registry = FakeRegistry("COM_NONE")
+    app.health_probe = FakeProbe(latency=16, suspend_plan=False)
+    app.check_outputs()
+    page.wait_for_selector(".tile.link[data-key^='dmx_check:']")
+    page.click(".tile.link[data-key^='dmx_check:']")
+    page.wait_for_selector("#page-monitor.on")
+    page.wait_for_selector("#ff:not(.hidden)")

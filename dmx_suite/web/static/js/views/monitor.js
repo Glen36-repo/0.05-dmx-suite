@@ -239,6 +239,38 @@ async function pollTest() {
   testFields();
 }
 
+// ---------------------------------------------------------------- "Rig not responding" (v5)
+
+let ffSummary = "";
+
+function drawFaultFind(v) {
+  $("#ff").classList.remove("hidden");
+  ffSummary = v.summary || "";
+  $("#ff-where").textContent = v.stage === "steps" ? t("ff.step", { n: v.number, of: v.of }) : "";
+  $("#ff-flag").textContent = v.flag || "";
+  $("#ff-flag").classList.toggle("hidden", !v.flag);
+  $("#ff-text").textContent = v.instruction || "";
+  const label = (a) => ["yes", "no", "pass", "fail", "restart"].includes(a) ? t(`ff.a_${a}`) : a;
+  const btns = (v.answers || []).map((a) => el("button", { class: a === "pass" || a === "yes" ? "primary" : "",
+    onclick: () => ffDo({ action: "answer", answer: a }) }, label(a)));
+  if (v.test) {
+    const tb = el("button", { disabled: !v.test_allowed, title: v.test_allowed ? "" : t("ff.locked"),
+      onclick: async () => { await ffDo({ action: "test" }); myTest = true; pollTest(); } }, t("ff.test"));
+    btns.unshift(tb);
+  }
+  $("#ff-answers").replaceChildren(...btns);
+  $("#ff-history").replaceChildren(...(v.history || []).map((h) => el("li", { text: `${h.step}: ${h.result}${h.detail ? " · " + h.detail : ""}` })));
+}
+
+async function ffDo(body) {
+  const v = await attempt(() => api("POST", "/api/faultfind", body));
+  if (v) drawFaultFind(v);
+}
+
+export function openFaultFind() {
+  ffDo({ action: "start" });
+}
+
 function dmxCsv() {
   const rows = [["channel", "name", "value"], ...[...Array(512).keys()].map((i) => [i + 1, names[i + 1] || "", frame ? frame[i] : ""])];
   return rows.map((r) => r.join(",")).join("\n");
@@ -393,6 +425,9 @@ export function init() {
     clearInterval(timer);
     timer = setInterval(poll, 300);
   });
+  $("#ff-open").onclick = openFaultFind;
+  $("#ff-close").onclick = () => $("#ff").classList.add("hidden");
+  $("#ff-copy").onclick = async () => { try { await navigator.clipboard.writeText(ffSummary); toast(t("ff.copied")); } catch { prompt("", ffSummary); } };
   $("#test-pattern").onchange = testFields;
   $("#test-target").onchange = testFields;
   $("#cycle-go").onclick = startCycle;

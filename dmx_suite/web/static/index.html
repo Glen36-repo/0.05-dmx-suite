@@ -121,11 +121,20 @@
               <button data-view="changed" data-i18n="monitor.v_changed"></button>
               <button data-view="hex" data-i18n="monitor.v_hex"></button>
             </div>
+            <button class="mini" id="ff-open" data-i18n="ff.open"></button>
             <button class="mini" data-act="pause" data-i18n="monitor.pause"></button>
             <button class="mini" data-act="csv" data-i18n="monitor.csv"></button>
             <button class="mini" data-act="full" data-i18n="monitor.full"></button>
           </div>
           <div class="mon-stats" id="mon-dmx-stats"></div>
+          <div class="ff hidden" id="ff">
+            <div class="ff-head"><strong data-i18n="ff.title"></strong> <span class="muted" id="ff-where"></span><span class="grow"></span>
+              <button class="mini" id="ff-copy" data-i18n="ff.copy"></button><button class="mini" id="ff-close" data-i18n="ff.close"></button></div>
+            <div class="mon-flag hidden" id="ff-flag"></div>
+            <div class="ff-text" id="ff-text"></div>
+            <div class="row" id="ff-answers"></div>
+            <ol class="ff-history muted" id="ff-history"></ol>
+          </div>
           <div class="mon-stats" id="mon-dmx-timing"></div>
           <div class="mon-checks" id="mon-dmx-checks"></div>
           <div class="mon-flag hidden" id="mon-dmx-flag"></div>

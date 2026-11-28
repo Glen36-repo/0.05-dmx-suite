@@ -19,7 +19,7 @@ Strobe limits unchanged throughout. Every hard rule keeps its tests under both p
 4. Darkness applies to Autopilot looks only. Hand-programmed scenes and shows play as authored. Override never affected.
 5. Kit owns drum flash targets. `midi/default.yaml` backed up before the first-load migration.
 
-## Part 1 (v5): DMX output diagnostics
+## Part 1 (v5): DMX output diagnostics — built 28/11/2026
 Built in dependency order (test patterns before the cycle test that uses them). One commit per step, with tests.
 
 1. **Output settings.** `parse_outputs` and `set_output` accept `break_method` (`auto`/`d2xx`/`serial_break`/`baud_drop`), `break_us` 88–1000 (176), `mab_us` 8–100 (12), `fps` (40), `channels` (`512` or `patched`). Missing = defaults, no warning. Format stays 6.
@@ -35,7 +35,7 @@ Built in dependency order (test patterns before the cycle test that uses them). 
    - Stop on button, on page leave (UI heartbeat) or on timeout (60 s)
    - Gig lock: keep-alive only. Logged "TEST" in the Monitor DMX pane
    - Monitor test panel. MCP `run_test_pattern` and `stop_test_pattern`
-   - Replaces the old `find` and channel tester internals; their API is kept
+   - The old Setup find fixture and channel tester are left as they were (separate operator tools)
 4. **Cycle-methods test** (item 1). Steps `d2xx`* → `serial_break` → `baud_drop` → long break 500 µs, 5 s each, with all full running. The active method shows in large text and "Lights responded" saves that method and timing to the output. Disabled under gig lock.
    - MCP `test_output_methods {output, confirm?}` starts the cycle and returns the step tapped in the UI (or Claude passes `confirm` from chat), or none
 5. **Health checks** (item 2). New `output/ftdi.py`, with OS readers injected so it can be tested here:

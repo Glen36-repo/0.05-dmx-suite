@@ -97,6 +97,14 @@ FAULT-FINDING (v4): "software running, rig dark": list_outputs, then monitor_dmx
   really sent: no frames / all zero / values per channel with names), then check MASTER, blackout, grand
   master. "Pedal does nothing": monitor_midi (each event, the named input it matched, what it did or
   'unmapped'); fix the input with save_input.
+DMX DIAGNOSTICS (v5): "rig dark, lights in auto / sound mode, frames counting" = no valid DMX reaches
+  them. fault_find (start, then answer) walks the same steps as the Monitor page wizard. check_outputs:
+  USB DMX (Open) checklist (VCP / D2XX, latency timer > 1 ms, port held by Daslight / QLC+ / FreeStyler,
+  250k 8N2, USB selective suspend, measured timing) with fixes. test_output_methods: cycle break methods
+  (d2xx, serial_break, baud_drop, long break) with All full; the band taps Lights responded, or tell it
+  save_step. run_test_pattern / stop_test_pattern: all_full, chase, find, ramp, keep_alive straight to the
+  interface (bypasses MASTER and masters; head limits apply; haze always 0). set_output takes break_method,
+  break_us, mab_us, fps, channels. Measured timing is host-side: the wire can't be verified on an Open DMX.
 HAZE SETTINGS (v4): set_haze / save_haze_settings tune the haze controller only (level, pulse_level,
   pulse_on_s, pulse_every_s, boost_level, boost_s, boost_cooldown_s, max_on_s, rest_s, auto_off_min,
   default_mode, presets [{name, mode, level}]). Scenes and shows still never set haze (rule 5).
@@ -437,6 +445,15 @@ class DmxTools:
                 "value": value, "dwell_s": dwell_s, "timeout_s": timeout_s, "patched_only": patched_only, "role": role}
         r = self._live("POST", "/api/test/run", {k: v for k, v in body.items() if v not in (None, "")})
         return _dump({"running": r["test"], "note": "stop it with stop_test_pattern (or it stops itself at timeout_s)"})
+
+    def fault_find(self, action: str = "start", answer: str = "", fixture: str = "") -> str:
+        r = self._live("POST", "/api/faultfind", {"action": action, "answer": answer, "fixture": fixture})
+        keep = ("stage", "step", "number", "of", "instruction", "answers", "test", "test_allowed", "flag", "outcome",
+                "running", "cycle")
+        out = {k: r[k] for k in keep if r.get(k) not in (None, "", [])}
+        if r.get("stage") == "done":
+            out["summary"] = r["summary"]
+        return _dump(out)
 
     def check_outputs(self) -> str:
         r = self._live("GET", "/api/outputs/check")["outputs"]

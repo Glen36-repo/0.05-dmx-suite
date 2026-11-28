@@ -347,6 +347,16 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
                                   patched_only, role)
 
     @tool
+    def fault_find(action: str = "start", answer: str = "", fixture: str = "") -> str:
+        """"Rig not responding" guided fault-find, the same steps as the Monitor page wizard, so you can walk
+        Glen through it in chat. action: start (runs the interface checks; stops on a fail with its fix),
+        answer (answer = yes / no to "lights in auto / sound mode?", a fixture id when asked which light is
+        dark, pass / fail for each step, or restart), test (starts the current step's test pattern or cycle
+        test; tell the band first), status. Each reply: the instruction, allowed answers, the test, and at
+        the end the outcome and a summary (also logged). Pass = that fixed it; fail = next likely cause."""
+        return t.fault_find(action, answer, fixture)
+
+    @tool
     def check_outputs() -> str:
         """Checklist per USB DMX (Open) interface, run now: driver (VCP COM port vs D2XX), FTDI latency timer
         (amber over 1 ms), port opened exclusively (red when another program - Daslight, QLC+, FreeStyler -

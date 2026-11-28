@@ -2,6 +2,17 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v5: DMX output diagnostics)
+
+Brief and plan: `docs/v5-v6-brief.md`, `docs/v5-v6-plan.md`.
+
+### Added
+- USB DMX (Open): per-output break method (`auto`, `d2xx`, `serial_break`, `baud_drop`) and timings (`break_us`, `mab_us`, `fps`, `channels: 512 | patched`). FTDI's D2XX driver is used when installed (no extra package). Break, MAB, fps, write time and jitter are measured on the laptop and shown beside the targets (amber when out of range) in the routing table, Monitor and Claude's `list_outputs` / `node_health`.
+- Test patterns on the Monitor page: All full, Fixture chase, Find fixture, Channel ramp, Keep-alive, to a universe or one interface, bypassing scenes, autopilot, Override, grand master and MASTER (head limits still apply, haze and strobe stay off). Stop test, leaving the page or the timeout brings the show back. Claude: `run_test_pattern`, `stop_test_pattern`.
+- Cycle break methods: All full while each break method runs for 5 s, the step shown large; **Lights responded** saves it to the output. Claude: `test_output_methods`.
+- Interface checks at start, on plug / unplug and every minute: VCP or D2XX, FTDI latency timer, port held by another program (Daslight, QLC+, FreeStyler named), 250k 8N2, USB selective suspend, timing. Problems go to the status bar and alerts with the fix. Claude: `check_outputs`.
+- **Rig not responding** wizard on the Monitor page (and from a red / amber DMX tile): interface checks, then the auto / sound-mode question and the likely causes in order, with tests, Pass / Fail, and a copyable summary written to the log. Claude: `fault_find`.
+
 ## Unreleased (v4.1: information buttons)
 
 ### Added
