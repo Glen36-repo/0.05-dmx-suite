@@ -307,7 +307,7 @@ Decided 26/11/2026:
 | Unassigned receivers | Follow universe 0 so a fresh rig works before naming |
 | Receiver with no node | Holds the last frame 5 s, then black |
 | Blackout and haze | Blackout darkens every light including the kick light, but leaves haze running (haze has its own off) |
-| Startup state | MASTER on with the current look, set per rig config (`startup.master`) |
+| Startup state | v7: setting `startup` (app data, per laptop): `autopilot_low` (default) = MASTER on, haze off, mood LOW, Autopilot on once any output reports ok / warn / sim; `resume` = the v4 restore and the rig's `startup.master`. Command-line --setlist / --show / --scene win |
 | Kick light and flashes | Drum flashes never drive the kick light (it keeps its own rules) |
 | Drum flash while blacked out | Ignored |
 | Haze max on-time | Hitting `max_on_s` forces haze off for `rest_s`, then the mode resumes |
@@ -328,7 +328,7 @@ Decided 26/11/2026:
 | Set steps | `step_s` steps are fixed timers; `step_beats` steps follow the beat clock (v6: drums / tap / MIDI clock; 120 BPM when none). (Was: tap changes effect speed only; superseded by v3.2 step_beats and v6 Part B, 28/11/2026) |
 | Tap tempo | Effects are timed at 120 BPM reference; a tapped tempo (pedal or a mapped drum note) scales effect time and lines up on the tap (v2 R5: also kick or MIDI clock, see Beat sync) |
 | Set pedal outside a show | LOW / MID / HIGH goes to the current show if it has that set, otherwise the first show that does |
-| Resume after restart | Live runs save show/set/setlist song/MASTER on every change to app data (`%LOCALAPPDATA%\0.05 DMX Suite\state`, one file per show folder; v1's `shows/.state.json` is moved there once); restored on start if under 12 hours old |
+| Resume after restart | Live runs save show/set/setlist song/MASTER on every change to app data (`%LOCALAPPDATA%\0.05 DMX Suite\state`, one file per show folder; v1's `shows/.state.json` is moved there once); restored on start if under 12 hours old; v7: only with Setup › Start-up = Resume (default is the Autopilot start-up) |
 | Missing fixtures in shows | Auto shows only use fixtures in the rig; hand-written scene layers can name a `fallback` group |
 | Kick light in auto shows | White most steps, the show colour about 30 % of steps |
 | Browser UI | Standard-library web server + server-sent events; no build step, no internet needed |
@@ -365,7 +365,7 @@ Decided 26/11/2026 (v2):
 | v2 features | Spatial effects, effect spread, busking page, beat sync, undo/redo + copy/paste, OSC input added to v2 (26/11/2026), alongside fades, Art-Net/sACN and the fixture editor |
 | Access | PIN or password on the UI and API; localhost only until LAN/phone access is turned on |
 | Colour mixing for old types (R7) | Off for every type that existed before R7 so the 0.05 shows look exactly as they did; turn on per type on the Fixtures page |
-| Show file (26/11/2026) | One `.dms` file per show (Glen, option 1): opened through a working copy, saved on every change, double-click to open; show folders still work |
+| Show file (26/11/2026) | One `.dms` file per show (Glen, option 1): opened through a working copy, saved on every change, double-click to open; show folders still work; v7: setting `save_mode` auto (default) / manual: manual keeps changes in the working copy (`DmsProject.dirty`) until Save (`POST /api/project/save`, Ctrl+S); open / new / Quit with unsaved changes ask (API 409 unless `save` or `discard`). Launch opens the top Recent entry when no --shows is given; missing = a note + the default show folder |
 | Set steps (v2) | Fixed timers stay the default; a step can instead follow the tempo (`hold_beats` / `hold_bars`) |
 | Crossfades (R5) | `Crossfade` source mixes the old and new looks over `fade_s`: colour channels blend, wheel and gobo snap, a head whose position changes goes dark, moves and fades in, channels unused by the new look end at 0 (rule 4), haze untouched (rule 5). Used for show steps, rig `change_fade_s` (default 0 = cut, as v1) and busk release |
 | Show steps (R5) | `steps:` of `{scene, repeats | hold_s | hold_beats | hold_bars, fade_s}`; set `fade_s`, `order` sequence/random, `loop`. `repeats` counts the scene's `length_s`. v1 `scenes:` + `step_s` read as steps with `hold_s` (no format bump: both forms load). Live page shows the step, repeat count and time left; tap a step to jump |

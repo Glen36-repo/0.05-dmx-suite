@@ -769,6 +769,11 @@
         <label class="muted" for="motion" data-i18n="setup.motion"></label>
         <select id="motion"><option value="auto" data-i18n="setup.motion_auto"></option><option value="reduce" data-i18n="setup.motion_reduce"></option><option value="full" data-i18n="setup.motion_full"></option></select>
       </div>
+      <h2><span data-i18n="setup.startup"></span> <button type="button" class="info" data-info="setup.startup" aria-expanded="false">ⓘ</button></h2>
+      <div class="row wrap">
+        <label class="muted" for="startup" data-i18n="setup.startup_label"></label>
+        <select id="startup"><option value="autopilot_low" data-i18n="setup.startup_autopilot"></option><option value="resume" data-i18n="setup.startup_resume"></option></select>
+      </div>
       <h2 data-i18n="setup.updates"></h2>
       <div class="row wrap">
         <button id="update-check" data-i18n="setup.update_check"></button>
@@ -846,12 +851,26 @@
       <h2><span data-i18n="project.title"></span> <button type="button" class="info" data-info="files.project" aria-expanded="false">ⓘ</button></h2>
       <p id="project-now"></p>
       <div class="row wrap">
+        <button id="project-save" data-i18n="project.save" data-i18n-title="project.save_tip"></button>
         <button id="project-open" data-i18n="project.open"></button>
         <button id="project-save-as" data-i18n="project.save_as"></button>
         <button id="project-new" data-i18n="project.new"></button>
         <a id="project-download" class="button" href="/api/project/download" data-i18n="project.download"></a>
         <label class="button"><span data-i18n="project.upload"></span><input type="file" id="project-upload" accept=".dms" class="hidden"></label>
       </div>
+      <div class="row wrap">
+        <label class="muted" for="save-mode" data-i18n="project.save_mode"></label>
+        <select id="save-mode"><option value="auto" data-i18n="project.save_auto"></option><option value="manual" data-i18n="project.save_manual"></option></select>
+        <span class="muted" id="save-state"></span>
+      </div>
+      <dialog id="unsaved-dialog" class="card">
+        <p id="unsaved-text"></p>
+        <div class="row wrap">
+          <button value="save" class="primary" data-i18n="project.unsaved_save"></button>
+          <button value="discard" class="danger-text" data-i18n="project.unsaved_discard"></button>
+          <button value="" data-i18n="project.unsaved_cancel"></button>
+        </div>
+      </dialog>
       <div class="row wrap hidden" id="project-path-row">
         <input id="project-path" class="wide" data-i18n-placeholder="project.path_placeholder">
         <button id="project-path-go" data-i18n="project.go"></button>

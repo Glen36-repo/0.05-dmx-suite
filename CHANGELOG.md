@@ -2,6 +2,16 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v7 Part E: files and start-up)
+
+### Added
+- **Save** beside Open / Save as / New, and **Ctrl+S** on any page (on Layout it saves the layout, then the file).
+- **Saving** setting on the Files page (per laptop): **Auto-save** (every change written to the show file, as before; the default) or **Manual save** (changes wait for Save; **●** in the title; Save / Don't save / Cancel before opening another file, and a question on Quit).
+- **Start-up** setting under Setup: **Autopilot on, LOW, MASTER on** (default; haze off, the Autopilot comes on once a DMX output is connected) or **Resume what was playing** (as before).
+
+### Changed
+- The app opens the last show file used on this laptop. If it's missing (e.g. OneDrive hasn't synced it yet), it says so and opens the default show folder.
+
 ## Unreleased (v7 Part D: drum flash)
 
 ### Changed

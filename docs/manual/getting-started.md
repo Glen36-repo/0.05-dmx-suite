@@ -18,8 +18,12 @@ Type `help` at the `dmx>` prompt, or open http://localhost:8505/ for the screens
 
 ## What's where
 
-- **Show file (`.dms`):** your fixtures, rigs, scenes, shows, setlists, Override panels and MIDI maps in one file. Every change is saved into it straight away; back it up like any document (OneDrive does this for you). Double-click a `.dms` to open it. On the **Files** page: Open, Save as, New from starter show, Download / Upload (from a phone) and recent files, plus undo and redo for every change since the app started, and the backups. Older versions kept a show folder instead; that still works, and Files → Save as makes a `.dms` of it.
+- **Show file (`.dms`):** your fixtures, rigs, scenes, shows, setlists, Override panels and MIDI maps in one file. With **Auto-save** (the default) every change is saved into it straight away; with **Manual save** (Files page, per laptop) changes wait until **Save** or **Ctrl+S**, the title shows **●** while there are some, and you're asked before opening another file or quitting. Back it up like any document (OneDrive does this for you). The app opens the last show file used on this laptop; if it isn't there (OneDrive not synced yet), it says so and opens the default show folder. Double-click a `.dms` to open it. On the **Files** page: Open, Save as, New from starter show, Download / Upload (from a phone) and recent files, plus undo and redo for every change since the app started, and the backups. Older versions kept a show folder instead; that still works, and Files → Save as makes a `.dms` of it.
 - **App data** (`%LOCALAPPDATA%\0.05 DMX Suite`): the log file and where the show was up to, for carrying on after a restart.
+
+## When the app opens
+
+Every launch (v7): **MASTER on**, haze off, and the **Autopilot on at LOW** (with LOW's Darkness), switched on as soon as a DMX output is connected. To carry on with whatever was playing when the laptop stopped instead, pick **Resume what was playing** under Setup › Start-up.
 
 ## Finding your way round
 

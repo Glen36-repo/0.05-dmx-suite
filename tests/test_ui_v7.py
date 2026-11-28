@@ -523,3 +523,93 @@ def test_midi_learn_flash_targets_picker(ui):
             break
         page.wait_for_timeout(25)
     assert app.router.learning == "flash" and app.router._learn[1] == {"fixtures": ["bar_1"], "length_ms": 90}
+
+
+# ------------------------------------------------------------------ E1 Save, Manual save, Ctrl+S, E3 setting
+
+
+@pytest.fixture
+def dms_ui(browser, tmp_path):
+    from dmx_suite import settings
+    from dmx_suite.cli import build_parser, resolve_shows, start_session
+    from dmx_suite.package import pack
+    from dmx_suite.web.server import WebServer
+
+    f = tmp_path / "Gig.dms"
+    pack(SHOWS, f)
+    settings.save({"wizard": "skipped", "save_mode": "manual"})
+    args = resolve_shows(build_parser().parse_args(["--shows", str(f), "run", "--sim", "--port", "0", "--no-web"]))
+    session = start_session(args, out=lambda *a: None)
+    restarts = []
+    session.app.on_restart = restarts.append
+    web = WebServer(session.app, "127.0.0.1", 0, token=TOKEN)
+    web.start()
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    page.goto(f"http://127.0.0.1:{web.port}/?t={TOKEN}")
+    page.wait_for_selector("body.ready", timeout=10000)
+    yield page, session.app, f, restarts
+    page.close()
+    web.stop()
+    session.stop()
+    args.project.close()
+
+
+def test_manual_save_dot_save_button_and_ctrl_s(dms_ui):
+    import zipfile
+
+    page, app, f, _ = dms_ui
+    go(page, "files")
+    page.wait_for_selector("#project-save")
+    assert page.input_value("#save-mode") == "manual"
+    app.store.put("scene", "unsaved_one", {"name": "U", "layers": [{"fixtures": ["bars"], "colour": "red"}]})
+    page.wait_for_function("document.title.startsWith('● Gig.dms')")
+    assert "unsaved" in page.inner_text("#save-state")
+    page.click("#project-save")
+    page.wait_for_function("!document.title.startsWith('●')")
+    assert "scenes/unsaved_one.yaml" in zipfile.ZipFile(f).namelist()
+    app.store.put("scene", "unsaved_two", {"name": "U2", "layers": [{"fixtures": ["bars"], "colour": "red"}]})
+    page.wait_for_function("document.title.startsWith('●')")
+    go(page, "live")
+    page.keyboard.press("Control+s")  # from any page
+    page.wait_for_function("!document.title.startsWith('●')")
+    assert "scenes/unsaved_two.yaml" in zipfile.ZipFile(f).namelist()
+
+
+def test_open_with_unsaved_changes_asks(dms_ui, tmp_path):
+    from dmx_suite.package import pack
+
+    page, app, f, restarts = dms_ui
+    other = tmp_path / "Other.dms"
+    pack(SHOWS, other)
+    from dmx_suite import settings
+
+    settings.add_recent(str(other))
+    app.store.put("scene", "pending", {"name": "P", "layers": [{"fixtures": ["bars"], "colour": "red"}]})
+    go(page, "files")
+    page.wait_for_function("document.title.startsWith('●')")
+    page.click(f"#project-recent button:text-is('{other}')")
+    page.wait_for_selector("#unsaved-dialog[open]")
+    page.click("#unsaved-dialog button[value='']")  # Cancel
+    assert not restarts and app.unsaved()
+    page.click(f"#project-recent button:text-is('{other}')")
+    page.click("#unsaved-dialog button[value=save]")
+    for _ in range(80):
+        if restarts:
+            break
+        page.wait_for_timeout(25)
+    assert restarts == [other] and not app.unsaved()
+
+
+def test_start_up_setting_on_setup(ui):
+    from dmx_suite import settings
+
+    page, *_ = ui
+    go(page, "setup")
+    page.wait_for_selector("#startup")
+    assert page.input_value("#startup") == "autopilot_low"
+    page.select_option("#startup", "resume")
+    for _ in range(80):
+        if settings.load()["startup"] == "resume":
+            break
+        page.wait_for_timeout(25)
+    assert settings.load()["startup"] == "resume"

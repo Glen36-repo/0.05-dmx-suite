@@ -88,6 +88,8 @@ class App:
         self.kit_hits: Any = _deque(maxlen=200)  # v6: (wall time, input id, velocity) of kit pad hits
         self.kit_learning: dict[str, Any] | None = None  # v6: {kit, piece, zone, armed, result}
         self.project: Any = None  # package.DmsProject when running a .dms show file
+        self.waiting_for_output = False  # v7 start-up: the Autopilot comes on once an output is connected
+        self.launch_notes: list[str] = []  # v7: e.g. the last show file wasn't found
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
         self.store = ShowStore(files.root, self._store_locked)
         self.log_dir = log_dir
@@ -139,16 +141,80 @@ class App:
         return False
 
     def attach_project(self, project: Any) -> None:
-        """Run on a .dms: every saved change is packed back into it."""
+        """Run on a .dms: every saved change is packed back into it (v7 Manual save: only on Save)."""
         self.project = project
-        self.store.after_commit = project.save
+        if not hasattr(project, "dirty"):
+            project.dirty = False
+        self.store.after_commit = self._after_commit
+
+    def save_mode(self) -> str:
+        from . import settings
+
+        return str(settings.load().get("save_mode") or "auto")
+
+    def _after_commit(self) -> None:
+        p = self.project
+        if p is None:
+            return
+        if self.save_mode() == "manual":
+            p.dirty = True  # in the working copy; written to the .dms on Save
+        else:
+            p.save()
+
+    def save_project(self) -> dict[str, Any]:
+        """v7 Save (Ctrl+S): pack the working copy into the .dms now."""
+        if self.project is None:
+            raise ValueError("this show is a folder: every change is saved as it's made")
+        self.project.save()
+        return self.project_info() or {}
+
+    def unsaved(self) -> bool:
+        p = self.project
+        return bool(p is not None and getattr(p, "dirty", False))
+
+    # ------------------------------------------------------------------ v7 start-up state
+
+    def start_up(self, mode: str) -> str:
+        """v7 every launch (setting `startup`, default autopilot_low): MASTER on, haze off, mood LOW (so
+        Darkness comes from the LOW set), and the Autopilot switched on once a DMX output is connected.
+        `resume` leaves it to the v4 restore (ctl.restore)."""
+        if mode != "autopilot_low":
+            return "resume"
+        now = self.engine.clock()
+        self.engine.set_master(True)
+        try:
+            self.engine.haze.set_mode("off", now)
+        except Exception:  # haze off must never stop a launch
+            log.exception("haze off at start-up failed")
+        self.autopilot.set_mood("low", now)
+        self.waiting_for_output = True
+        if self.output_connected():
+            self._autopilot_on_at_start()
+        else:
+            import threading
+
+            def wait() -> None:
+                while self.waiting_for_output and not self.output_connected():
+                    time.sleep(0.5)
+                if self.waiting_for_output:
+                    self._autopilot_on_at_start()
+
+            threading.Thread(target=wait, name="startup-wait", daemon=True).start()
+        return "autopilot_low"
+
+    def output_connected(self) -> bool:
+        return any(d.state().get("state") in ("ok", "warn", "sim") for d in self.engine.drivers)
+
+    def _autopilot_on_at_start(self) -> None:
+        self.waiting_for_output = False
+        self.autopilot.set_on(True, self.engine.clock())
 
     def project_info(self) -> dict[str, Any] | None:
         p = self.project
         if p is None:
             return None
         return {"name": p.name, "path": str(p.dms), "read_only": p.read_only, "error": p.save_error,
-                "notes": list(p.notes)}
+                "notes": list(p.notes), "dirty": bool(getattr(p, "dirty", False)), "save_mode": self.save_mode()}
 
     def require_unlocked(self, what: str) -> None:
         if self.gig_lock:
@@ -847,7 +913,11 @@ class App:
         if p is not None:
             state = "bad" if p.save_error else "warn" if p.read_only or p.recovered else "ok"
             detail = p.save_error or "; ".join(p.notes) or p.name
+            if getattr(p, "dirty", False):  # v7 Manual save
+                detail = f"● {detail}: unsaved changes"
             out.append({"kind": "files", "name": "Show file", "state": state, "detail": detail})
+        for note in self.launch_notes:  # v7: the last show file couldn't be opened
+            out.append({"kind": "files", "name": "Last show file", "state": "warn", "detail": note})
         if self.show_problem:
             out.append({"kind": "files", "name": "Show files", "state": "bad",
                         "detail": f"running the last good version (backup {self.show_problem['backup']}): "

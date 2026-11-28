@@ -796,3 +796,6 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 #heads.zoning .area { cursor: cell; }
 .pad.zone-held { border-color: var(--warn, #e9a400); box-shadow: 0 0 0 2px var(--warn, #e9a400); }
 .zone-editor { padding: 8px; border: 1px solid var(--accent); border-radius: var(--radius); margin: 8px 0; }
+/* v7 unsaved changes */
+#unsaved-dialog { max-width: 420px; border: 1px solid var(--accent); }
+#unsaved-dialog::backdrop { background: rgba(0, 0, 0, .5); }
