@@ -899,7 +899,8 @@ class App:
         from .fxbanks import FLASH_ITEMS, ITEMS, can_run
 
         ar = auto_rig(self.engine.rig)
-        return {"rig": ar.summary(), "items": [{**i.to_json(), "available": can_run(i, ar)} for i in [*ITEMS, *FLASH_ITEMS]],
+        return {"rig": ar.summary(), "items": [{**i.to_json(), "available": can_run(i, ar), "excluded": i.id in ar.excluded_fx}
+                                               for i in [*ITEMS, *FLASH_ITEMS]],
                 "palettes": {k: {"name": v["name"], "tags": v["tags"]} for k, v in self.files.palettes.sets.items()},
                 "pick": self.ride_pick.to_dict(), "quality": self.quality().r}
 
@@ -974,12 +975,12 @@ class App:
 
     # ------------------------------------------------------------------ presets, ratings, generator (v3.5)
 
-    def generator(self, seed: str | None = None) -> Any:
+    def generator(self, seed: str | None = None, autopilot: bool = False) -> Any:
         from .classify import auto_rig
         from .generator import Context, Generator
 
         ctx = Context(auto_rig(self.engine.rig), self.files.palettes.sets, self.quality(), self.look_ratings())
-        return Generator(ctx, seed if seed is not None else time.strftime("%Y%m%d%H%M%S"))
+        return Generator(ctx, seed if seed is not None else time.strftime("%Y%m%d%H%M%S"), autopilot)
 
     def play_preset(self, key: str) -> dict[str, Any]:
         pre = (self.files.presets or {}).get(key)
@@ -1135,12 +1136,40 @@ class App:
 
     def reroll(self, locks: list[str], mood: str | None = None, seed: str | None = None) -> dict[str, Any]:
         """Lock and re-roll on the Ride page: keep the locked parts of the current look, new rest."""
-        gen = self.generator(seed)
+        gen = self.generator(seed, autopilot=True)
         p = gen.reroll(self.ride_pick, tuple(locks), mood or self.autopilot.st.mood)
         return self.ride_play(p.to_dict())
 
     def more_like_this(self, n: int = 4, seed: str | None = None) -> list[dict[str, Any]]:
-        return [p.to_dict() for p in self.generator(seed).more_like(self.ride_pick, n)]
+        return [p.to_dict() for p in self.generator(seed, autopilot=True).more_like(self.ride_pick, n)]
+
+    def exclude_fx(self, item: str, excluded: bool) -> dict[str, Any]:
+        """Leave an FX type out of the autopilot's picks (or put it back), saved in the rig file. It can
+        still be played by hand. Allowed under gig lock (a type misbehaving mid-gig), like "Use this instead"."""
+        from .fxbanks import BY_ID
+
+        it = BY_ID.get(item)
+        if it is None or it.bank == "flash":
+            raise ValueError(f"no autopilot FX type {item!r}")
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        auto = dict(data.get("auto") or {})
+        now = [x for x in auto.get("exclude_fx") or [] if x != item]
+        if excluded:
+            now.append(item)
+        if now:
+            auto["exclude_fx"] = now
+        else:
+            auto.pop("exclude_fx", None)
+        if auto:
+            data["auto"] = auto
+        else:
+            data.pop("auto", None)
+        verb = "leave out" if excluded else "put back"
+        with self.store.recovery():  # mid-gig: like "Use this instead", allowed under gig lock
+            bid = self.store.put("rig", rig_name, data, f"autopilot: {verb} {it.label} on rig {rig_name}")
+        self.reload()
+        return {"ok": True, "backup": bid, "excluded": now}
 
     def priority(self) -> dict[str, Any]:
         """Live control priority, highest first, and which level is in charge now."""

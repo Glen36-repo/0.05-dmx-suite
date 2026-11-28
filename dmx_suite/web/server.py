@@ -839,6 +839,11 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     return self._json(200, app.ride_play(body.get("pick") or {}, body.get("fade_s")))
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
+            if path == "/api/ride/exclude" and method == "POST":  # leave an FX type out of the autopilot (v4.1)
+                try:
+                    return self._json(200, app.exclude_fx(str(body.get("item", "")), bool(body.get("excluded", True))))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/ride/action" and method == "POST":  # Ride page controls (v3.4)
                 try:
                     a = str(body.get("action", ""))
@@ -1017,7 +1022,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             elif parts == ["auto"] and method == "POST":  # classification overrides for the running rig (v3.3)
                 rig_name = str(b.get("rig") or app.names[0])
                 data = s.read("rig", rig_name)
-                auto = {k: v for k, v in (("classes", b.get("classes") or {}), ("exclude", b.get("exclude") or [])) if v}
+                keep_fx = (data.get("auto") or {}).get("exclude_fx")  # the Autopilot page's excluded types stay
+                auto = {k: v for k, v in (("classes", b.get("classes") or {}), ("exclude", b.get("exclude") or []),
+                                          ("exclude_fx", b.get("exclude_fx", keep_fx) or [])) if v}
                 if auto:
                     data["auto"] = auto
                 else:

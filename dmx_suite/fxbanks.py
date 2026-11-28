@@ -107,6 +107,12 @@ ITEMS: list[Item] = [
        {"colour": 4, "layout": 1}),
     _c("bars", "Bars", {"effect": "bars", "colour": "$colour", "background": "$colour2"}, 0.55, "mid", ("mid", "high"),
        {"colour": 4, "layout": 1}),
+    _c("sweep", "Directional sweep", {"effect": "dir_sweep", "colour": "$colour", "background": "$colour2",
+                                      "period_s": 2.5, "width": 0.3}, 0.5, "mid", ("mid", "high"), {"colour": 3, "layout": 1}),
+    _c("sweep_dark", "Sweep, dark between", {"effect": "dir_sweep", "colour": "$colour", "period_s": 3, "width": 0.3,
+                                             "gap": 0.4}, 0.55, "mid", ("mid", "high"), {"colour": 3, "layout": 1}),
+    _c("random_flash", "Random flash", {"effect": "random_flash", "colour": "$colour", "rate_hz": 6, "count": 2,
+                                        "tail_s": 0.8}, 0.65, "fast", ("mid", "high"), {"colour": 3}),
     _c("fire", "Fire", {"effect": "fire"}, 0.45, "mid", ("mid", "high")),
     _c("lightning", "Lightning", {"effect": "lightning", "colour": "white"}, 0.7, "fast", ("high",)),
     _c("police", "Police", {"effect": "police"}, 0.75, "fast", ("high",), {"colour": 2}),
@@ -148,9 +154,11 @@ def can_run(item: Item, ar: AutoRig) -> bool:
     return n.get("lights", 0) <= sum(len(v) for c, v in ar.classes.items() if c != "kick")
 
 
-def available(ar: AutoRig, bank: str | None = None, mood: str | None = None) -> list[Item]:
+def available(ar: AutoRig, bank: str | None = None, mood: str | None = None, *,
+              skip_excluded: bool = False) -> list[Item]:
+    """What this rig can run; `skip_excluded` also leaves out the types excluded for the autopilot."""
     return [i for i in [*ITEMS, *FLASH_ITEMS] if can_run(i, ar) and (bank is None or i.bank == bank)
-            and (mood is None or mood in i.moods)]
+            and (mood is None or mood in i.moods) and not (skip_excluded and i.id in ar.excluded_fx)]
 
 
 # ---------------------------------------------------------------------- ride settings and composing
@@ -209,9 +217,9 @@ def _apply_ride(layer: dict[str, Any], item: Item, ride: RideSettings) -> dict[s
     out = dict(layer)
     if "period_s" in out:
         out["period_s"] = round(max(0.2, float(out["period_s"]) / ride.speed), 3)
-    elif out.get("effect") in ("sparkle", "fire", "police"):
+    elif out.get("effect") in ("sparkle", "fire", "police", "random_flash"):
         key = "rate_hz"
-        base = float(out.get(key, {"sparkle": 8, "fire": 6, "police": 2}[out["effect"]]))
+        base = float(out.get(key, {"sparkle": 8, "fire": 6, "police": 2, "random_flash": 6}[out["effect"]]))
         out[key] = round(min(25.0, max(0.1, base * ride.speed)), 3)
     if item.bank == "move":
         out["size"] = round(min(0.5, float(out.get("size", 0.2)) * (0.4 + 1.2 * ride.size)), 4)
@@ -225,6 +233,11 @@ def _apply_ride(layer: dict[str, Any], item: Item, ride: RideSettings) -> dict[s
         out["density"] = round(0.05 + 0.4 * ride.size, 3)
     if out.get("effect") in ("bounce",):
         out["width"] = round(0.05 + 0.3 * ride.size, 3)
+    if out.get("effect") == "dir_sweep":  # size: how wide the band
+        out["width"] = round(0.1 + 0.6 * ride.size, 3)
+    if out.get("effect") == "random_flash":  # fade: how long the tail; size: how big a bit of a bar
+        out["tail_s"] = round(0.2 + 1.6 * ride.fade, 3)
+        out["bit"] = max(1, round(1 + 7 * ride.size))
     if ride.shift:
         out["shift"] = round(ride.shift, 3)
     return out

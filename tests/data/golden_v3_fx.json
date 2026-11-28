@@ -179,6 +179,12 @@
   "95c4a28cb475",
   "c22cc86eab46"
  ],
+ "ref|random_flash": [
+  "dcb2a14bfcdc",
+  "94b0858dcdb8",
+  "8edd77fe4405",
+  "1bfd0ba9c04a"
+ ],
  "ref|random_points": [
   "2343b7bee724",
   "2343b7bee724",
@@ -208,6 +214,18 @@
   "3d5d98f37b14",
   "3d5d98f37b14",
   "3d5d98f37b14"
+ ],
+ "ref|sweep": [
+  "46a4e8963c37",
+  "3635b95ee0fa",
+  "d3ee0695122a",
+  "3510ffc47cb4"
+ ],
+ "ref|sweep_dark": [
+  "cc5d29a33ed8",
+  "337fdb11fd98",
+  "5d90beb27ec0",
+  "cc5d29a33ed8"
  ],
  "ref|swim": [
   "0214f2a61b68",

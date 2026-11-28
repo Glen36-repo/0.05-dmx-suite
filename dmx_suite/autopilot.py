@@ -388,9 +388,12 @@ class Autopilot:
             pres = self.presets()
             cands = [Pick.from_dict(pres[k]) for k in self.st.allowed if k in pres]
         else:
-            moves: list[str | None] = [i.id for i in available(ar, "move", mood)] or [None]
-            colours = [i.id for i in available(ar, "colour", mood)] or ["static"]
-            drums = [None, None] + ([i.id for i in available(ar, "drum", mood)] if mood != "low" else [])
+            # excluded types (auto: exclude_fx) are never picked; a bank with nothing left plays nothing
+            # (move, drum) or its least busy type that isn't excluded (colour)
+            moves: list[str | None] = [i.id for i in available(ar, "move", mood, skip_excluded=True)] or [None]
+            colours = ([i.id for i in available(ar, "colour", mood, skip_excluded=True)]
+                       or [i.id for i in available(ar, "colour", None, skip_excluded=True)] or ["static"])
+            drums = [None, None] + ([i.id for i in available(ar, "drum", mood, skip_excluded=True)] if mood != "low" else [])
             pals = self._palettes_for(mood)
             cands = []
             for _ in range(320):

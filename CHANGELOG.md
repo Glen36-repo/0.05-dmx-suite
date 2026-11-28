@@ -11,6 +11,10 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 ### Changed
 - The grey help paragraphs on most pages are now ⓘ popovers, so pages are shorter. Warnings stay where they are.
 
+### Added (Autopilot)
+- **Exclude…** on the Autopilot page (or hold a type down): leave Move, Colour or Drum FX types out of the autopilot. They turn red and stay on the page to play by hand; the autopilot, Re-roll and More like this never pick them. Saved per rig (`auto: exclude_fx`); works under gig lock. The type running now is shown green.
+- New types: **Directional sweep** (a band of colour crossing the rig, one direction per pass: left to right, right to left, top to bottom, bottom to top), **Sweep, dark between** (the same over black with the rig dark between passes) and **Random flash** (pulses through random bits of the rig, several at once, each with a fading tail). Also scene-builder effects: `dir_sweep`, `random_flash`.
+
 ### Fixed
 - Live, Autopilot and every other open screen (phones, a second window) update straight away when the layout or any show file changes, from any screen, from Claude, an undo or a restore; before, only the screen that saved saw it until a reload. Leaving the Layout page with unsaved changes now says so (they're kept).
 - USB DMX (Open DMX / FTDI): the next frame's break no longer cuts off the end of the previous one when a new frame arrives early (drum hits): it waits for the frame's wire time (~22.6 ms). Steady rate ~37-38 fps.
