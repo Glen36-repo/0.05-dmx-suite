@@ -272,7 +272,7 @@
  "midi.col_input": "Input",
  "midi.col_action": "Action",
  "midi.learn": "MIDI learn",
- "midi.params_placeholder": "settings, e.g. fixtures=bars length_ms=120",
+ "midi.params_placeholder": "settings, e.g. length_ms=120 min_level=0.6",
  "midi.params_bad": "\"{part}\" isn't setting=value",
  "midi.learn_go": "Learn",
  "midi.learn_cancel": "Cancel",
@@ -1382,7 +1382,7 @@
  "kit.weight": "Tempo weight",
  "kit.floor": "Vel. floor",
  "kit.tempo": "Tempo",
- "kit.flash": "Drum flash (fixtures)",
+ "kit.flash": "Drum flash: lights · softest hit %",
  "kit.trigger": "Trigger (scene:x / preset:x / flash_fx:x)",
  "kit.learn": "Learn",
  "kit.learn_add": "+ note",
@@ -1553,5 +1553,11 @@
  "zones.help": "Zones: drag on a head's pad to draw one; drag a zone to move it, its corner to resize; then Save",
  "zones.at_edge": "held at {name}",
  "info.heads.zones.title": "Exclusion zones",
- "info.heads.zones.text": "Areas a head must never point into, drawn on its pad (red hatch). A move into one stops at its edge on the side it came from and slides round it; with Colour off inside, the head goes there dark instead. Save on one head or every head of its type. Kept in the rig, so they're per venue."
+ "info.heads.zones.text": "Areas a head must never point into, drawn on its pad (red hatch). A move into one stops at its edge on the side it came from and slides round it; with Colour off inside, the head goes there dark instead. Save on one head or every head of its type. Kept in the rig, so they're per venue.",
+ "picker.all_lights": "All lights",
+ "picker.groups": "Groups",
+ "picker.count_groups": "{n} groups",
+ "kit.min_level_tip": "How bright the softest hit is (% of full); harder hits go up to full",
+ "kit.min_level_aria": "{input}: softest hit %",
+ "midi.flash_targets": "Lights a hit opens"
 }

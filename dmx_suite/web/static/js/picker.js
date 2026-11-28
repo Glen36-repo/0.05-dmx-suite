@@ -110,10 +110,15 @@ export function picker({ items, groups = [], value = [], onChange = () => {}, la
   return root;
 }
 
-// lights of the running rig grouped by kind, for pickers of fixtures (haze never: rule 5)
+// lights of the running rig grouped by kind, for pickers of fixtures (haze never: rule 5); with the
+// catalogue's groups as their own section when `groups` is given (a target can name a group, as before)
 const KIND_GROUPS = ["head", "bar", "wash", "kick"];
-export function lightItems(fixtures) {
+export function lightItems(fixtures, groups = null) {
   const items = (fixtures || []).filter((f) => f.kind !== "haze").map((f) => ({ id: f.id, label: f.id, group: f.kind }));
-  const groups = KIND_GROUPS.map((k) => ({ id: k, label: t(`picker.kind_${k}`), count: (n) => t(`picker.count_${k}`, { n }) }));
-  return { items, groups };
+  const sections = KIND_GROUPS.map((k) => ({ id: k, label: t(`picker.kind_${k}`), count: (n) => t(`picker.count_${k}`, { n }) }));
+  if (groups) {
+    items.push(...["all", ...Object.keys(groups).sort()].map((g) => ({ id: g, label: g === "all" ? t("picker.all_lights") : g, group: "_groups" })));
+    sections.push({ id: "_groups", label: t("picker.groups"), count: (n) => t("picker.count_groups", { n }) });
+  }
+  return { items, groups: sections };
 }

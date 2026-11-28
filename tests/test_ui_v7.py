@@ -469,3 +469,56 @@ def test_pad_shows_a_head_held_at_a_zone(ui):
     go(page, "heads")
     page.wait_for_selector("[data-pad=mh_a].zone-held")
     assert "held at Wall" in page.inner_text("[data-pad=mh_a] .head-row")
+
+
+# ------------------------------------------------------------------ D1 drum flash targets
+
+
+def test_kit_flash_picker_and_min_level(ui):
+    import yaml
+
+    page, app, root, _ = ui
+    go(page, "midi")
+    flash = "#kit-rows [data-flash=snare]"
+    page.wait_for_selector(flash)
+    assert page.inner_text(f"{flash} .picker-text") == "bars"  # the shipped snare flashes the bars group
+    page.click(f"{flash} summary")
+    page.check(f"{flash} [data-item=washes]")
+    page.keyboard.press("Escape")
+    for _ in range(80):
+        if "washes" in app.files.midimap.get_input("snare").params["fixtures"]:
+            break
+        page.wait_for_timeout(25)
+    assert app.files.midimap.get_input("snare").params["fixtures"] == ["bars", "washes"] or \
+        set(app.files.midimap.get_input("snare").params["fixtures"]) == {"bars", "washes"}
+    lvl = "#kit-rows [data-min-level=snare]"
+    page.wait_for_selector(lvl)
+    assert page.input_value(lvl) == "60"  # default: the softest hit at 60 %
+    page.fill(lvl, "35")
+    page.dispatch_event(lvl, "change")
+    for _ in range(80):
+        if app.files.midimap.get_input("snare").params.get("min_level") == 0.35:
+            break
+        page.wait_for_timeout(25)
+    assert app.files.midimap.get_input("snare").params["min_level"] == 0.35
+    kit = yaml.safe_load((root / "inputs.yaml").read_text())["kits"]["band_kit"]
+    assert kit["pieces"]["snare"]["zones"]["head"]["flash"]["min_level"] == 0.35
+
+
+def test_midi_learn_flash_targets_picker(ui):
+    page, app, *_ = ui
+    go(page, "midi")
+    page.wait_for_selector("#learn-action option[value=flash]", state="attached")
+    assert not page.is_visible("#learn-fixtures")
+    page.select_option("#learn-action", "flash")
+    page.wait_for_selector("#learn-fixtures:not(.hidden)")
+    page.click("#learn-fixtures summary")
+    page.check("#learn-fixtures [data-item=bar_1]")
+    page.keyboard.press("Escape")
+    page.fill("#learn-params", "length_ms=90")
+    page.click("#learn-go")
+    for _ in range(80):
+        if app.router.learning == "flash":
+            break
+        page.wait_for_timeout(25)
+    assert app.router.learning == "flash" and app.router._learn[1] == {"fixtures": ["bar_1"], "length_ms": 90}
