@@ -468,4 +468,5 @@ def test_pad_shows_a_head_held_at_a_zone(ui):
     app.reload()
     go(page, "heads")
     page.wait_for_selector("[data-pad=mh_a].zone-held")
-    assert "held at Wall" in page.inner_text("[data-pad=mh_a] .head-row")
+    # the pads can be rebuilt (catalogue refresh after the reload) and fill in again on the next live update
+    page.wait_for_function("document.querySelector('[data-pad=mh_a] .head-row').textContent.includes('held at Wall')")
