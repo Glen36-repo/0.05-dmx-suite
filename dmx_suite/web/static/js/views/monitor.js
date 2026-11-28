@@ -124,6 +124,10 @@ function testFields() {
   $("#test-dwell").classList.toggle("hidden", p !== "chase");
   $("#test-patched-l").classList.toggle("hidden", p !== "all_full");
   const locked = !!live.state?.gig_lock;
+  const [kind, n] = ($("#test-target").value || "").split(":");
+  const row = kind === "o" && routing ? routing.rows.find((r) => String(r.output) === n) : null;
+  $("#cycle-go").classList.toggle("hidden", !(row && row.timing));
+  $("#cycle-go").disabled = locked;
   $("#test-go").disabled = locked && p !== "keep_alive";
   $("#test-go").title = locked && p !== "keep_alive" ? t("test.locked") : "";
 }
@@ -167,7 +171,27 @@ async function stopTest(why = "stopped") {
   pollTest();
 }
 
+async function startCycle() {
+  const [, n] = $("#test-target").value.split(":");
+  if (await attempt(() => api("POST", "/api/cycle/start", { output: +n }))) { myTest = true; pollTest(); }
+}
+
+function drawCycle(c) {
+  const running = c && c.state === "running";
+  $("#cycle-live").classList.toggle("hidden", !running);
+  if (running) {
+    $("#cycle-of").textContent = t("cycle.of", { step: c.step, of: c.of });
+    $("#cycle-step").textContent = c.label;
+  }
+  const res = !c || running ? "" : c.state === "confirmed" ? t("cycle.confirmed", { label: c.result.label })
+    : c.state === "no_response" ? t("cycle.no_response", { method: c.original.break_method, us: c.original.break_us })
+    : t("cycle.stopped");
+  $("#cycle-result").textContent = res;
+}
+
 async function pollTest() {
+  const cy = await get("/api/cycle").catch(() => null);
+  if (cy) drawCycle(cy.cycle);
   const r = await get("/api/test").catch(() => null);
   if (!r) return;
   const tst = r.test;
@@ -338,6 +362,9 @@ export function init() {
     timer = setInterval(poll, 300);
   });
   $("#test-pattern").onchange = testFields;
+  $("#test-target").onchange = testFields;
+  $("#cycle-go").onclick = startCycle;
+  $("#cycle-yes").onclick = async () => { await attempt(() => api("POST", "/api/cycle/confirm", {})); pollTest(); };
   $("#test-go").onclick = startTest;
   $("#test-stop").onclick = () => stopTest();
   onLeave("monitor", () => {

@@ -52,7 +52,7 @@ CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/st
                  "/api/routing/output", "/api/claude/haze",
                  "/api/haze/settings", "/api/devices/set",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
-                 "/api/autopilot/check", "/api/generate", "/api/test")
+                 "/api/autopilot/check", "/api/generate", "/api/test", "/api/cycle")
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
@@ -366,6 +366,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.layout_view())
             if path == "/api/routing":
                 return self._json(200, app.routing())
+            if path == "/api/cycle":  # v5 break-method cycle test
+                return self._json(200, {"cycle": app.cycle_view()})
             if path == "/api/test":  # v5 test pattern running (or null) and its start / stop log
                 return self._json(200, {"test": app.engine.test_status(), "log": app.engine.test_log[-20:]})
             if path == "/api/devices/list":  # v4: devices plugged in, by USB identity / MIDI port name
@@ -796,6 +798,14 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, {"ok": True, "seconds": span})
             if path == "/api/test/run" and method == "POST":  # v5 test pattern (gig lock: keep-alive only)
                 return self._json(200, {"ok": True, "test": app.run_test(body, "claude" if self._is_claude() else "ui")})
+            if path == "/api/cycle/start" and method == "POST":
+                return self._json(200, {"ok": True, "cycle": app.start_cycle(int(body.get("output", -1)),
+                                                                            "claude" if self._is_claude() else "ui")})
+            if path == "/api/cycle/confirm" and method == "POST":  # "Lights responded"
+                return self._json(200, {"ok": True, "cycle": app.cycle_confirm()})
+            if path == "/api/cycle/save" and method == "POST":  # a step named afterwards (Claude, from chat)
+                return self._json(200, {"ok": True, "saved": app.save_cycle_step(int(body.get("output", -1)),
+                                                                                  int(body.get("step", 0)))})
             if path == "/api/test/stop" and method == "POST":  # always allowed
                 return self._json(200, {"ok": True, "stopped": app.stop_test(str(body.get("why") or "stopped"))})
             if path == "/api/routing/output" and method == "POST":

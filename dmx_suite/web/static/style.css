@@ -547,6 +547,9 @@ body:has(#page-monitor.on) main { max-width: none; }
 .mon-head h2 { margin: 0; }
 .seg-row { display: inline-flex; gap: 2px; }
 .mon-stats { font-size: 12px; color: var(--muted); margin: 4px 0; }
+.cycle-live { text-align: center; margin: 8px 0; padding: 12px; border: 2px solid var(--warn); border-radius: var(--radius); }
+.cycle-step { font-size: 40px; font-weight: 700; margin: 6px 0 12px; }
+button.big.ok { background: var(--ok, #2e9d5b); color: #fff; min-width: 240px; font-size: 20px; }
 .mon-pane.testing { border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn) inset; }
 .test-live { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: center; justify-content: space-between;
   margin: 6px 0; padding: 8px; border: 2px solid var(--warn); border-radius: var(--radius); }

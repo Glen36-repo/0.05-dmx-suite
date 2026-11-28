@@ -1316,5 +1316,12 @@
  "test.note": "Straight to the interface: scenes, autopilot, Override, grand master and MASTER are bypassed. Head limits still apply, haze stays off, strobe stays off in All full. Leaving this page stops the test.",
  "test.log": "{time} {what}: {pattern} on U{u}{out} ({by})",
  "info.test.title": "Test patterns",
- "info.test.text": "Does DMX reach the lights at all? All full: everything on. Fixture chase: one light at a time, name shown large. Find fixture: one light flashes (heads nod). Channel ramp: one channel 0-255-0, or held. Keep-alive: a fixed frame, to see if lights stay in DMX mode. Stops on Stop, on leaving this page or at the timeout. Gig lock: Keep-alive only."
+ "info.test.text": "Does DMX reach the lights at all? All full: everything on. Fixture chase: one light at a time, name shown large. Find fixture: one light flashes (heads nod). Channel ramp: one channel 0-255-0, or held. Keep-alive: a fixed frame, to see if lights stay in DMX mode. Stops on Stop, on leaving this page or at the timeout. Gig lock: Keep-alive only.",
+ "cycle.start": "Cycle break methods",
+ "cycle.tip": "USB DMX (Open): try each break method for 5 s with All full; tap Lights responded when the lights come on",
+ "cycle.yes": "Lights responded",
+ "cycle.of": "Step {step} of {of} · Watch the lights",
+ "cycle.confirmed": "Saved: {label}",
+ "cycle.no_response": "No step confirmed: the output is back as it was ({method}, {us} µs)",
+ "cycle.stopped": "Cycle test stopped: the output is back as it was"
 }

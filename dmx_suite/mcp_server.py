@@ -347,6 +347,15 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
                                   patched_only, role)
 
     @tool
+    def test_output_methods(output: int, save_step: int = 0) -> str:
+        """Break-method cycle test on a USB DMX (Open) output (index from list_outputs): runs "all full" on it
+        while it steps through each break method (D2XX if installed, serial break, baud drop, long 500 µs
+        break), 5 s each. Tell the band first and ask them to tap "Lights responded" on the Monitor page when
+        the lights come on; returns the confirmed step (saved to the rig) or none (output put back). If they
+        tell you the step in chat instead, call again with save_step = its number. Not under gig lock."""
+        return t.test_output_methods(output, save_step)
+
+    @tool
     def stop_test_pattern() -> str:
         """Stop the running test pattern; the show's output is back on the next frame."""
         return t.stop_test_pattern()

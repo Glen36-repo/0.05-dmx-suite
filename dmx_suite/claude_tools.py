@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -436,6 +437,26 @@ class DmxTools:
                 "value": value, "dwell_s": dwell_s, "timeout_s": timeout_s, "patched_only": patched_only, "role": role}
         r = self._live("POST", "/api/test/run", {k: v for k, v in body.items() if v not in (None, "")})
         return _dump({"running": r["test"], "note": "stop it with stop_test_pattern (or it stops itself at timeout_s)"})
+
+    def test_output_methods(self, output: int, save_step: int = 0) -> str:
+        """Run the break-method cycle on an Open DMX output and wait for it; or save_step N afterwards."""
+        if save_step:
+            r = self._live("POST", "/api/cycle/save", {"output": output, "step": save_step})
+            return _dump({"saved": r["saved"]})
+        c = self._live("POST", "/api/cycle/start", {"output": output})["cycle"]
+        end = time.monotonic() + c["step_s"] * c["of"] + 15
+        last = None
+        while time.monotonic() < end:
+            time.sleep(0.5)
+            c = self._live("GET", "/api/cycle")["cycle"]
+            last = c
+            if c["state"] != "running":
+                break
+        out = {k: last[k] for k in ("state", "result", "steps", "original")} if last else c
+        if out.get("state") == "no_response":
+            out["note"] = ("no step was confirmed: the output is back as it was. If the band saw one work, "
+                           "call again with save_step = its number (1-based, from steps).")
+        return _dump(out)
 
     def stop_test_pattern(self) -> str:
         r = self._live("POST", "/api/test/stop", {"why": "stopped by Claude"})

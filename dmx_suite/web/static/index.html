@@ -146,7 +146,14 @@
             <label id="test-patched-l" class="mini"><input type="checkbox" id="test-patched"> <span data-i18n="test.patched_only"></span></label>
             <input id="test-timeout" class="mini num" type="number" min="5" max="600" value="60" data-i18n-title="test.timeout">
             <button id="test-go" class="mini" data-i18n="test.start"></button>
+            <button id="cycle-go" class="mini hidden" data-i18n="cycle.start" data-i18n-title="cycle.tip"></button>
           </div>
+          <div id="cycle-live" class="cycle-live hidden">
+            <div class="muted" id="cycle-of"></div>
+            <div class="cycle-step" id="cycle-step"></div>
+            <button id="cycle-yes" class="big ok" data-i18n="cycle.yes"></button>
+          </div>
+          <div class="mon-stats" id="cycle-result"></div>
           <div id="test-live" class="test-live hidden">
             <div class="test-now"><span id="test-name"></span> <strong id="test-what"></strong> <span id="test-left" class="muted"></span></div>
             <button id="test-stop" class="big bad" data-i18n="test.stop"></button>

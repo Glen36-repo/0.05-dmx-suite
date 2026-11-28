@@ -72,6 +72,7 @@ class App:
         self.ctl.on_setlist = self._setlist_walk
         self.ctl.on_song_auto = self._song_auto
         self.gig_lock = False
+        self.cycle: Any = None  # v5 break-method cycle test (dmxcheck.MethodCycle)
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
         self.store = ShowStore(files.root, self._store_locked)
@@ -676,7 +677,43 @@ class App:
         return self.engine.run_test(tp)
 
     def stop_test(self, why: str = "stopped") -> bool:
+        if self.cycle is not None and self.cycle.state == "running":
+            self.cycle.stop()
         return self.engine.stop_test(why)
+
+    # cycle test (v5 item 1): break methods in turn, "Lights responded" saves the one that worked
+
+    def start_cycle(self, index: int, by: str = "ui", step_s: float | None = None) -> dict[str, Any]:
+        from .dmxcheck import STEP_S, MethodCycle
+
+        self.require_unlocked("the break-method cycle test")
+        if self.cycle is not None and self.cycle.state == "running":
+            self.cycle.stop()
+        self.cycle = MethodCycle(self.engine, index, self.set_output, step_s or STEP_S, by).start()
+        return self.cycle.view()
+
+    def cycle_view(self) -> dict[str, Any] | None:
+        return self.cycle.view() if self.cycle is not None else None
+
+    def cycle_confirm(self) -> dict[str, Any]:
+        if self.cycle is None:
+            raise ValueError("no cycle test has run")
+        self.require_unlocked("saving a break method")
+        return self.cycle.confirm()
+
+    def save_cycle_step(self, index: int, step: int) -> dict[str, Any]:
+        """Save step `step` (1-based, as listed by the last cycle on this output) without re-running it."""
+        from .dmxcheck import cycle_steps
+
+        drv = self.engine.drivers[index] if 0 <= index < len(self.engine.drivers) else None
+        if drv is None or not hasattr(drv, "d2xx_ok"):
+            raise ValueError("not a USB DMX (Open) output")
+        steps = self.cycle.steps if self.cycle is not None and self.cycle.index == index else cycle_steps(drv)
+        if not 1 <= step <= len(steps):
+            raise ValueError(f"step 1-{len(steps)}")
+        s = steps[step - 1]
+        self.set_output(index, {"break_method": s["break_method"], "break_us": s["break_us"]})
+        return {k: s[k] for k in ("step", "label", "break_method", "break_us")}
 
     def routing_problems_cached(self) -> list[str]:
         from .rig import routing_problems
