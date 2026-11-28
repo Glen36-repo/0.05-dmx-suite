@@ -327,6 +327,7 @@ class DmxTools:
         patch = load_patch(self.shows / "fixtures.yaml")
         out = {
             "fixtures": [{"id": f.id, "type": f.type.key, "kind": f.kind.value, "address": f.address,
+                          "channels": f"{f.address}-{f.address + len(f.type.channels) - 1}",  # v7: the range it uses
                           "universe": f.universe, "groups": f.groups, "colour_only": f.type.colour_only,
                           "moves": f.type.has("pan") and not f.type.colour_only, "pixels": f.type.pixels}
                          for f in patch.fixtures.values()],

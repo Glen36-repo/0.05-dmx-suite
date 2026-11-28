@@ -458,6 +458,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, {"used": app.store.colour_users(path.rsplit("/", 1)[1])})
             if path.startswith("/api/points/used/"):
                 return self._json(200, {"used": app.store.point_users(path.rsplit("/", 1)[1])})
+            if path.startswith("/api/groups/used/"):  # v7: who names a group (Fixtures › Groups)
+                return self._json(200, {"used": app.store.group_users(path.rsplit("/", 1)[1])})
             if path.startswith("/api/inputs/used/"):
                 return self._json(200, {"used": app.store.input_users(path.rsplit("/", 1)[1])})
             if path == "/api/addresses":

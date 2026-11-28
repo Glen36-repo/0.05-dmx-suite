@@ -238,3 +238,27 @@ def test_delete_refused_while_used(store):
     store.edit_group("set", "spare", ["kick"])
     store.edit_group("delete", "spare")
     assert "spare" not in groups_of(store)
+
+
+def test_group_users(tmp_path):
+    """v7: what names a group (the Fixtures page warns when a group is left with no lights)."""
+    import shutil
+
+    from dmx_suite.store import ShowStore
+
+    root = tmp_path / "shows"
+    shutil.copytree(Path(__file__).resolve().parents[1] / "shows", root, ignore=shutil.ignore_patterns(".backups"))
+    s = ShowStore(root)
+    assert "scenes/red_movers.yaml" in s.group_users("heads")
+    assert s.group_users("nothing_uses_this") == []
+
+
+def test_claude_list_fixtures_shows_channel_ranges():
+    import yaml
+
+    from dmx_suite.claude_tools import DmxTools
+
+    tools = DmxTools(shows=Path(__file__).resolve().parents[1] / "shows")
+    rows = {f["id"]: f for f in yaml.safe_load(tools.list_fixtures())["fixtures"]}
+    bar = rows["bar_2"]
+    assert bar["channels"] == f"{bar['address']}-{bar['address'] + 23}"  # LCB803: 24 channels
