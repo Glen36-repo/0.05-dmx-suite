@@ -1065,6 +1065,7 @@ class App:
         if m.pressed:
             if m.type == "note" and inp.roles:
                 self.bus.add(inp.id, inp.roles, inp.strength(m.value), now)
+                self.ctl.tempo.hit(inp.roles, m.value, now)  # v6: the drums tempo (tap pads, count-in too)
             self.ctl.step_input(inp.id)
 
     # ------------------------------------------------------------------ FX banks, ride, Flash FX (v3.3)
@@ -1362,6 +1363,39 @@ class App:
                   ("flash_override", bool(e.held())), ("hold", self.autopilot.st.hold), ("autopilot", self.autopilot.st.on)]
         top = next((k for k, on in levels if on), "show")
         return {"levels": [k for k, on in levels if on], "top": top}
+
+    # ------------------------------------------------------------------ tempo from the drums (v6 Part B)
+
+    def tempo_view(self, debug: bool = False) -> dict[str, Any]:
+        tc, now = self.ctl.tempo, self.engine.clock()
+        out: dict[str, Any] = {"status": tc.status(now), "params": tc.config.beat.to_dict()}
+        if debug:
+            out["debug"] = tc.tracker.debug(now)
+        return out
+
+    def _save_tempo(self, block: dict[str, Any], what: str) -> str:
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        data["tempo"] = {**(data.get("tempo") or {}), **block}
+        bid = self.store.put("rig", rig_name, data, f"tempo: {what} on rig {rig_name}")
+        self.reload()
+        return bid
+
+    def set_tempo_source(self, source: str, save: bool = False) -> dict[str, Any]:
+        """drums / tap / midi_clock / off, live (a live control: allowed under gig lock); save writes the rig."""
+        self.ctl.tempo.set_source(source, self.engine.clock())
+        out = self.tempo_view()
+        if save:
+            out["backup"] = self._save_tempo({"source": self.ctl.tempo.source}, f"source {source}")
+        return out
+
+    def set_tempo_params(self, changes: dict[str, Any], save: bool = False) -> dict[str, Any]:
+        """Tune the drums tracker live (deadband, hold, jump, lock range, window, weights, floor, confidence ...)."""
+        p = self.ctl.tempo.set_params(changes or {})
+        out = self.tempo_view()
+        if save:
+            out["backup"] = self._save_tempo({k: getattr(p, k) for k in (changes or {})}, "tracker settings")
+        return out
 
     # ------------------------------------------------------------------ Autopilot darkness (v6)
 

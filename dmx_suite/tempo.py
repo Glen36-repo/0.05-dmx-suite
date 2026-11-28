@@ -3,12 +3,14 @@ effect time runs faster or slower so every chase follows the band. Fixed timers 
 default: with no tempo, effect time is real time.
 
 Where the tempo comes from (rig file `tempo: {source: ...}`):
-    tap          a pedal, key or button tapped on the beat (median of the last few taps)
-    kick         the drummer's kick note (average of the last 4 beats; double kicks, fills and
-                 gaps that don't fit are ignored)
+    drums        v6: the drummer's playing, every drum weighted (beat.py), seeded by a tap, a tap
+                 pad or a count-in; freewheels at the last tempo through fills and stops, never
+                 back to timers. `kick` (v3) means drums
+    tap          a pedal, key or button tapped on the beat (median of the last few taps) only
     midi_clock   MIDI clock from any input (24 ticks a beat); start lines the beat up
-A kick or clock that goes quiet keeps its last tempo for `timeout_s`, then effects go back to
-fixed timers. `speed` (0.25-4) multiplies whatever the tempo is, e.g. from a busk fader.
+    off          the tempo stays where it is (120 BPM if none was ever set)
+A MIDI clock that goes quiet keeps its last tempo for `timeout_s`, then effects go back to fixed
+timers. `speed` (0.25-4) multiplies whatever the tempo is, e.g. from a busk fader.
 
 Tempo changes never make effect time jump: the clock is piecewise linear and continuous.
 """
@@ -18,21 +20,26 @@ from __future__ import annotations
 import statistics
 import threading
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
+
+from .beat import BeatParams, BeatTracker
 
 REFERENCE_BPM = 120.0
 BEAT_S = 60.0 / REFERENCE_BPM  # one beat in effect time
 MIN_BPM, MAX_BPM = 40.0, 240.0
 MAX_GAP_S = 60.0 / MIN_BPM  # longer gap starts a new tap sequence
-SOURCES = ("tap", "kick", "midi_clock")
+SOURCES = ("drums", "tap", "midi_clock", "off")
+SOURCE_ALIASES = {"kick": "drums"}  # v3 name
 PPQN = 24  # MIDI clock ticks a beat
 
 
 @dataclass
 class TempoConfig:
     source: str = "tap"
-    kick_note: int = 36  # General MIDI kick; the TD-25 sends 36
-    timeout_s: float = 30.0  # kick / clock gone quiet this long: back to fixed timers
+    kick_note: int = 36  # General MIDI kick; the TD-25 sends 36 (only without a kick-role input)
+    timeout_s: float = 30.0  # MIDI clock gone quiet this long: back to fixed timers
+    beat: BeatParams = field(default_factory=BeatParams)  # v6 drums tracker settings
 
 
 class TempoClock:
@@ -45,6 +52,8 @@ class TempoClock:
         self.rate = 1.0
         self.bpm: float | None = None
         self.speed = 1.0
+        self.tracker = BeatTracker(now)
+        self._drum_anchor: tuple[float, float] | None = None  # (tracker beats, effect time) while following drums
         self.config = config or TempoConfig()
         self.last_input: float | None = None
         self.lost = False  # the kick / clock stopped and timers took over
@@ -53,18 +62,96 @@ class TempoClock:
         self._ticks: deque[float] = deque(maxlen=PPQN * 2 + 1)
 
     @property
+    def config(self) -> TempoConfig:
+        return self._config
+
+    @config.setter
+    def config(self, c: TempoConfig) -> None:
+        self._config = c
+        self.tracker.p = c.beat
+
+    @property
     def source(self) -> str:
-        return self.config.source
+        return SOURCE_ALIASES.get(self.config.source, self.config.source)
+
+    # ---------------------------------------------------------------- drums (v6)
+
+    def _drums_on(self) -> bool:
+        return self.source == "drums" and self.tracker.out_bpm is not None
+
+    def _drum_eff(self, now: float) -> float:
+        """Effect time while following the drums: the tracker's beat clock (continuous, rate-nudged)."""
+        self.tracker.update(now)
+        b = self.tracker.beats(now)
+        if self._drum_anchor is None:
+            self._drum_anchor = (b, self._anchor_eff + (now - self._anchor_real) * self.rate)
+        b0, e0 = self._drum_anchor
+        bpm = self.tracker.out_bpm
+        self.bpm = bpm
+        return e0 + (b - b0) * BEAT_S * self.speed
+
+    def _leave_drums(self, now: float) -> None:
+        """Hand effect time back to the linear clock where the drums left it (no jump)."""
+        if self._drum_anchor is not None:
+            eff = self._drum_eff(now)
+            self._drum_anchor = None
+            self._anchor_real, self._anchor_eff = now, eff
+            self.rate = ((self.bpm or REFERENCE_BPM) / REFERENCE_BPM) * self.speed
+
+    def hit(self, roles: list[str] | tuple[str, ...], velocity: int, now: float) -> None:
+        """A drum hit (named input with roles): onset for the tracker; a tap pad taps; count-in pads count in."""
+        with self._lock:
+            if self.source != "drums":
+                return
+            if "count_in" in roles:
+                bpm = self.tracker.count_in_hit(now)
+                if bpm is not None:
+                    self._seeded(now, bpm)
+            if "tap" in roles:
+                self._tap(now)
+                return
+            self.tracker.hit(roles, velocity, now)
+
+    def _seeded(self, now: float, bpm: float) -> None:
+        """The tracker was seeded: effect time carries on from here at the new tempo."""
+        eff = self._drum_eff(now) if self._drum_anchor is not None else self._anchor_eff + (now - self._anchor_real) * self.rate
+        self._drum_anchor = (self.tracker.beats(now), eff)
+        self.bpm = bpm
+        self.last_input, self.lost = now, False
+
+    def set_source(self, source: str, now: float) -> None:
+        source = SOURCE_ALIASES.get(source, source)
+        if source not in SOURCES:
+            raise ValueError(f"tempo source: {', '.join(SOURCES)}")
+        with self._lock:
+            if self.source == "drums" and source != "drums":
+                self._leave_drums(now)
+            self._config = TempoConfig(source, self.config.kick_note, self.config.timeout_s, self.config.beat)
+            self.tracker.p = self.config.beat
+            if source == "drums" and self.bpm:  # start from the tempo we have
+                self.tracker.seed(self.bpm, now, "previous")
+                self._drum_anchor = None
+            if source == "off" and self.bpm is None:
+                self._set(now, REFERENCE_BPM)
+
+    def set_params(self, changes: dict[str, Any]) -> BeatParams:
+        with self._lock:
+            p = self.config.beat.update(changes)
+            self._config = TempoConfig(self.config.source, self.config.kick_note, self.config.timeout_s, p)
+            self.tracker.p = p
+            return p
 
     # ---------------------------------------------------------------- effect time
 
     def eff(self, now: float) -> float:
         with self._lock:
+            if self._drums_on():
+                return self._drum_eff(now)
             self._check_lost(now)
             return self._anchor_eff + (now - self._anchor_real) * self.rate
 
     def _check_lost(self, now: float) -> None:
-        if (self.source != "tap" and self.bpm is not None and self.last_input is not None
+        if (self.source == "midi_clock" and self.bpm is not None and self.last_input is not None
                 and now - self.last_input > self.config.timeout_s):
             self._set(now, None)
             self.lost = True
@@ -82,20 +169,32 @@ class TempoClock:
     # ---------------------------------------------------------------- sources
 
     def tap(self, now: float) -> float | None:
-        """A tap (pedal, key, button). Returns the BPM once two taps are in."""
+        """A tap (pedal, key, button). Returns the BPM once two taps are in. Following the drums, a tap
+        seeds the tracker (BPM straight away, history cleared)."""
         with self._lock:
-            if self._taps and now - self._taps[-1] > MAX_GAP_S:
-                self._taps = []
-            self._taps = (self._taps + [now])[-5:]
-            if len(self._taps) < 2:
-                return self.bpm
-            intervals = [b - a for a, b in zip(self._taps, self._taps[1:])]
-            bpm = 60.0 / statistics.median(intervals)
-            if not MIN_BPM <= bpm <= MAX_BPM:
-                return self.bpm
-            self.last_input, self.lost = now, False
-            self._set(now, bpm, snap=True)
+            return self._tap(now)
+
+    def _tap(self, now: float) -> float | None:
+        if self.source == "off":
+            return self.bpm
+        if self._taps and now - self._taps[-1] > MAX_GAP_S:
+            self._taps = []
+        self._taps = (self._taps + [now])[-5:]
+        if len(self._taps) < 2:
+            return self.bpm
+        intervals = [b - a for a, b in zip(self._taps, self._taps[1:])]
+        bpm = 60.0 / statistics.median(intervals)
+        if not MIN_BPM <= bpm <= MAX_BPM:
+            return self.bpm
+        self.last_input, self.lost = now, False
+        if self.source == "drums":
+            if self._drum_anchor is None and self.tracker.out_bpm is None:
+                self._set(now, bpm, snap=True)  # first seed: the linear clock lines the beat up
+            self.tracker.seed(bpm, now, "tap", beat_at=now)
+            self._seeded(now, bpm)
             return bpm
+        self._set(now, bpm, snap=True)
+        return bpm
 
     def kick(self, now: float) -> float | None:
         """A kick-drum hit (tempo source `kick`): the tempo is the average of the last 4 beat
@@ -144,6 +243,11 @@ class TempoClock:
         with self._lock:
             if bpm is not None and not MIN_BPM <= bpm <= MAX_BPM:
                 raise ValueError(f"tempo {MIN_BPM:.0f}-{MAX_BPM:.0f} BPM")
+            if self.source == "drums" and bpm is not None:
+                self.tracker.seed(bpm, now, "set")
+                self._seeded(now, bpm)
+                return
+            self._leave_drums(now)
             self._taps = []
             self.lost = False
             self.last_input = now if bpm else None
@@ -154,10 +258,20 @@ class TempoClock:
         with self._lock:
             if not 0.25 <= speed <= 4:
                 raise ValueError("speed 0.25-4")
+            if self._drum_anchor is not None:  # re-anchor so effect time doesn't jump
+                eff = self._drum_eff(now)
+                self._drum_anchor = (self.tracker.beats(now), eff)
+                self.speed = speed
+                return
             self.speed = speed
             self._set(now, self.bpm)
 
     def status(self, now: float) -> dict[str, object]:
         e = self.eff(now)
-        return {"bpm": round(self.bpm, 1) if self.bpm else None, "source": self.source, "speed": self.speed,
-                "beat": int(e // BEAT_S), "lost": self.lost}
+        out: dict[str, object] = {"bpm": round(self.bpm, 1) if self.bpm else None, "source": self.source,
+                                  "speed": self.speed, "beat": int(e // BEAT_S), "lost": self.lost}
+        if self.source == "drums":  # v6: beat in the bar, bar, confidence, freewheel, where the seed came from
+            t = self.tracker.status(now)
+            out.update(bar_beat=t["beat"], bar=t["bar"], confidence=t["confidence"], freewheel=t["freewheel"],
+                       raw_bpm=t["raw_bpm"], seed_source=t["seed_source"])
+        return out

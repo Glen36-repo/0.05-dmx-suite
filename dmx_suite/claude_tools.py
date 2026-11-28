@@ -97,6 +97,15 @@ FAULT-FINDING (v4): "software running, rig dark": list_outputs, then monitor_dmx
   really sent: no frames / all zero / values per channel with names), then check MASTER, blackout, grand
   master. "Pedal does nothing": monitor_midi (each event, the named input it matched, what it did or
   'unmapped'); fix the input with save_input.
+TEMPO FROM THE DRUMS (v6): the band plays without a click, so the module's MIDI clock isn't used. Source
+  `drums` (set_tempo_source; v3 `kick` = drums) tracks every drum hit weighted (kick 1, snare 1, hat 0.5,
+  tom 0.6, cymbal 0.4; ghost notes under the velocity floor ignored), seeded by a tap (tap_tempo, FCB tap,
+  a tap-role pad) or a count-in (4 even hits on a count_in pad after 2 s quiet), searching only +-15 % of
+  the seed (no half / double time lock). Output: median of 8 beats, moves only when > 3 % off for 4 beats
+  (then glides), a > 15 % change only after 8 beats (re-seed); phase nudged <= 10 % a beat. Low confidence
+  (fills, breakdowns, drums stopped) = freewheel at the last tempo, never timers. tempo_status: BPM, beat,
+  bar, confidence, freewheel, seed source. set_tempo_params tunes it live (save to keep). step_beats steps
+  and beat-synced effects follow it; step_s scenes stay on timers. Source off: last BPM (120 if none).
 DARKNESS AND LIT (v6): darkness puts BLACK INTO THE AUTOPILOT'S EFFECTS, it is not a dimmer. Under the 0.05
   band profile black is always colour off (RGB/W/A/UV 0), never intensity or the dimmer; MASTER keeps on/off;
   no glow. A layer's `lit:` (0-100 %, also on a whole scene) shapes its own black: narrower bands in sweeps
@@ -363,6 +372,23 @@ class DmxTools:
     def autopilot_status(self, n: int = 20) -> str:
         r = self._live("GET", f"/api/autopilot?n={int(n)}")
         return _dump(r)  # includes darkness: {darkness, now, source, set_darkness, cc}
+
+    def tempo_status(self) -> str:
+        r = self._live("GET", "/api/tempo")
+        return _dump({**r["status"], "params": r["params"]})
+
+    def tap_tempo(self) -> str:
+        r = self._live("POST", "/api/tempo", {"action": "tap"})
+        return f"tap: {r['bpm']:.1f} BPM" if r.get("bpm") else "tap noted (one more tap sets the tempo)"
+
+    def set_tempo_source(self, source: str, save: bool = False) -> str:
+        r = self._live("POST", "/api/tempo", {"action": "source", "source": source, "save": save})
+        return _dump({**r["status"], **({"saved": r["backup"]} if save else {})})
+
+    def set_tempo_params(self, params_yaml: str, save: bool = False) -> str:
+        changes = _yaml(params_yaml, "tempo settings")
+        r = self._live("POST", "/api/tempo", {"action": "params", "params": changes, "save": save})
+        return _dump({"params": r["params"], **({"saved": r["backup"]} if save else {})})
 
     def set_autopilot(self, darkness: float) -> str:
         r = self._live("POST", "/api/darkness", {"value": darkness})

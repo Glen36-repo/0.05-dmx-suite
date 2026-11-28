@@ -339,20 +339,29 @@ def _channel(v: Any) -> int | None:
 
 
 def _tempo(d: Any) -> TempoConfig:
+    from .beat import BeatParams
+    from .tempo import SOURCE_ALIASES
+
     if d is None:
         return TempoConfig()
-    if not isinstance(d, dict) or set(d) - {"source", "kick_note", "timeout_s"}:
-        raise ConfigError("tempo: source (tap, kick, midi_clock), kick_note, timeout_s")
-    src = d.get("source", "tap")
+    beat_keys = set(BeatParams.RANGES) | {"weights"}
+    if not isinstance(d, dict) or set(d) - {"source", "kick_note", "timeout_s"} - beat_keys:
+        raise ConfigError(f"tempo: source ({', '.join(SOURCES)}), kick_note, timeout_s, and the drums tracker's "
+                          f"{', '.join(sorted(beat_keys))}")
+    src = SOURCE_ALIASES.get(d.get("source", "tap"), d.get("source", "tap"))
     if src not in SOURCES:
         raise ConfigError(f"tempo source must be one of {', '.join(SOURCES)}")
+    try:
+        beat = BeatParams().update({k: v for k, v in d.items() if k in beat_keys})
+    except ValueError as e:
+        raise ConfigError(str(e)) from None
     try:
         note = int(d.get("kick_note", 36))
     except (TypeError, ValueError) as e:
         raise ConfigError("tempo kick_note must be a MIDI note number") from e
     if not 0 <= note <= 127:
         raise ConfigError("tempo kick_note must be 0-127")
-    return TempoConfig(src, note, _secs(d.get("timeout_s", 30), "tempo timeout_s", 1))
+    return TempoConfig(src, note, _secs(d.get("timeout_s", 30), "tempo timeout_s", 1), beat)
 
 
 def _osc(d: Any) -> OscConfig:

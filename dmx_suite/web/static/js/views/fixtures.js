@@ -305,7 +305,7 @@ function renderRig() {
       field(t("fixtures.haze_boost"), pct(rig.haze, "boost_level", 100))),
     el("h3", { text: t("fixtures.tempo") }),
     el("div", { class: "form" },
-      field(t("fixtures.tempo_source"), select(["tap", "kick", "midi_clock"].map((s) => [s, t("tempo." + s)]), rig.tempo.source || "tap", (v) => { rig.tempo.source = v; rigDirty(); })),
+      field(t("fixtures.tempo_source"), select(["drums", "tap", "midi_clock", "off"].map((s) => [s, t("tempo." + s)]), rig.tempo.source === "kick" ? "drums" : rig.tempo.source || "tap", (v) => { rig.tempo.source = v; rigDirty(); })),
       field(t("fixtures.kick_note"), num(rig.tempo.kick_note ?? 36, (v) => { rig.tempo.kick_note = v ?? 36; rigDirty(); }, { min: 0, max: 127 })),
       field(t("fixtures.tempo_timeout"), secs(rig.tempo, "timeout_s", 30))),
     el("h3", { text: t("fixtures.outputs") }),

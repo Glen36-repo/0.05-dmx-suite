@@ -10,6 +10,12 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 - MIDI: the `darkness` role on a CC input (`range: [heel, toe]` %, calibration curve) and the `darkness` map action, so the FCB1010 expression pedal can ride it.
 - Claude: `set_autopilot {darkness}`, `set_set_darkness`, darkness in `autopilot_status`, `preview_look` with a darkness to see a look at.
 
+### Added (Part B: tempo from the drums)
+- Tempo source **Drums**: a beat clock (BPM, beat, bar, confidence) from every drum hit, weighted (kick, snare, hat, toms, cymbals; ghost notes ignored), seeded by a tap (FCB1010, a tap pad, the Tap button) or a count-in (4 even hits after 2 s quiet). Held steady: the median of 8 beats, moving only when the band is more than 3 % off for 4 beats (with a glide), a jump over 15 % only after 8 beats, phase nudged gently. Through fills, breakdowns and stops it freewheels at the last tempo. `kick` now means drums.
+- Input Monitor **Tempo** pane: hits by drum with the beat grid, raw vs output BPM, confidence, where the seed came from, and every tracker setting live. Sources: Drums, Tap only, MIDI clock, Off.
+- `step_beats` steps and beat-synced effects follow it; `step_s` scenes stay on timers. New input roles `hat` and `tap`.
+- Claude: `tempo_status`, `tap_tempo`, `set_tempo_source`, `set_tempo_params`.
+
 ## Unreleased (v5: DMX output diagnostics)
 
 Brief and plan: `docs/v5-v6-brief.md`, `docs/v5-v6-plan.md`.

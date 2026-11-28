@@ -556,6 +556,12 @@ body:has(#page-monitor.on) main { max-width: none; }
 .ff .row { display: flex; flex-wrap: wrap; gap: var(--gap); }
 .ff .row button { min-height: var(--perform-h); min-width: 90px; font-size: 16px; }
 .ff-history { font-size: 12px; margin: 8px 0 0; padding-left: 20px; }
+.tempo-read { font-size: 16px; margin: 4px 0; } .tempo-read b { font-size: 26px; }
+.tempo-beat { display: inline-block; min-width: 3em; font-weight: 700; }
+.tempo-canvas { width: 100%; display: block; background: var(--panel-2, rgba(127,127,127,.08)); border-radius: 4px; margin: 4px 0; }
+.tempo-params { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 10px; font-size: 12px; }
+.tempo-params label { display: flex; justify-content: space-between; gap: 6px; align-items: center; }
+.tempo-params input { width: 70px; }
 .mon-checks { font-size: 13px; margin: 2px 0 6px; }
 .mon-checks .ck { margin: 2px 0; } .mon-checks .ck.warn b { color: var(--warn); } .mon-checks .ck.fail b { color: var(--bad); }
 .mon-checks .fix { color: var(--muted, inherit); }

@@ -107,6 +107,30 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.autopilot_status(n)
 
     @tool
+    def tempo_status() -> str:
+        """The beat clock: BPM, beat in the bar, bar, confidence, freewheel (fills / drums stopped), source
+        (drums / tap / midi_clock / off), where the seed came from, and the tracker settings."""
+        return t.tempo_status()
+
+    @tool
+    def tap_tempo() -> str:
+        """One tap on the beat (two or more set the tempo; following the drums, a tap seeds the tracker)."""
+        return t.tap_tempo()
+
+    @tool
+    def set_tempo_source(source: str, save: bool = False) -> str:
+        """Where the tempo comes from: drums (the drummer's playing, seeded by a tap or count-in), tap (taps
+        only), midi_clock, off (keep the tempo as it is). Live; save=True writes it to the rig."""
+        return t.set_tempo_source(source, save)
+
+    @tool
+    def set_tempo_params(params_yaml: str, save: bool = False) -> str:
+        """Tune the drums tracker live, e.g. '{deadband_pct: 3, hold_beats: 4, jump_pct: 15, jump_hold_beats: 8,
+        lock_pct: 15, window_s: 6, velocity_floor: 30, confidence: 0.4, weights: {hat: 0.3}}'. Also merge_ms,
+        glide_beats, median_beats, phase_nudge, count_in_silence_s, count_in_hits. save=True writes the rig."""
+        return t.set_tempo_params(params_yaml, save)
+
+    @tool
     def set_autopilot(darkness: float) -> str:
         """Autopilot Darkness 0-100 %: black put into the Autopilot's effects (narrower bands, black palette
         slots, gaps), never a dimmer; the kick light is exempt; hand-made scenes and Override aren't touched.

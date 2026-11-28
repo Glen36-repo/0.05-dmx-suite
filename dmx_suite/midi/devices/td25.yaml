@@ -10,7 +10,7 @@ inputs:
   tom_1: {name: Tom 1, type: note, notes: [48, 50], roles: [tom, activity]}
   tom_2: {name: Tom 2, type: note, notes: [45, 47], roles: [tom, activity]}
   floor_tom: {name: Floor tom, type: note, notes: [43, 58], roles: [tom, activity]}
-  hihat: {name: Hi-hat, type: note, notes: [42, 46, 22, 26], roles: [activity]}
+  hihat: {name: Hi-hat, type: note, notes: [42, 46, 22, 26], roles: [hat, activity]}
   hihat_pedal: {name: Hi-hat pedal, type: note, notes: [44], roles: [count_in, activity]}
   crash: {name: Crash, type: note, notes: [49, 55], roles: [cymbal, activity]}
   ride: {name: Ride, type: note, notes: [51, 59], roles: [cymbal, activity]}

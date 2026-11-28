@@ -191,3 +191,26 @@ def test_step_editor_lit(ui):
     page.wait_for_selector("#step-programmer input[data-lit]")
     page.eval_on_selector("#step-programmer input[data-lit]", "e => { e.value = 50; e.dispatchEvent(new Event('change')); }")
     page.wait_for_function("document.querySelector('#step-programmer .prog-row[data-attr=lit]').classList.contains('prog')")
+
+
+# ---------------------------------------------------------------- v6 Part B: Tempo pane
+
+
+def test_tempo_pane_draws_and_switches_source(ui):
+    page, app, root, _ = ui
+    go(page, "monitor")
+    page.wait_for_selector("#tempo-source")
+    page.select_option("#tempo-source", "drums")
+    for _ in range(40):
+        if app.ctl.tempo.source == "drums":
+            break
+        page.wait_for_timeout(50)
+    assert app.ctl.tempo.source == "drums"
+    page.click("#tempo-tap")
+    page.wait_for_timeout(500)
+    page.click("#tempo-tap")
+    page.wait_for_function("document.querySelector('#tempo-bpm').textContent.includes('BPM')")
+    assert "seed: tap" in page.inner_text("#tempo-info")
+    page.click("#tempo-params-btn")
+    page.wait_for_selector("#tempo-params:not(.hidden) input")
+    assert page.locator("#tempo-params input").count() >= 15

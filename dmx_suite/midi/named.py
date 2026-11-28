@@ -40,7 +40,7 @@ from typing import Any
 from ..fixtures import ConfigError
 
 TYPES = ("note", "program_change", "control_change", "osc")
-ROLES = ("kick", "snare", "tom", "cymbal", "count_in", "activity", "darkness")
+ROLES = ("kick", "snare", "hat", "tom", "cymbal", "tap", "count_in", "activity", "darkness")  # v6: hat, tap
 CONTINUOUS_ROLES = ("darkness",)  # v6: a CC (expression pedal) that rides a live control
 ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 CURVE_POINTS = (("quiet", 0.25), ("normal", 0.6), ("loud", 1.0))  # calibrated velocity -> strength
@@ -448,11 +448,11 @@ GM_DRUMS: dict[int, tuple[str, str, list[str]]] = {
     39: ("clap", "Clap", ["activity"]),
     40: ("snare_rim", "Snare rim", ["snare", "activity"]),
     41: ("floor_tom_2", "Floor tom 2", ["tom", "activity"]),
-    42: ("hihat", "Hi-hat", ["activity"]),
+    42: ("hihat", "Hi-hat", ["hat", "activity"]),
     43: ("floor_tom", "Floor tom", ["tom", "activity"]),
     44: ("hihat_pedal", "Hi-hat pedal", ["count_in", "activity"]),
     45: ("tom_3", "Tom 3", ["tom", "activity"]),
-    46: ("hihat_open", "Hi-hat open", ["activity"]),
+    46: ("hihat_open", "Hi-hat open", ["hat", "activity"]),
     47: ("tom_2b", "Tom 2 (low mid)", ["tom", "activity"]),
     48: ("tom_1", "Tom 1", ["tom", "activity"]),
     49: ("crash", "Crash", ["cymbal", "activity"]),

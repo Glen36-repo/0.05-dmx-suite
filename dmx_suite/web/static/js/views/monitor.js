@@ -17,7 +17,7 @@ let names = {}; // channel -> "bar_2 red px5"
 let frame = null; // Uint8Array of what the interface sent, or null
 let lastFrame = null;
 const movedAt = new Float64Array(512); // when each channel last changed (changed-only view)
-const paused = { dmx: false, "midi-in": false, "midi-out": false };
+const paused = { dmx: false, "midi-in": false, "midi-out": false, tempo: false };
 let inSeq = 0, outSeq = 0;
 let inRows = [], outRows = [];
 const heat = new Map(); // note -> last velocity (drum pad check)
@@ -271,6 +271,92 @@ export function openFaultFind() {
   ffDo({ action: "start" });
 }
 
+// ---------------------------------------------------------------- tempo (v6 Part B)
+
+const LANES = ["kick", "snare", "hat", "tom", "cymbal"];
+let tempoParams = null;
+
+function css(name, fallback) { return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback; }
+
+function sized(cv) {
+  const w = cv.clientWidth || 600, h = cv.height;
+  if (cv.width !== w) cv.width = w;
+  return [cv.getContext("2d"), w, h];
+}
+
+function drawTempo(r) {
+  const st = r.status, dbg = r.debug || {};
+  $("#tempo-source").value = st.source;
+  $("#tempo-bpm").textContent = st.bpm ? t("tempo2.bpm", { bpm: st.bpm }) : t("tempo2.none");
+  $("#tempo-beat").textContent = st.bar_beat ? t("tempo2.beat", { beat: st.bar_beat }) : "";
+  $("#tempo-info").textContent = st.source === "drums" ? t("tempo2.info", { raw: st.raw_bpm ?? "-", conf: st.confidence ?? "-",
+    state: t(st.freewheel ? "tempo2.freewheel" : "tempo2.locked"), seed: st.seed_source || "-" }) : "";
+  const span = 8;
+  const [c, w, h] = sized($("#tempo-lanes"));
+  c.clearRect(0, 0, w, h);
+  const x = (tt) => w * (1 + tt / span);
+  const lh = h / LANES.length;
+  c.font = "10px sans-serif";
+  c.fillStyle = css("--muted", "#888");
+  LANES.forEach((l, i) => c.fillText(l, 2, i * lh + 11));
+  for (const g of dbg.grid || []) {
+    c.strokeStyle = css("--line", "#666");
+    c.lineWidth = g.beat === 1 ? 2 : 0.5;
+    c.beginPath(); c.moveTo(x(g.t), 0); c.lineTo(x(g.t), h); c.stroke();
+  }
+  c.fillStyle = css("--accent", "#3a8");
+  for (const o of dbg.onsets || []) {
+    const i = LANES.indexOf(o.role);
+    if (i < 0) continue;
+    c.globalAlpha = 0.4 + 0.6 * Math.min(1, o.w);
+    c.fillRect(x(o.t) - 2, i * lh + 2, 4, lh - 4);
+  }
+  c.globalAlpha = 1;
+  const [g2, w2, h2] = sized($("#tempo-graph"));
+  g2.clearRect(0, 0, w2, h2);
+  const hist = dbg.history || [];
+  const vals = hist.flatMap(([, raw, outb]) => [raw, outb]).filter((v) => v);
+  if (vals.length) {
+    const lo = Math.min(...vals) - 2, hi = Math.max(...vals) + 2;
+    const y = (v) => h2 - ((v - lo) / (hi - lo)) * h2;
+    const xs = (tt) => w2 * (1 + tt / 60);
+    for (const [idx, col, lw] of [[1, css("--muted", "#888"), 1], [2, css("--accent", "#3a8"), 2.5]]) {
+      g2.strokeStyle = col; g2.lineWidth = lw; g2.beginPath();
+      let started = false;
+      for (const row of hist) { if (!row[idx]) continue; const px = xs(row[0]), py = y(row[idx]); started ? g2.lineTo(px, py) : g2.moveTo(px, py); started = true; }
+      g2.stroke();
+    }
+    g2.fillStyle = css("--muted", "#888"); g2.font = "10px sans-serif";
+    g2.fillText(`${Math.round(hi)}`, 2, 10); g2.fillText(`${Math.round(lo)}`, 2, h2 - 2);
+  }
+  if (r.params && JSON.stringify(r.params) !== JSON.stringify(tempoParams)) { tempoParams = r.params; drawParams(); }
+}
+
+function drawParams() {
+  const p = tempoParams;
+  const num = (k, v, path) => el("label", {}, el("span", { text: k }), el("input", { type: "number", step: "any", value: v,
+    onchange: (e) => setParam(path, +e.target.value) }));
+  const rows = Object.entries(p).filter(([k]) => k !== "weights").map(([k, v]) => num(k, v, [k]));
+  rows.push(...Object.entries(p.weights || {}).map(([k, v]) => num(`weight ${k}`, v, ["weights", k])));
+  rows.push(el("button", { class: "mini", onclick: saveParams }, t("tempo2.save")));
+  $("#tempo-params").replaceChildren(...rows);
+}
+
+async function setParam(path, v) {
+  const params = path.length === 2 ? { weights: { [path[1]]: v } } : { [path[0]]: v };
+  await attempt(() => api("POST", "/api/tempo", { action: "params", params }));
+}
+
+async function saveParams() {
+  const { weights, ...rest } = tempoParams;
+  if (await attempt(() => api("POST", "/api/tempo", { action: "params", params: { ...rest, weights }, save: true }))) toast(t("tempo2.saved"));
+}
+
+async function pollTempo() {
+  const r = await get("/api/tempo?debug=1").catch(() => null);
+  if (r && r.status) drawTempo(r);
+}
+
 function dmxCsv() {
   const rows = [["channel", "name", "value"], ...[...Array(512).keys()].map((i) => [i + 1, names[i + 1] || "", frame ? frame[i] : ""])];
   return rows.map((r) => r.join(",")).join("\n");
@@ -292,6 +378,7 @@ async function poll() {
   const st = await get("/api/monitor/status").catch(() => null);
   if (st) drawPorts(st);
   pollTest();
+  if (!paused.tempo) pollTempo();
   if (!paused["midi-in"]) {
     const rows = await get(`/api/monitor/midi?${inQuery()}`).catch(() => []);
     if (rows.length) {
@@ -426,6 +513,9 @@ export function init() {
     timer = setInterval(poll, 300);
   });
   $("#ff-open").onclick = openFaultFind;
+  $("#tempo-source").onchange = (e) => attempt(() => api("POST", "/api/tempo", { action: "source", source: e.target.value }));
+  $("#tempo-tap").onclick = () => api("POST", "/api/tempo", { action: "tap" }).catch(() => null);
+  $("#tempo-params-btn").onclick = () => $("#tempo-params").classList.toggle("hidden");
   $("#ff-close").onclick = () => $("#ff").classList.add("hidden");
   $("#ff-copy").onclick = async () => { try { await navigator.clipboard.writeText(ffSummary); toast(t("ff.copied")); } catch { prompt("", ffSummary); } };
   $("#test-pattern").onchange = testFields;

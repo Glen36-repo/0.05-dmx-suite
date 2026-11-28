@@ -52,7 +52,8 @@ CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/st
                  "/api/routing/output", "/api/claude/haze",
                  "/api/haze/settings", "/api/devices/set",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
-                 "/api/autopilot/check", "/api/generate", "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness")
+                 "/api/autopilot/check", "/api/generate",
+                 "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness", "/api/tempo")  # v5 / v6
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
@@ -368,6 +369,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.routing())
             if path == "/api/faultfind":
                 return self._json(200, app.fault_find("status"))
+            if path == "/api/tempo":  # v6: beat clock status (+ tracker debug for the Input Monitor)
+                return self._json(200, app.tempo_view(q.get("debug") == "1"))
             if path == "/api/outputs/check":  # v5: USB DMX (Open) checklist, run now
                 return self._json(200, {"outputs": app.check_outputs()})
             if path == "/api/cycle":  # v5 break-method cycle test
@@ -806,6 +809,18 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/outputs/latency" and method == "POST":  # set via D2XX, after the UI asked
                 return self._json(200, {"ok": True, **app.set_output_latency(int(body.get("output", -1)),
                                                                              int(body.get("ms", 1)))})
+            if path == "/api/tempo" and method == "POST":  # v6: tap, source, tracker settings
+                act = str(body.get("action", ""))
+                if act == "tap":
+                    bpm = app.ctl.tap()
+                    return self._json(200, {"ok": True, "bpm": bpm, **app.tempo_view()})
+                if act == "source":
+                    return self._json(200, {"ok": True, **app.set_tempo_source(str(body.get("source", "")),
+                                                                               bool(body.get("save")))})
+                if act == "params":
+                    return self._json(200, {"ok": True, **app.set_tempo_params(body.get("params") or {},
+                                                                               bool(body.get("save")))})
+                raise ApiError(400, "tempo action: tap, source or params")
             if path == "/api/darkness" and method == "POST":  # v6 live Darkness (slider / Claude); gig lock allows it
                 src = "claude" if self._is_claude() else str(body.get("source") or "slider")
                 return self._json(200, {"ok": True, **app.set_darkness(float(body.get("value", 0)), src)})

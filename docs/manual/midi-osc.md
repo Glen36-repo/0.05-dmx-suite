@@ -26,7 +26,7 @@ devices:
 - **Channel:** 1-16 as printed on the gear, or `any`; set it on the device for every input in it
 - **Port:** part of the interface's name (e.g. `H2MIDI`), on the device or one input. A port-specific input wins, so the SamplePad and the TD-25 can use the same notes
 - **Velocity range:** `velocity: [64, 127]` makes only hard hits count (soft and hard hits can be two inputs)
-- **Roles:** what the input is to the auto show: kick, snare, tom, cymbal, count_in, activity. Any device can carry them (a keyboard's low C can be the kick). **darkness** (a CC, e.g. the FCB1010 expression pedal) rides the Autopilot's Darkness; `range: [0, 80]` sets heel to toe in % (reverse it for toe-down = lighter), and calibrating sets its curve
+- **Roles:** what the input is to the auto show: kick, snare, tom, cymbal, count_in, activity. Any device can carry them (a keyboard's low C can be the kick). **hat** (hi-hat, for the tempo), **tap** (a pad that taps the tempo), **darkness** (a CC, e.g. the FCB1010 expression pedal) rides the Autopilot's Darkness; `range: [0, 80]` sets heel to toe in % (reverse it for toe-down = lighter), and calibrating sets its curve
 - **Shared:** two inputs can claim the same message only if both say `shared: true`; then both fire
 
 Change a note in one place and every mapping, step scene and the auto show follow. An input that's still used can't be deleted: you're told where it's used.
@@ -36,6 +36,12 @@ On the MIDI page, the **Inputs** section lists every device. **Learn** sets an i
 ### Calibrating a pad
 
 **Calibrate** on a note input, pick **Quiet**, play it a few times at that strength, press **Done**; then the same for Normal and Loud. Quiet hits then count as a quarter, normal as 60 % and loud as full, for drum flash brightness and (from v3.4) the auto show's energy. Until calibrated, the velocity is used as it comes.
+
+## Tempo from the drums
+
+With the rig's tempo source on **Drums** (Monitor › Tempo, or the rig editor), the lights follow the drummer: every hit on a drum role counts (kick, snare, hat, toms, cymbals, weighted), soft ghost notes don't. Start it with a tap (the FCB1010's tap button, a pad with the `tap` role, or Tap on the Monitor) or a count-in (4 even hits on a `count_in` pad, e.g. the hi-hat pedal, after 2 s quiet); either sets the tempo at once. After that it holds steady: it moves only when the band is clearly faster or slower for 4 beats, then glides; a big change has to hold for 8 beats. In fills and breakdowns, or when the drums stop, it carries on at the last tempo.
+
+The **Tempo** pane on the Monitor page shows each hit by drum against the beat grid (bar lines thicker), the raw tempo and the one the lights follow, the confidence and where the seed came from. **Settings** has every number live (deadband, hold beats, jump, lock range, window, weights, velocity floor, confidence); Save to rig keeps them.
 
 ## The MIDI map
 

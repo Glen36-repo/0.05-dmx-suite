@@ -172,6 +172,19 @@
           <div class="muted" id="test-note" data-i18n="test.note"></div>
           <div class="mon-stats" id="test-log"></div>
         </div>
+        <div class="mon-pane" id="mon-tempo" data-pane="tempo">
+          <div class="mon-head"><h2><span data-i18n="tempo2.title"></span> <button type="button" class="info" data-info="tempo2" aria-expanded="false">ⓘ</button></h2><span class="grow"></span>
+            <select id="tempo-source" data-i18n-title="tempo2.source">
+              <option value="drums" data-i18n="tempo2.s_drums"></option><option value="tap" data-i18n="tempo2.s_tap"></option>
+              <option value="midi_clock" data-i18n="tempo2.s_midi_clock"></option><option value="off" data-i18n="tempo2.s_off"></option></select>
+            <button class="mini" id="tempo-tap" data-i18n="tempo2.tap"></button>
+            <button class="mini" id="tempo-params-btn" data-i18n="tempo2.settings"></button>
+          </div>
+          <div class="tempo-read"><b id="tempo-bpm"></b> <span id="tempo-beat" class="tempo-beat"></span> <span id="tempo-info" class="muted"></span></div>
+          <canvas id="tempo-lanes" class="tempo-canvas" height="120"></canvas>
+          <canvas id="tempo-graph" class="tempo-canvas" height="70"></canvas>
+          <div id="tempo-params" class="tempo-params hidden"></div>
+        </div>
         <div class="mon-pane" id="mon-midi-in" data-pane="midi-in">
           <div class="mon-head"><h2><span data-i18n="monitor.midi_in"></span> <button type="button" class="info" data-info="monitor.midi_in" aria-expanded="false">ⓘ</button></h2><span class="grow"></span>
             <input id="mon-in-port" class="mini" data-i18n-placeholder="monitor.f_port">

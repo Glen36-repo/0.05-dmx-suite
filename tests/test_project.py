@@ -114,7 +114,7 @@ def test_every_ui_text_key_exists():
     used = {k for k in used if not k.endswith(("_", "."))}  # prefixes of keys built at run time:
     used |= {f"live.sub_{k}" for k in ("head", "bar", "wash", "kick")} | {f"haze.{m}" for m in ("off", "manual", "pulse")}
     used |= {f"scenes.blend_{b}" for b in ("replace", "max", "add")}
-    used |= {f"tempo.{s}" for s in ("tap", "kick", "midi_clock")}
+    used |= {f"tempo.{s}" for s in ("tap", "kick", "midi_clock", "drums", "off")}
     used |= {f"shows.hold_{h}" for h in ("repeats", "hold_s", "hold_beats", "hold_bars")}
     used |= {f"shows.order_{o}" for o in ("sequence", "random")} | {f"shows.energy_{e}" for e in ("low", "mid", "high")}
     used |= {f"shows.mix_{m}" for m in ("matching", "white", "contrast")}
@@ -127,6 +127,7 @@ def test_every_ui_text_key_exists():
     used |= {f"timing.{d}" for d in ("vcp", "d2xx", "unknown")}  # v5: driver type in the timing line
     used |= {f"ff.a_{a}" for a in ("yes", "no", "pass", "fail", "restart")}  # v5: fault-find answers
     used |= {f"darkness.src_{s}" for s in ("default", "set", "slider", "cc", "claude")}  # v6: darkness source
+    used |= {"tempo2.freewheel", "tempo2.locked"}  # v6: tempo state
     # v3.1
     used |= {f"alerts.state_{s}" for s in ("active", "dismissed", "minimised", "snoozed", "muted", "cleared")}
     used |= {f"heads.stage_{k}" for k in "xyz"}

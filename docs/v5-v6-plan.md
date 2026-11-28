@@ -74,7 +74,7 @@ Limits in this environment: no Windows, FTDI or D2XX here. Driver code is tested
    - `get_guide` section
 8. Acceptance tests from the brief, as written.
 
-## Part B (v6): Tempo from the e-drums
+## Part B (v6): Tempo from the e-drums — built 28/11/2026
 1. New `beat.py`: onset merger (30 ms, max weight, velocity floor), comb-filter tracker (6 s window, ±15 % of seed, clamped 40–240), phase from snare 2/4, output stage (8-beat median, 3 %/4-beat deadband with a 1–2 beat glide, 15 %/8-beat jump guard, ≤10 % phase nudge), confidence and freewheel. Pure functions on timestamps, so tests feed synthetic grooves (steady, fills, drift, push, half-time).
 2. `TempoClock` gains source `drums` (replaces `kick`, which still reads and maps to drums) and bar, beat, confidence and freewheel. Tap, count-in and the FCB tap seed and reset it. `midi_clock` kept, not default.
 3. Consumers: `step_beats`, autopilot speed and beat-synced effects follow the clock. `step_s` stays on timers. Source off → last BPM, else 120.
