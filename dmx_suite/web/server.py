@@ -580,7 +580,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             b = b or {}
             if app.unsaved():
                 if b.get("save"):
-                    app.save_project()
+                    try:
+                        app.save_project()
+                    except OSError as e:  # e.g. the file held by another program: say so, not "not allowed" (403)
+                        raise ApiError(409, f"couldn't save {app.project.name} first: {e}") from e
                 elif not b.get("discard"):
                     raise ApiError(409, f"unsaved changes in {app.project.name}: save them first or open without saving")
             read_manifest(target)  # refuse a bad or newer file before stopping anything
@@ -601,6 +604,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     app.save_project()
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
+                except OSError as e:
+                    raise ApiError(409, f"couldn't save {app.project.name}: {e}") from e
                 return {"ok": True, **self._project_info()}
             raw = str(b.get("path") or "").strip()
             if not raw:

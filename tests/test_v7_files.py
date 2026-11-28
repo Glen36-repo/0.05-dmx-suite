@@ -230,3 +230,45 @@ def test_quit_asks_about_unsaved_changes(served, monkeypatch):
     answers[:] = [True]  # save, then quit
     d.quit()
     assert d.window.destroyed and not app.unsaved()
+
+
+# ------------------------------------------------------------------ Windows: the file held for a moment
+
+
+def test_pack_retries_when_the_file_is_held_a_moment(tmp_path, monkeypatch):
+    import os
+
+    from dmx_suite import package
+
+    real, fails = os.replace, [2]
+
+    def held(src, dst):
+        if str(dst).endswith(".dms") and fails[0]:
+            fails[0] -= 1
+            raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+        return real(src, dst)
+
+    monkeypatch.setattr(package.os, "replace", held)
+    monkeypatch.setattr(package.time, "sleep", lambda s: None)
+    out = tmp_path / "Held.dms"
+    pack(SHOWS, out)  # two refusals, then it goes through
+    assert out.exists() and fails[0] == 0
+    fails[0] = 99
+    with pytest.raises(PermissionError):
+        pack(SHOWS, tmp_path / "Never.dms")
+    assert not list(tmp_path.glob(".Never.*.tmp"))  # no temp file left behind
+
+
+def test_a_save_that_keeps_failing_is_a_save_error_not_a_403(served, monkeypatch):
+    from dmx_suite import package
+
+    app, port, *_ = served
+    settings.save({"save_mode": "manual"})
+    app.store.put("scene", "stuck", SCENE)
+
+    def held(*a):
+        raise PermissionError(13, "being used by another process")
+
+    monkeypatch.setattr(package, "_replace", held)
+    status, r = call(port, "/api/project/save", "POST", {})
+    assert status == 409 and "couldn't save" in r["error"] and app.unsaved()

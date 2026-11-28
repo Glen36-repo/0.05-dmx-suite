@@ -91,9 +91,22 @@ def pack(folder: Path, dms: Path) -> None:
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info.external_attr = 0o644 << 16
                 z.writestr(info, (folder / rel).read_bytes())
-        os.replace(tmp, dms)
+        _replace(tmp, dms)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def _replace(src: Path, dst: Path, tries: int = 8) -> None:
+    """os.replace, retried for a moment: on Windows something else (OneDrive syncing, the indexer, an
+    antivirus scan) can hold the show file for a fraction of a second, and the replace is then refused."""
+    for n in range(tries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if n == tries - 1:
+                raise
+            time.sleep(0.05 * (n + 1))
 
 
 def _safe_name(name: str) -> bool:
