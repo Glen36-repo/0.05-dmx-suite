@@ -620,7 +620,10 @@ class App:
         d = drivers[idx]
         frame = d.wire.frame(universe) if d.carries(universe) else None
         st = d.state()
-        return {"universe": universe, "out": idx, "source": (d.cfg or {}).get("alias") or st["name"],
+        tst = self.engine.test_status()
+        testing = tst is not None and tst["universe"] == universe and tst["output"] in (None, idx)
+        return {"universe": universe, "out": idx, "test": tst if testing else None,
+                "source": (d.cfg or {}).get("alias") or st["name"],
                 "carries": d.carries(universe), "frame": base64.b64encode(frame).decode() if frame is not None else None,
                 "no_frames": frame is None, "stats": {**d.wire.stats(universe), "errors": d.status().get("errors", 0),
                                                        "state": st["state"], "detail": st["detail"]}}
@@ -650,6 +653,30 @@ class App:
         bid = self.store.put("rig", rig_name, data, f"output {index + 1} on rig {rig_name}")
         notes = self.reload()
         return {"backup": bid, "notes": notes, "outputs": outs}
+
+    # ------------------------------------------------------------------ test patterns (v5)
+
+    def run_test(self, args: dict[str, Any], by: str = "ui") -> dict[str, Any]:
+        """Start a test pattern from the Monitor page / Claude. Gig lock allows keep-alive only."""
+        from .testpattern import TIMEOUT_S, TestPattern
+
+        pattern = str(args.get("pattern", ""))
+        if pattern != "keep_alive":
+            self.require_unlocked("a test pattern other than keep-alive")
+
+        def num(k: str, cast: Any = int) -> Any:
+            v = args.get(k)
+            return None if v in (None, "") else cast(v)
+
+        out = num("output")
+        tp = TestPattern(pattern, universe=num("universe") or 0, output=out, fixture=args.get("fixture") or None,
+                         channel=num("channel"), value=num("value"), dwell_s=num("dwell_s", float) or 2.0,
+                         timeout_s=num("timeout_s", float) or TIMEOUT_S, patched_only=bool(args.get("patched_only")),
+                         by=by, extra={"role": args.get("role")} if args.get("role") else {})
+        return self.engine.run_test(tp)
+
+    def stop_test(self, why: str = "stopped") -> bool:
+        return self.engine.stop_test(why)
 
     def routing_problems_cached(self) -> list[str]:
         from .rig import routing_problems
@@ -703,6 +730,11 @@ class App:
             if unis and st.get("state") != "sim":  # which universe(s) it carries, at the front
                 st["detail"] = f"U{','.join(map(str, unis))} · {st['detail']}"
             out.append(st)
+        tst = self.engine.test_status()
+        if tst is not None:
+            where = f"output {tst['output'] + 1}" if tst["output"] is not None else f"U{tst['universe']}"
+            out.append({"kind": "test", "name": "TEST", "state": "warn",
+                        "detail": f"{tst['name']} on {where}, {tst['left_s']:.0f} s left (Monitor: Stop test)"})
         rp = self.routing_problems_cached()
         if rp:
             more = f" (+{len(rp) - 1})" if len(rp) > 1 else ""
@@ -1796,6 +1828,7 @@ class App:
             "now": n.__dict__,
             "describe": self.ctl.describe(),
             "preview_s": e.previewing,
+            "test": e.test_status(),
             "setup": {"find": e.find, "channels": [{"universe": u, "channel": c, "value": v}
                                                    for (u, c), v in e.channel_test.items()]},
             "fixtures": self.fixture_view(),

@@ -429,6 +429,18 @@ class DmxTools:
         notes = "; ".join(r.get("notes") or [])  # outputs are rebuilt live
         return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
 
+    def run_test_pattern(self, pattern: str, universe: int | None = None, output: int | None = None, fixture: str = "",
+                         channel: int | None = None, value: int | None = None, dwell_s: float | None = None,
+                         timeout_s: float | None = None, patched_only: bool = False, role: str = "") -> str:
+        body = {"pattern": pattern, "universe": universe, "output": output, "fixture": fixture, "channel": channel,
+                "value": value, "dwell_s": dwell_s, "timeout_s": timeout_s, "patched_only": patched_only, "role": role}
+        r = self._live("POST", "/api/test/run", {k: v for k, v in body.items() if v not in (None, "")})
+        return _dump({"running": r["test"], "note": "stop it with stop_test_pattern (or it stops itself at timeout_s)"})
+
+    def stop_test_pattern(self) -> str:
+        r = self._live("POST", "/api/test/stop", {"why": "stopped by Claude"})
+        return "stopped: normal output is back" if r["stopped"] else "no test pattern was running"
+
     def monitor_dmx(self, universe: int = 0, output: str = "", channels: str = "") -> str:
         """What one interface really sent on a universe: stats and channel values with names."""
         import base64

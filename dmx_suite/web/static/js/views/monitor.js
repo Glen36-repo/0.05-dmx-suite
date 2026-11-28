@@ -1,6 +1,7 @@
 // Monitor page (v4): watch what goes out over DMX and what comes in / goes out over MIDI. Read-only:
-// nothing here changes the output (works under gig lock); only Learn (inputs.yaml) and the MIDI test send
-// write anything, and those follow the usual locks.
+// nothing here changes the output (works under gig lock); only Learn (inputs.yaml), the MIDI test send and
+// the v5 test patterns (straight to the interface, stopped when this page is left) change anything, and
+// those follow the usual locks (gig lock: keep-alive only).
 import { api, attempt, get, toast } from "../api.js";
 import { $, $$, el, remember } from "../dom.js";
 import { watchFrames } from "../frames.js";
@@ -41,6 +42,8 @@ async function loadSources() {
   if (!outs.some((x) => String(x.output) === out) && out !== "engine") out = outs.length ? String(outs[0].output) : "engine";
   $("#mon-out").value = out;
   names = await get(`/api/monitor/channels?u=${uni}`).catch(() => ({}));
+  routing = r;
+  testTargets();
 }
 
 function watch() {
@@ -54,7 +57,8 @@ function watch() {
     if (frame && lastFrame) for (let i = 0; i < 512; i++) if (frame[i] !== lastFrame[i]) movedAt[i] = now;
     lastFrame = frame;
     const s = f.stats || {};
-    $("#mon-dmx-stats").textContent = t("monitor.stats", { source: f.source, fps: s.fps ?? "-", frames: s.frames ?? "-",
+    $("#mon-dmx").classList.toggle("testing", !!f.test);
+    $("#mon-dmx-stats").textContent = (f.test ? `TEST: ${f.test.name} · ` : "") + t("monitor.stats", { source: f.source, fps: s.fps ?? "-", frames: s.frames ?? "-",
       errors: s.errors ?? "-", jitter: s.jitter_ms ?? "-", last: ms(s.last_frame_age_ms) });
     const flag = f.no_frames ? t("monitor.no_frames", { source: f.source, u: uni })
       : s.all_zero ? t("monitor.all_zero")
@@ -107,6 +111,78 @@ function drawDmx() {
   });
 }
 
+// ---------------------------------------------------------------- test patterns (v5)
+
+let routing = null;
+let myTest = false; // started from this page: stopped when the page is left
+
+function testFields() {
+  const p = $("#test-pattern").value;
+  $("#test-fixture").classList.toggle("hidden", !(p === "find" || p === "ramp"));
+  $("#test-channel").classList.toggle("hidden", p !== "ramp");
+  $("#test-value").classList.toggle("hidden", !(p === "ramp" || p === "keep_alive"));
+  $("#test-dwell").classList.toggle("hidden", p !== "chase");
+  $("#test-patched-l").classList.toggle("hidden", p !== "all_full");
+  const locked = !!live.state?.gig_lock;
+  $("#test-go").disabled = locked && p !== "keep_alive";
+  $("#test-go").title = locked && p !== "keep_alive" ? t("test.locked") : "";
+}
+
+function testTargets() {
+  if (!routing) return;
+  const us = routing.universes.length ? routing.universes : [0];
+  const opts = [];
+  for (const u of us) {
+    opts.push(el("option", { value: `u:${u}` }, t("test.all_outputs", { u })));
+    for (const r of routing.rows) if (r.universe === u && r.output !== null && r.output !== undefined)
+      opts.push(el("option", { value: `o:${r.output}` }, t("test.one_output", { u, name: r.interface })));
+  }
+  const keep = $("#test-target").value;
+  $("#test-target").replaceChildren(...opts);
+  if (keep) $("#test-target").value = keep;
+  const fids = [...new Set(Object.values(names).map((n) => n.split(" ")[0]))];
+  const kf = $("#test-fixture").value;
+  $("#test-fixture").replaceChildren(...fids.map((f) => el("option", { value: f }, f)));
+  if (kf) $("#test-fixture").value = kf;
+}
+
+async function startTest() {
+  const p = $("#test-pattern").value;
+  const [kind, n] = $("#test-target").value.split(":");
+  const body = { pattern: p, timeout_s: +$("#test-timeout").value || 60, patched_only: $("#test-patched").checked };
+  if (kind === "o") body.output = +n; else body.universe = +n;
+  if (p === "find" || p === "ramp") body.fixture = $("#test-fixture").value;
+  if (p === "ramp") {
+    if ($("#test-channel").value) { body.channel = +$("#test-channel").value; delete body.fixture; }
+    else body.role = (prompt(t("test.channel")) || "red").trim();
+  }
+  if ((p === "ramp" || p === "keep_alive") && $("#test-value").value !== "") body.value = +$("#test-value").value;
+  if (p === "chase") body.dwell_s = +$("#test-dwell").value || 2;
+  if (await attempt(() => api("POST", "/api/test/run", body))) { myTest = true; pollTest(); }
+}
+
+async function stopTest(why = "stopped") {
+  myTest = false;
+  await api("POST", "/api/test/stop", { why }).catch(() => null);
+  pollTest();
+}
+
+async function pollTest() {
+  const r = await get("/api/test").catch(() => null);
+  if (!r) return;
+  const tst = r.test;
+  $("#test-live").classList.toggle("hidden", !tst);
+  if (tst) {
+    $("#test-name").textContent = `${t("test.running")} ${tst.name}`;
+    $("#test-what").textContent = tst.now || "";
+    $("#test-left").textContent = t("test.left", { s: Math.round(tst.left_s) });
+  } else myTest = false;
+  $("#test-log").replaceChildren(...r.log.slice(-4).reverse().map((x) => el("div", { text: t("test.log", {
+    time: new Date(x.time * 1000).toLocaleTimeString("en-AU", { hour12: false }), what: x.what, pattern: x.pattern,
+    u: x.universe, out: x.output !== null ? ` output ${x.output + 1}` : "", by: x.by }) })));
+  testFields();
+}
+
 function dmxCsv() {
   const rows = [["channel", "name", "value"], ...[...Array(512).keys()].map((i) => [i + 1, names[i + 1] || "", frame ? frame[i] : ""])];
   return rows.map((r) => r.join(",")).join("\n");
@@ -127,6 +203,7 @@ async function poll() {
   if (!shown()) return;
   const st = await get("/api/monitor/status").catch(() => null);
   if (st) drawPorts(st);
+  pollTest();
   if (!paused["midi-in"]) {
     const rows = await get(`/api/monitor/midi?${inQuery()}`).catch(() => []);
     if (rows.length) {
@@ -260,6 +337,12 @@ export function init() {
     clearInterval(timer);
     timer = setInterval(poll, 300);
   });
-  onLeave("monitor", () => { stopFeed?.(); stopFeed = null; clearInterval(timer); });
+  $("#test-pattern").onchange = testFields;
+  $("#test-go").onclick = startTest;
+  $("#test-stop").onclick = () => stopTest();
+  onLeave("monitor", () => {
+    stopFeed?.(); stopFeed = null; clearInterval(timer);
+    if (myTest) stopTest("page left");
+  });
   onCatalogue(() => { if (shown()) loadSources(); });
 }

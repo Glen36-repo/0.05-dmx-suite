@@ -129,6 +129,31 @@
           <div class="mon-flag hidden" id="mon-dmx-flag"></div>
           <div class="mon-body" id="mon-dmx-body"></div>
         </div>
+        <div class="mon-pane" id="mon-test" data-pane="test">
+          <div class="mon-head"><h2><span data-i18n="test.title"></span> <button type="button" class="info" data-info="test" aria-expanded="false">ⓘ</button></h2><span class="grow"></span>
+            <select id="test-pattern" data-i18n-title="test.pattern">
+              <option value="all_full" data-i18n="test.p_all_full"></option>
+              <option value="chase" data-i18n="test.p_chase"></option>
+              <option value="find" data-i18n="test.p_find"></option>
+              <option value="ramp" data-i18n="test.p_ramp"></option>
+              <option value="keep_alive" data-i18n="test.p_keep_alive"></option>
+            </select>
+            <select id="test-target" data-i18n-title="test.target"></select>
+            <select id="test-fixture" class="hidden" data-i18n-title="test.fixture"></select>
+            <input id="test-channel" class="mini num hidden" type="number" min="1" max="512" data-i18n-placeholder="test.channel">
+            <input id="test-value" class="mini num hidden" type="number" min="0" max="255" data-i18n-placeholder="test.value">
+            <input id="test-dwell" class="mini num hidden" type="number" min="0.2" max="30" step="0.1" value="2" data-i18n-title="test.dwell">
+            <label id="test-patched-l" class="mini"><input type="checkbox" id="test-patched"> <span data-i18n="test.patched_only"></span></label>
+            <input id="test-timeout" class="mini num" type="number" min="5" max="600" value="60" data-i18n-title="test.timeout">
+            <button id="test-go" class="mini" data-i18n="test.start"></button>
+          </div>
+          <div id="test-live" class="test-live hidden">
+            <div class="test-now"><span id="test-name"></span> <strong id="test-what"></strong> <span id="test-left" class="muted"></span></div>
+            <button id="test-stop" class="big bad" data-i18n="test.stop"></button>
+          </div>
+          <div class="muted" id="test-note" data-i18n="test.note"></div>
+          <div class="mon-stats" id="test-log"></div>
+        </div>
         <div class="mon-pane" id="mon-midi-in" data-pane="midi-in">
           <div class="mon-head"><h2><span data-i18n="monitor.midi_in"></span> <button type="button" class="info" data-info="monitor.midi_in" aria-expanded="false">ⓘ</button></h2><span class="grow"></span>
             <input id="mon-in-port" class="mini" data-i18n-placeholder="monitor.f_port">

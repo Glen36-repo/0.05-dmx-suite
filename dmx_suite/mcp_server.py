@@ -333,6 +333,25 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.set_output(index, driver, port, universe, mac, alias, break_method, break_us, mab_us, fps, channels)
 
     @tool
+    def run_test_pattern(pattern: str, universe: int | None = None, output: int | None = None, fixture: str = "",
+                         channel: int | None = None, value: int | None = None, dwell_s: float | None = None,
+                         timeout_s: float | None = None, patched_only: bool = False, role: str = "") -> str:
+        """DMX test pattern straight to a universe (or one interface: output = index from list_outputs),
+        bypassing scenes, autopilot, Override, grand master and MASTER. Head limits still apply; haze stays 0.
+        pattern: all_full (lights at full, strobe off; patched_only leaves unpatched channels 0), chase (one
+        light at a time, dwell_s, default 2), find (fixture flashes at 1 Hz, heads nod), ramp (channel 1-512, or
+        fixture + role e.g. red: 0-255-0, or held at value), keep_alive (fixed frame at value, default 0: do the
+        lights stay in DMX mode?). Stops after timeout_s (default 60). Gig lock: keep_alive only. Tell the
+        band before lighting the rig."""
+        return t.run_test_pattern(pattern, universe, output, fixture, channel, value, dwell_s, timeout_s,
+                                  patched_only, role)
+
+    @tool
+    def stop_test_pattern() -> str:
+        """Stop the running test pattern; the show's output is back on the next frame."""
+        return t.stop_test_pattern()
+
+    @tool
     def monitor_dmx(universe: int = 0, output: str = "", channels: str = "") -> str:
         """Fault-find 'software running, rig dark': the frame one interface really sent on a universe (default:
         the first output carrying it; output = an index from list_outputs, or 'engine' for the engine's frame

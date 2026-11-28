@@ -12,7 +12,9 @@ import math
 import threading
 import time
 from collections.abc import Callable
+from typing import Any
 
+from . import testpattern
 from .busk import Override, apply_with_releases
 from .fade import Crossfade
 from .faders import Masters
@@ -24,6 +26,7 @@ from .output.timer import high_res
 from .rig import HazeConfig, Rig
 from .rules import ControlState, Flash, RuleLayer
 from .scenes import Scene, ScenePlayer
+from .testpattern import TestPattern
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +58,8 @@ class Engine:
         # setup/test page: find one fixture, raw channel tester
         self.find: str | None = None
         self.channel_test: dict[tuple[int, int], int] = {}  # (universe, 1-based channel) -> value
+        self.test: TestPattern | None = None  # v5 test pattern, straight to the interface(s)
+        self.test_log: list[dict[str, Any]] = []  # started / stopped, for the Monitor DMX pane
         # position picker: hold a head at a spot over whatever the show does (limits still apply)
         self.position_override: dict[str, tuple[float, float]] = {}
         # preview: play something for a while, then put back what was running
@@ -153,12 +158,24 @@ class Engine:
                 if uni in frames:
                     frames[uni][ch - 1] = val
             self.frames = frames  # only a frame that rendered completely replaces the last good one
-            self._send(frames)
+            self._send(frames, self._test_frame(now))
             return frames
 
-    def _send(self, frames: dict[int, bytearray]) -> None:
-        for drv in self.drivers:
-            for uni, frame in frames.items():
+    def _test_frame(self, now: float) -> tuple[int, int | None, bytearray] | None:
+        tp = self.test
+        if tp is None:
+            return None
+        if now >= tp.until():
+            self._end_test("timed out")
+            return None
+        return tp.universe, tp.output, testpattern.render(self.rig, tp, self.rules.position, now)
+
+    def _send(self, frames: dict[int, bytearray], test: tuple[int, int | None, bytearray] | None = None) -> None:
+        for i, drv in enumerate(self.drivers):
+            out = frames
+            if test is not None and (test[1] is None or test[1] == i):  # the test replaces its universe there
+                out = {**frames, test[0]: test[2]}
+            for uni, frame in out.items():
                 try:
                     drv.send(uni, bytes(frame))
                 except Exception:
@@ -391,6 +408,48 @@ class Engine:
                     raise ValueError("value 0-255")
                 self.channel_test[(universe, channel)] = value
         self._changed()
+
+    # ------------------------------------------------------------------ test patterns (v5)
+
+    def run_test(self, tp: TestPattern) -> dict[str, Any]:
+        """Start a test pattern (replacing one running). Bypasses scenes, autopilot, Override, the grand
+        master and MASTER on that universe / interface; head limits still apply, haze stays 0."""
+        with self.lock:
+            testpattern.check(self.rig, tp, self.haze_slots())
+            if tp.output is not None:
+                if not 0 <= tp.output < len(self.drivers):
+                    raise ValueError(f"no output {tp.output}")
+                drv = self.drivers[tp.output]
+                if drv.universe is not None:
+                    tp.universe = drv.universe
+            tp.started = self.clock()
+            self.test = tp
+            self._log_test("start", tp)
+        self._changed()
+        return tp.view(self.clock())
+
+    def stop_test(self, why: str = "stopped") -> bool:
+        with self.lock:
+            had = self.test is not None
+            self._end_test(why)
+        if had:
+            self._changed()
+        return had
+
+    def _end_test(self, why: str) -> None:
+        if self.test is not None:
+            self._log_test(why, self.test)
+            self.test = None
+
+    def _log_test(self, what: str, tp: TestPattern) -> None:
+        self.test_log = (self.test_log + [{"time": time.time(), "what": what, "pattern": tp.pattern,
+                                            "universe": tp.universe, "output": tp.output, "by": tp.by}])[-50:]
+        log.info("TEST %s: %s on U%s%s", what, testpattern.NAMES[tp.pattern], tp.universe,
+                 f" output {tp.output}" if tp.output is not None else "")
+
+    def test_status(self) -> dict[str, Any] | None:
+        with self.lock:
+            return self.test.view(self.clock()) if self.test is not None else None
 
     def clear_setup(self) -> None:
         with self.lock:

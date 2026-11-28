@@ -547,6 +547,11 @@ body:has(#page-monitor.on) main { max-width: none; }
 .mon-head h2 { margin: 0; }
 .seg-row { display: inline-flex; gap: 2px; }
 .mon-stats { font-size: 12px; color: var(--muted); margin: 4px 0; }
+.mon-pane.testing { border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn) inset; }
+.test-live { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: center; justify-content: space-between;
+  margin: 6px 0; padding: 8px; border: 2px solid var(--warn); border-radius: var(--radius); }
+.test-now { font-size: 22px; } .test-now strong { font-size: 28px; }
+button.big.bad { background: var(--bad); color: #fff; min-width: 180px; }
 .mon-flag { font-size: 13px; font-weight: 600; color: var(--bad); margin: 4px 0; }
 .mon-body { overflow: auto; max-height: 60vh; }
 .mon-pane.full .mon-body { max-height: none; }
