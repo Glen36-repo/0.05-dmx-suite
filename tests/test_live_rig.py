@@ -132,3 +132,19 @@ def test_overlapping_patch_refused(app):
     rows.append({"id": "clash", "type": "starcolor72", "universe": rows[0].get("universe", 0), "address": rows[0]["address"]})
     with pytest.raises(Exception, match="overlaps"):
         app.store.put_patch(rows)
+
+
+def test_files_rev_goes_up_on_every_change(app):
+    """Open screens fetch the names and layout again when this changes (the live feed carries it)."""
+    revs = [app.snapshot()["files_rev"]]
+    lay = app.catalogue()["layout"]
+    app.save_layout({**lay, "wash_l": {**lay["wash_l"], "x": lay["wash_l"]["x"] + 2}})
+    revs.append(app.snapshot()["files_rev"])
+    app.set_positions({"wash_r": {"x": 3, "y": 3}})
+    revs.append(app.snapshot()["files_rev"])
+    app.store.undo()
+    app.reload()
+    revs.append(app.snapshot()["files_rev"])
+    app.switch_rig("small")
+    revs.append(app.snapshot()["files_rev"])
+    assert revs == sorted(set(revs)), revs  # strictly up every time

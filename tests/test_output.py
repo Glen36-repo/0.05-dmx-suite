@@ -4,7 +4,7 @@ import time
 import pytest
 
 from dmx_suite.output import LogDriver, NodeSerialDriver, make_driver
-from dmx_suite.output.enttec import EnttecOpenDriver, EnttecProDriver, pro_packet
+from dmx_suite.output.enttec import WIRE_MARGIN_S, WIRE_S, EnttecOpenDriver, EnttecProDriver, pro_packet
 
 
 class FakeSerial:
@@ -28,6 +28,14 @@ class FakeSerial:
         self.wrote.set()
 
     def flush(self):
+        pass
+
+    rts = dtr = True  # what pyserial does on open
+
+    def reset_input_buffer(self):
+        pass
+
+    def reset_output_buffer(self):
         pass
 
     def close(self):
@@ -66,7 +74,8 @@ def test_enttec_open_streams_with_break_and_wakes_on_new_frame():
         t0 = time.perf_counter()
         d.send(0, frame)
         while ser.writes[-1] != b"\x00" + frame:
-            assert time.perf_counter() - t0 < 0.02, "new frame not sent promptly"
+            # as soon as the line is free: at most the last frame's wire time, plus slack for the runner
+            assert time.perf_counter() - t0 < WIRE_S + WIRE_MARGIN_S + 0.012, "new frame not sent promptly"
             time.sleep(0.0005)
     finally:
         d.close()

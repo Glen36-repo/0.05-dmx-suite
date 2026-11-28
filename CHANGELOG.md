@@ -11,6 +11,12 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 ### Changed
 - The grey help paragraphs on most pages are now ⓘ popovers, so pages are shorter. Warnings stay where they are.
 
+### Fixed
+- Live, Autopilot and every other open screen (phones, a second window) update straight away when the layout or any show file changes, from any screen, from Claude, an undo or a restore; before, only the screen that saved saw it until a reload. Leaving the Layout page with unsaved changes now says so (they're kept).
+- USB DMX (Open DMX / FTDI): the next frame's break no longer cuts off the end of the previous one when a new frame arrives early (drum hits): it waits for the frame's wire time (~22.6 ms). Steady rate ~37-38 fps.
+- USB DMX (Open DMX / FTDI): RTS and DTR are kept low when the port opens and cleared again after it (Enttec's setup), and both buffers are purged. Some FTDI clones use RTS as the RS-485 transmit enable, so RTS raised on open is a possible cause of "connected, packets counting, rig dark"; to be confirmed on the real rig at the R9 hardware check.
+- USB DMX (Open DMX / FTDI): frames are always 512 channels; a short write counts as an error, not a sent frame; the port is opened on the driver's own thread; the last error shows in the status bar and the log.
+
 ## Unreleased (v4: stage view, Layout / Patch, routing, Monitor, step editor)
 
 Scope and decisions: `docs/V4-SCOPE.md`. Show file format 6 (old files upgrade once, with backups).

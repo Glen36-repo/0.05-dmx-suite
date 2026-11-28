@@ -8,7 +8,7 @@ import shutil
 
 import pytest
 import screenshot_rig
-from test_ui import PAGES, SHOWS, TOKEN, browser, go, ui  # noqa: F401,F811 - pytest fixtures
+from test_ui import PAGES, SHOWS, TOKEN, browser, centre, drag, go, ui  # noqa: F401,F811 - pytest fixtures
 
 from dmx_suite.app import App
 from dmx_suite.output import LogDriver
@@ -583,3 +583,83 @@ def test_layout_and_live_keep_whole_light_selection(ui):
     page.click("#layout-grid [data-id=bar_1] rect.cell >> nth=2")
     assert page.locator("#layout-grid .cell.psel").count() == 0  # whole lights only outside the scene editor
     assert page.locator("#layout-grid [data-id=bar_1].sel").count() == 1
+
+
+# ---------------------------------------------------------------- every screen picks up file changes (v4.1)
+
+
+def wash_x(page, grid):
+    return float(page.get_attribute(f"{grid} [data-id=wash_l] rect", "x"))
+
+
+def wait_wash_right_of(page, grid, x, timeout=4000):
+    page.wait_for_function(f"Number(document.querySelector('{grid} [data-id=wash_l] rect').getAttribute('x')) > {x}",
+                           timeout=timeout)
+
+
+def move_wash(page):
+    go(page, "layout")
+    page.click("#group-tabs [data-group=washes]")
+    page.click("[data-tool=move]")
+    start = centre(page, "#layout-grid [data-id='wash_l'] .cell")
+    drag(page, start, (start[0] + 120, start[1]))
+
+
+def second_screen(browser, web):
+    other = browser.new_page(viewport={"width": 1280, "height": 900})
+    other.goto(f"http://127.0.0.1:{web.port}/?t={TOKEN}")
+    other.wait_for_selector("body.ready", timeout=10000)
+    return other
+
+
+def test_layout_saved_on_one_screen_shows_on_another(ui, browser):
+    page, app, *_ = ui
+    other = second_screen(browser, page.web)
+    try:
+        before = wash_x(other, "#live-grid")
+        move_wash(page)
+        page.click("#layout-save")
+        page.wait_for_selector("#layout-save:disabled")
+        wait_wash_right_of(other, "#live-grid", before)
+        assert wash_x(other, "#ride-grid") == wash_x(other, "#live-grid")  # Autopilot too, no reload
+        assert wash_x(page, "#live-grid") == wash_x(other, "#live-grid")  # and the screen that saved it
+    finally:
+        other.close()
+
+
+def test_layout_changed_by_claude_shows_on_open_screens(ui):
+    page, app, *_ = ui
+    before = wash_x(page, "#live-grid")
+    lay = app.catalogue()["layout"]
+    app.save_layout({**lay, "wash_l": {**lay["wash_l"], "x": lay["wash_l"]["x"] + 4}})  # what set_layout does
+    wait_wash_right_of(page, "#live-grid", before)
+
+
+def test_unsaved_layout_edits_kept_when_another_screen_saves(ui, browser):
+    page, app, *_ = ui
+    other = second_screen(browser, page.web)
+    try:
+        move_wash(page)  # unsaved here
+        mine = wash_x(page, "#layout-grid")
+        app.set_positions({"wash_r": {"x": 2, "y": 2}})  # someone else saves
+        page.wait_for_selector("#toast:not(.hidden)")
+        assert "kept" in page.inner_text("#toast").lower() or "unsaved" in page.inner_text("#toast").lower()
+        assert wash_x(page, "#layout-grid") == mine and not page.is_disabled("#layout-save")
+    finally:
+        other.close()
+
+
+def test_leaving_layout_unsaved_says_so_and_save_reaches_live(ui):
+    page, *_ = ui
+    before = wash_x(page, "#live-grid")
+    move_wash(page)
+    go(page, "live")
+    page.wait_for_selector("#toast:not(.hidden)")
+    assert "not saved" in page.inner_text("#toast")
+    assert wash_x(page, "#live-grid") == before  # Live shows the saved layout
+    go(page, "layout")
+    assert not page.is_disabled("#layout-save")  # the edit is still there
+    page.click("#layout-save")
+    page.wait_for_selector("#layout-save:disabled")
+    go(page, "live")
+    wait_wash_right_of(page, "#live-grid", before)

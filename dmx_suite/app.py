@@ -78,6 +78,7 @@ class App:
         self.log_dir = log_dir
         self.alerts: list[dict[str, Any]] = []  # node dropped / weak, newest last
         self.show_problem: dict[str, str] | None = None  # running the last good show files (cli start-up)
+        self.files_rev = 0  # up after every reload (edit, undo, restore, rig switch): open screens fetch again
         self.osc: Any = None  # osc.OscServer, when the rig turns OSC on
         self.osc_error: str | None = None
         self.midi_inputs: Any = None  # MidiInputs when running live
@@ -792,6 +793,12 @@ class App:
             return notes
 
     def _reload(self) -> list[str]:
+        try:
+            return self._do_reload()
+        finally:  # after the new files are in place, so a screen that sees the new number fetches them
+            self.files_rev += 1
+
+    def _do_reload(self) -> list[str]:
         """Pick up edited show files without stopping. A changed patch or rig (fixtures, addresses,
         profile, limits, haze...) is rebuilt and swapped in on the next frame; what's playing is
         built again on it. Output and input settings (DMX interfaces, MIDI ports, OSC) still need
@@ -1734,6 +1741,7 @@ class App:
         n = self.ctl.now()
         return {
             "time": time.time(),
+            "files_rev": self.files_rev,
             "master": e.master,
             "profile": e.rig.profile.summary(),
             "tempo": self.ctl.tempo.status(e.clock()),
