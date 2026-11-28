@@ -14,14 +14,21 @@ Every step can be skipped. Run it again any time from the Setup page.
 
 ## The Fixtures page
 
-**Patch:** every light, its type, DMX universe and start address, groups and the sub-master it follows.
+**Patch:** every light, its type, DMX universe and start address, groups and the sub-master it follows. This is the one place universes, addresses and groups are changed (v7).
 
+- Type a **Universe** (0-15) and **Address** (1-512); the channels it uses show beside it (e.g. 33-48).
+- Addresses that overlap or run past 512 are marked red, and the patch can't be saved until they're fixed.
+- **Groups**: tick the groups a light is in, or **+ New group**. A group left with no lights is flagged: if a scene or MIDI map uses it, you're told which and saving is refused until you give it a light or change them; an unused one just goes when you save.
 - **Add lights** of a type (several at once); they go on the next free addresses.
 - **Auto-patch** gives every light the next free addresses in list order.
-- Addresses that overlap or run past 512 are marked red, and the patch can't be saved until they're fixed.
-- Universes and start addresses are shown here but changed in one place, the **Layout** page (address map, live values, clash checks): **Change** beside an address opens Layout with that light's address ready to type.
 - **Find** lights just that one light so you can see which it is.
 - ✕ removes a light from the patch and from every rig. If a scene names it directly, you're told which; change the scene first.
+
+### Addresses
+
+**Address map and routing** (folded under the patch, opens where you left it) is a 32 x 16 map of each universe's 512 channels: each light's channels shaded and labelled (name, start), free channels blank, overlapping channels red. Every channel shows the value going out now (0-255, brighter = higher), taken from what the chosen interface really sent (**Values from**). If the interface hasn't sent anything, the map says so and shows no values: that's the first check when the software runs but the rig is dark. **Print** prints it for load-in.
+
+**Outputs** under it is the routing table: universe, interface, state, fps, frames, errors and last frame, for USB interfaces and wireless nodes alike, with problems underneath (a universe with lights but no output, an output for a universe with no lights, an output with no universe given).
 
 **Fixture types:** the channel list of each kind of light. Set each channel's role, its default value, which pixel it belongs to (bars) and whether it runs backwards (invert).
 

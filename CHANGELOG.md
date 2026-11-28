@@ -2,6 +2,15 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v7 Part B: Layout and Fixtures)
+
+### Changed
+- **Fixtures is the one place for universes, addresses and groups** (reverses the 28/11 "addresses on Layout"). Each light's row has Universe and Address fields with the channels it uses (e.g. 33-48); overlaps turn red and block saving as before. **Change → Layout** is gone.
+- The **address map** (live values) and the **routing table** moved to a folded **Address map and routing** panel on Fixtures (it opens where you left it); **Print** for the patch sheet is there too.
+- **Groups** on Fixtures is a tick-box picker of the existing groups with **+ New group**. A group left with no lights is flagged with whatever uses it, and saving is refused while scenes or MIDI maps still name it; an unused one goes when you save.
+- **Layout**: the stage takes the width; beside it a narrow list of the lights (name, type, **Find**, **Test**). Universe tabs, the status strip, groups from a selection and the PNG patch sheet stay.
+- Claude: `list_fixtures` gives each light's channel range.
+
 ## Unreleased (v7 Part A: Autopilot)
 
 Show file format 7: older shows upgrade once when opened, with a backup. The rig's autopilot `gap_s`, `count_in` and `talking` move into `between:`; a comment on one of those three lines doesn't move with it.

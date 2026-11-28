@@ -1,10 +1,10 @@
 # Layout and patch
 
-The **Layout** page is a full-width page for where the lights are on stage and on the DMX universes.
+The **Layout** page is a full-width page for where the lights are on stage. Universes, addresses, groups, the address map and the routing table are on the [Fixtures](fixtures.md#the-fixtures-page) page (v7: one place for them).
 
-Across the top: the **universe** tabs (All, U0, U1 ...) filter everything below; a status strip says which interface sends that universe, its frames a second, frames sent, errors and the last frame; and **Save / Undo / Redo / Revert to saved** for the layout, with a dot when there are unsaved changes. **Print** and **PNG** make a patch sheet for load-in.
+Across the top: the **universe** tabs (All, U0, U1 ...) filter the stage and the list; a status strip says which interface sends that universe, its frames a second, frames sent, errors and the last frame; and **Save / Undo / Redo / Revert to saved** for the layout, with a dot when there are unsaved changes. **PNG** makes a patch sheet (stage and address map) for load-in.
 
-Two views: **Stage** and **Addresses**. Beside them: the fixture list and the outputs.
+The stage takes the width; beside it a narrow list of the lights.
 
 ## Stage
 
@@ -30,19 +30,13 @@ To arrange the lights:
 
 **Beams** shows where moving heads point; **Names** hides or shows the labels.
 
-## Addresses
+## Fixture list
 
-A 32 x 16 map of each universe's 512 channels: each light's channels shaded and labelled (name, start), free channels blank, overlapping channels red. Every channel shows the value going out now (0-255, brighter = higher), taken from what the chosen interface really sent (**Values from**). If the interface hasn't sent anything, the map says so and shows no values: that's the first check when the software runs but the rig is dark.
-
-## Fixture list and outputs
-
-The list shows each light's type, channel count, universe, address, channels, groups and the interface it goes out. Click a row to select it on the stage and in the address map. Change a universe or address in the list: clashes turn red and **Save addresses** stays off until they're fixed.
-
-**Outputs** is the routing table: universe, interface, state, fps, frames, errors and last frame, for USB interfaces and wireless nodes alike, with problems underneath (a universe with lights but no output, an output for a universe with no lights, an output with no universe given).
+Each light's name and type. Tap a row to select it on the stage. **Find** lights it full white; **Test** flashes it and nods a moving head (tap again to stop). To change a light's universe, address or groups, use the [Fixtures](fixtures.md#the-fixtures-page) page.
 
 ## Groups
 
-Groups are names for sets of lights (bars, front, movers); scenes and drum flashes use them.
+Groups are names for sets of lights (bars, front, movers); scenes and drum flashes use them. On the stage, groups are made from a selection; on the Fixtures page, each light's **Groups** has a tick per group.
 
 - **New group from selection:** pick lights, type a name, press the button.
 - **Set group to selection:** open the group's tab, change the selection, press the button.
