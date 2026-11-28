@@ -4,6 +4,9 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 
 ## Unreleased (v6: Darkness, tempo from the drums, drum kit)
 
+### Fixed
+- Setup wizard: pressing **Next** straight after choosing an interface saved the one ticked before (on a computer with a serial port listed first, the port instead of the simulator).
+
 ### Changed (addresses, text size, motion)
 - Universes and addresses are changed in one place, the Layout page; Fixtures › Patch shows them with **Change**, which opens Layout with that light's address ready to type.
 - No text under 12 px apart from numbers in dense grids (DMX channels, the address map); stage-view names are larger.

@@ -180,6 +180,10 @@ def test_haze_is_a_corner_indicator_not_a_light(shot):
         go(page, name)
         page.wait_for_selector(f"{host} .haze-ind .hz-text")
         assert page.locator(f"{host} [data-id=smoke]").count() == 0
+        # it moves to the corner once the drawing has its size (a frame after the page shows): wait for that
+        page.wait_for_function("""(h) => { const r = document.querySelector(h + ' .haze-ind rect').getBoundingClientRect(),
+            s = document.querySelector(h + ' svg').getBoundingClientRect();
+            return r.width > 0 && r.right > s.left + s.width * 0.8; }""", arg=host)
         ind = page.locator(f"{host} .haze-ind rect").bounding_box()
         svgbox = page.locator(f"{host} svg").bounding_box()
         assert ind["x"] + ind["width"] > svgbox["x"] + svgbox["width"] * 0.8 and ind["y"] < svgbox["y"] + svgbox["height"] * 0.2

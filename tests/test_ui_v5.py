@@ -437,3 +437,26 @@ def test_reduced_motion_from_the_device_and_from_setup(browser, ui):
     page.wait_for_selector("body.ready")
     assert "reduce-motion" in page.get_attribute("body", "class")  # remembered on this screen
     assert page.eval_on_selector(".lightgrid .cell", dur) < 1
+
+
+@pytest.mark.first_run
+def test_wizard_saves_what_is_ticked_even_on_a_quick_next(ui, monkeypatch):
+    """CI's runner has /dev/ttyS0: it's listed first; ticking the simulator and pressing Next at once must
+    save the simulator, not the port (Next used to run before the step re-rendered)."""
+    from dmx_suite import detect
+
+    page, app, root, _ = ui
+    monkeypatch.setattr(detect, "interfaces", lambda ports=None: [
+        {"port": "/dev/ttyS0", "description": "ttyS0", "driver": None, "usb": None}])
+    page.reload()
+    page.wait_for_function("document.querySelector('#wizard').textContent.includes('/dev/ttyS0')")
+    held = []
+    page.route("**/api/interfaces", lambda route: held.append(route))  # the re-render waits on this
+    page.check("#wizard input[type=radio] >> nth=-1")  # simulator
+    page.click("#wizard-next")  # before the step has re-rendered
+    for r in held:
+        r.continue_()
+    page.unroute("**/api/interfaces")
+    page.wait_for_function("document.querySelector('#wizard').textContent.includes('Which lights')")
+    rig = yaml.safe_load((root / "rigs" / "full.yaml").read_text(encoding="utf-8"))
+    assert rig["outputs"] == [{"driver": "log"}]

@@ -48,7 +48,10 @@ def load(force: Any = None) -> Any:
     _tried = True
     for n in _names():
         try:
-            _lib = ctypes.WinDLL(n) if sys.platform == "win32" else ctypes.CDLL(n)  # type: ignore[attr-defined]
+            if sys.platform == "win32":  # mypy checks each platform's branch on that platform
+                _lib = ctypes.WinDLL(n)
+            else:
+                _lib = ctypes.CDLL(n)
             return _lib
         except OSError:
             continue

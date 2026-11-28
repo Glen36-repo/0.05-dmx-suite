@@ -72,8 +72,9 @@ async function render() {
     const chosen = options.find((o) => o.key === picks.iface);
     if (chosen?.host) body.append(el("input", { value: picks.host, placeholder: t("wizard.host_placeholder"), oninput: (e) => (picks.host = e.target.value.trim()) }));
     next = async () => {
-      const out = { ...chosen.out };
-      if (chosen.host && picks.host) out.host = picks.host;
+      const pick = options.find((o) => o.key === picks.iface) || chosen; // what's ticked now, even mid re-render
+      const out = { ...pick.out };
+      if (pick.host && picks.host) out.host = picks.host;
       rig.outputs = [out];
       const r = await attempt(() => api("PUT", `/api/store/rig/${encodeURIComponent(live.cat.rig_name)}`, { data: rig }));
       if (r?.notes?.length) toast(r.notes.join(" · "));
