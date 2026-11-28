@@ -507,13 +507,14 @@
           <span class="tick" style="left:33%"></span><span class="tick" style="left:66%"></span></div>
         <span class="muted" id="ap-state"></span><button type="button" class="info" data-info="autopilot.priority" aria-expanded="false">ⓘ</button>
       </div>
+      <div class="row wrap ap-layers"><span class="muted" data-i18n="layers.title"></span><span class="row wrap" id="ap-layers"></span>
+        <button type="button" class="info" data-info="autopilot.layers" aria-expanded="false">ⓘ</button></div>
       <div class="grid-host strip" id="ride-grid"></div>
       <div class="ride-banks">
         <div><h2><span data-i18n="autopilot.move_fx"></span> <button type="button" class="info" data-info="autopilot.fx" aria-expanded="false">ⓘ</button></h2><div class="ride-col" id="ride-move"></div></div>
         <div><h2 data-i18n="autopilot.flash_fx"></h2><div class="ride-col" id="ride-flash"></div></div>
         <div><h2 data-i18n="autopilot.colour_fx"></h2><div class="ride-col" id="ride-colour"></div></div>
-        <div><h2><span data-i18n="autopilot.palette"></span> <button type="button" class="info" data-info="autopilot.palette" aria-expanded="false">ⓘ</button>
-          <button id="ride-lock" class="toggle mini" data-i18n="autopilot.lock"></button></h2>
+        <div><h2><span data-i18n="autopilot.palette"></span> <button type="button" class="info" data-info="autopilot.palette" aria-expanded="false">ⓘ</button></h2>
           <div class="ride-col ride-pals" id="ride-palettes"></div></div>
       </div>
       <div><h2 data-i18n="autopilot.drum_fx"></h2><div class="row wrap" id="ride-drum"></div></div>
@@ -552,6 +553,10 @@
         <button id="ride-walk-on" data-i18n="autopilot.walk_on"></button>
         <button id="ride-walk-off" data-i18n="autopilot.walk_off"></button>
       </div>
+      <details class="scene-more" id="ap-settings">
+        <summary><span data-i18n="apset.title"></span> <button type="button" class="info" data-info="autopilot.settings" aria-expanded="false">ⓘ</button></summary>
+        <div id="ap-settings-body" class="ap-settings"></div>
+      </details>
       <h2><span data-i18n="autopilot.why"></span> <button type="button" class="info" data-info="autopilot.why" aria-expanded="false">ⓘ</button></h2>
       <ul class="ride-why" id="ride-why"></ul>
       <details class="scene-more">

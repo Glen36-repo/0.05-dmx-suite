@@ -166,6 +166,9 @@ def test_every_ui_text_key_exists():
                                      "boost_cooldown_s", "max_on_s", "rest_s", "auto_off_min", "default_mode")}
     # v7
     used |= {f"picker.{x}_{k}" for x in ("kind", "count") for k in ("head", "bar", "wash", "kick")}
+    used |= {f"layers.{k}" for k in ("move", "colour", "palette", "darkness")}
+    used |= {f"layers.on_{k}" for k in ("song", "set")} | {f"layers.timing_{k}" for k in ("together", "staggered")}
+    used |= {f"layers.sched_{k}" for k in ("every_s", "every_looks", "song", "set")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

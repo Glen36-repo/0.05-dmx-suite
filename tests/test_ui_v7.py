@@ -142,3 +142,48 @@ def test_palette_long_press_excludes(ui):
     page.mouse.up()
     page.wait_for_selector(f"{tile}.excluded")
     assert rig_auto_key(app, "exclude_palettes", ["neon"], page) == ["neon"]
+
+
+# ------------------------------------------------------------------ A4 layer timing
+
+
+def test_layer_chips_lock_and_count_down(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    page.click("#ap-toggle")
+    page.wait_for_selector("#ap-layers [data-layer=palette]")
+    page.wait_for_function("/\\d+ s/.test(document.querySelector('#ap-layers [data-layer=move] .layer-next').textContent)")
+    page.click("#ap-layers [data-layer=palette]")
+    page.wait_for_selector("#ap-layers [data-layer=palette].locked")
+    assert app.autopilot.locked("palette")
+    assert page.inner_text("#ap-layers [data-layer=palette] .layer-next") == "locked"
+    page.click("#ap-layers [data-layer=palette]")
+    page.wait_for_selector("#ap-layers [data-layer=palette]:not(.locked)")
+    assert not app.autopilot.locked("palette")
+
+
+def test_settings_save_staggered_timing(ui):
+    import yaml
+
+    page, app, root, _ = ui
+    go(page, "autopilot")
+    page.click("#ap-settings summary")
+    page.wait_for_selector("#ap-timing [data-timing=staggered]")
+    page.click("#ap-timing [data-timing=staggered]")
+    page.select_option("[data-sched=palette]", "song")
+    assert page.is_disabled("[data-val=palette]")
+    page.fill("[data-val=move]", "")
+    page.select_option("[data-sched=move]", "every_s")
+    page.fill("[data-val=move]", "30")
+    page.fill("[data-spread=move]", "10")
+    page.click("#ap-settings-save")
+    page.wait_for_function("() => true")
+    for _ in range(80):
+        if app.autopilot.cfg["timing"] == "staggered":
+            break
+        page.wait_for_timeout(25)
+    ap = yaml.safe_load((root / "rigs" / f"{app.names[0]}.yaml").read_text())["autopilot"]
+    assert ap["timing"] == "staggered"
+    assert ap["layers"]["palette"] == {"on": "song", "spread": 25}
+    assert ap["layers"]["move"] == {"every_s": 30, "spread": 10}
+    assert app.autopilot.cfg["layers"]["move"] == {"every_s": 30, "spread": 10, "locked": False}

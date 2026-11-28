@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import threading
 import time
+from typing import Any
 
 import yaml
 
@@ -192,10 +193,16 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.exclude_palette(palette, excluded)
 
     @tool
-    def save_autopilot_settings(rig: str, yaml_text: str) -> str:
-        """Tune the autopilot for a rig (merged into its `autopilot:` block), e.g.
-        '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6, between: {gap_s: 5}}'."""
-        return t.save_autopilot_settings(rig, yaml_text)
+    def save_autopilot_settings(rig: str, yaml_text: str = "{}", timing: str | None = None,
+                                layers: dict[str, Any] | None = None, between: dict[str, Any] | None = None) -> str:
+        """Tune the autopilot for a rig (merged into its `autopilot:` block), e.g. yaml_text
+        '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6}'.
+        timing: together (every layer changes at each look change) | staggered (a clock per layer).
+        layers: {move|colour|palette|darkness: {every_s: 30 | every_looks: 1.5 | on: song|set, spread: 0-50 (%),
+        locked: bool}} (a layer's schedule replaces its old one).
+        between: {on, gap_s, start: first_hit|count_in, count_in, min_song_s, fade_in, fade_out, ignore: [input ids],
+        look: {colour, move, palette, feel} | {scene: id}}."""
+        return t.save_autopilot_settings(rig, yaml_text, timing, layers, between)
 
     @tool
     def generate(kind: str, settings_yaml: str = "{}") -> str:

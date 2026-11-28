@@ -221,3 +221,64 @@ def test_midi_lock_action(app):
     assert app.ride_action("autopilot_lock", {"layer": "colour"}) == "colour lock off"
     with pytest.raises(ValueError):
         app.ride_action("autopilot_lock", {"layer": "haze"})
+
+
+# ------------------------------------------------------------------ settings saved from the page / Claude
+
+
+def test_merge_settings():
+    from dmx_suite.autopilot import merge_settings
+
+    cur = {"gap_s": 6, "layers": {"move": {"every_s": 30, "spread": 10}}, "moods": {"low": 70}}
+    out = merge_settings(cur, {"layers": {"move": {"on": "song"}}, "between": {"count_in": 3}, "timing": "staggered"})
+    assert out["layers"]["move"] == {"on": "song", "spread": 10}  # the schedule replaced, spread kept
+    assert out["between"] == {"gap_s": 6, "count_in": 3} and "gap_s" not in out
+    assert out["moods"] == {"low": 70} and out["timing"] == "staggered"
+    with pytest.raises(ConfigError):
+        merge_settings(cur, {"timing": "sometimes"})
+
+
+def test_save_autopilot_from_the_page(app):
+    r = app.save_autopilot({"timing": "staggered", "layers": {"palette": {"on": "set"}}})
+    assert r["backup"] and app.autopilot.cfg["timing"] == "staggered"
+    assert app.autopilot.cfg["layers"]["palette"]["on"] == "set"
+    with pytest.raises(ValueError, match="together or staggered"):
+        app.save_autopilot({"timing": "x"})
+    with pytest.raises(ValueError, match="no autopilot settings"):
+        app.save_autopilot({})
+
+
+def test_settings_api_respects_gig_lock(app):
+    from dmx_suite.store import LockedError
+
+    app.set_gig_lock(True)
+    try:
+        with pytest.raises(LockedError):
+            app.save_autopilot({"timing": "staggered"})
+    finally:
+        app.set_gig_lock(False)
+
+
+def test_claude_structured_settings(tmp_path):
+    import shutil
+
+    import yaml
+    from test_autopilot import SHOWS
+
+    from dmx_suite.claude_tools import DmxTools
+    from dmx_suite.store import StoreError
+
+    root = tmp_path / "shows"
+    shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups"))
+    t = DmxTools(shows=root)
+    t.save_autopilot_settings("full", timing="staggered", layers={"palette": {"on": "song"}},
+                              between={"gap_s": 6, "look": {"scene": "starter_warm"}})
+    ap = yaml.safe_load((root / "rigs" / "full.yaml").read_text())["autopilot"]
+    assert ap["timing"] == "staggered" and ap["layers"]["palette"] == {"on": "song"}
+    assert ap["between"] == {"gap_s": 6, "look": {"scene": "starter_warm"}}
+    t.save_autopilot_settings("full", "{no_repeat: 6}")
+    assert yaml.safe_load((root / "rigs" / "full.yaml").read_text())["autopilot"]["timing"] == "staggered"  # kept
+    with pytest.raises(StoreError, match="together or staggered"):
+        t.save_autopilot_settings("full", timing="sometimes")
+    with pytest.raises(StoreError, match="no autopilot settings"):
+        t.save_autopilot_settings("full")

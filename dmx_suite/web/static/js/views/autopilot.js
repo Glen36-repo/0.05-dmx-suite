@@ -129,6 +129,7 @@ async function load() {
   render();
   loadWhy();
   loadPresets();
+  loadSettings();
 }
 
 async function loadPresets() {
@@ -205,6 +206,93 @@ async function loadWhy() {
 
 let lastDecision = null;
 
+// ---------------------------------------------------------------- v7 layer timing: countdown and lock per layer
+const LAYERS = ["move", "colour", "palette", "darkness"];
+
+function layerChip(k) {
+  return el("button", { class: "chip layer-chip", "data-layer": k, title: t("layers.lock_tip"),
+    onclick: () => act("autopilot_lock", { layer: k }) },
+  el("span", { text: t("layers." + k) }), el("b", { class: "layer-next" }));
+}
+
+function drawLayers(ap) {
+  const box = $("#ap-layers");
+  if (!box.children.length) box.replaceChildren(...LAYERS.map(layerChip));
+  for (const k of LAYERS) {
+    const l = ap.layers?.[k] || {};
+    const b = box.querySelector(`[data-layer=${k}]`);
+    b.classList.toggle("locked", !!l.locked);
+    b.setAttribute("aria-pressed", l.locked ? "true" : "false");
+    b.querySelector(".layer-next").textContent = l.locked ? t("layers.locked")
+      : l.on ? t("layers.on_" + l.on) : l.next_s != null ? t("layers.in", { s: Math.round(l.next_s) }) : "";
+  }
+}
+
+// ---------------------------------------------------------------- v7 settings panel (saved to the rig)
+const SCHED = ["every_s", "every_looks", "song", "set"];
+let apCfg = null;
+
+function field(label, input) {
+  return el("label", { class: "ap-field" }, el("span", { text: label }), input);
+}
+function num(value, min, max, step, aria) {
+  return el("input", { type: "number", class: "num", min, max, step, value: value ?? "", "aria-label": aria });
+}
+
+function layerRow(k, lay) {
+  const mode = "every_s" in lay ? "every_s" : "every_looks" in lay ? "every_looks" : lay.on;
+  const sel = el("select", { "data-sched": k, "aria-label": t("layers.schedule", { layer: t("layers." + k) }) },
+    ...SCHED.map((m) => el("option", { value: m, selected: m === mode || undefined }, t("layers.sched_" + m))));
+  const val = num(lay.every_s ?? lay.every_looks ?? "", 0.1, 3600, 0.1, t("layers.value"));
+  val.dataset.val = k;
+  const spread = num(lay.spread ?? 25, 0, 50, 1, t("layers.spread"));
+  spread.dataset.spread = k;
+  const sync = () => { val.disabled = sel.value === "song" || sel.value === "set"; };
+  sel.addEventListener("change", sync);
+  sync();
+  return el("div", { class: "row wrap ap-layer-row" }, el("b", { text: t("layers." + k) }), sel, val,
+    field(t("layers.spread"), spread));
+}
+
+function renderSettings() {
+  if (!apCfg) return;
+  const timing = el("span", { class: "seg-row", id: "ap-timing" }, ...["together", "staggered"].map((m) => el("button", {
+    type: "button", class: apCfg.timing === m ? "on" : "", "data-timing": m,
+    onclick: (e) => { $("#ap-timing").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === e.currentTarget)); } },
+  t("layers.timing_" + m))));
+  const body = $("#ap-settings-body");
+  body.replaceChildren(
+    el("h3", { text: t("layers.title") }), el("div", { class: "row wrap" }, timing),
+    el("p", { class: "muted", text: t("layers.help") }),
+    ...LAYERS.map((k) => layerRow(k, apCfg.layers[k])),
+    el("div", { class: "row" }, el("button", { id: "ap-settings-save", class: "primary", onclick: saveSettings }, t("common.save"))));
+}
+
+function readLayers() {
+  const out = {};
+  for (const k of LAYERS) {
+    const mode = $(`[data-sched=${k}]`).value;
+    const v = +$(`[data-val=${k}]`).value;
+    const lay = { spread: +$(`[data-spread=${k}]`).value || 0 };
+    if (mode === "song" || mode === "set") lay.on = mode;
+    else lay[mode] = v;
+    out[k] = lay;
+  }
+  return out;
+}
+
+async function saveSettings() {
+  const timing = $("#ap-timing button.on")?.dataset.timing || "together";
+  const r = await attempt(() => api("POST", "/api/autopilot/settings", { changes: { timing, layers: readLayers() } }), t("apset.saved"));
+  if (r) { apCfg = r.config; renderSettings(); }
+}
+
+async function loadSettings() {
+  const r = await get("/api/autopilot?n=1");
+  apCfg = r.config;
+  renderSettings();
+}
+
 // v6 Darkness: the slider sends at most every 60 ms; the server eases it in over the look's fade
 let dkLast = 0, dkTimer = null, dkHeld = false;
 function sendDarkness(v) {
@@ -244,7 +332,7 @@ function update(s) {
   document.querySelectorAll("#ride-colour [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === now.colour));
   document.querySelectorAll("#ride-drum [data-fx]").forEach((b) => b.classList.toggle("sel", b.dataset.fx === (now.drum || "")));
   document.querySelectorAll("#ride-palettes [data-palette]").forEach((b) => b.classList.toggle("sel", b.dataset.palette === now.palette));
-  $("#ride-lock").classList.toggle("on", s.ride.palette_lock);
+  drawLayers(ap);
   if (grid) grid.update(s.fixtures, s.haze);
   const lastT = ap.last?.time;
   if (lastT && lastT !== lastDecision) { lastDecision = lastT; loadWhy(); }
@@ -257,7 +345,6 @@ export function init() {
   $("#ap-prev").onclick = () => act("look_prev");
   $("#ride-walk-on").onclick = () => act("walk_on");
   $("#ride-walk-off").onclick = () => act("walk_off");
-  $("#ride-lock").onclick = () => act("palette_lock");
   $("#ride-save-preset").onclick = async () => {
     const id = (prompt(t("autopilot.preset_name")) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
     if (!id) return;

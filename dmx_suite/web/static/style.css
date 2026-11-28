@@ -752,3 +752,15 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .ride-pal-tile .sw { display: flex; height: 10px; border-radius: 3px; overflow: hidden; }
 .ride-pal-tile .sw i { flex: 1; }
 .ride-pal-tile .tags { font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* v7 layer timing strip and Autopilot settings */
+.ap-layers { gap: 6px; }
+.layer-chip { display: inline-flex; gap: 6px; align-items: center; }
+.layer-chip .layer-next { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.layer-chip.locked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
+.layer-chip.locked .layer-next { color: inherit; }
+.ap-settings { display: grid; gap: 8px; padding: 6px 0; }
+.ap-settings h3 { margin: 8px 0 0; font-size: 15px; }
+.ap-layer-row > b { min-width: 90px; }
+.ap-field { display: inline-flex; gap: 6px; align-items: center; }
+#ap-timing button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }

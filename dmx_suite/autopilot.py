@@ -212,6 +212,28 @@ def parse_config(d: Any) -> dict[str, Any]:
     return out
 
 
+def merge_settings(cur: dict[str, Any] | None, changes: dict[str, Any]) -> dict[str, Any]:
+    """A rig's `autopilot:` block with some settings changed (page, Claude). Blocks merge one level down
+    (between, set_darkness, darkness_auto; layers per layer, a layer's schedule replaced whole); the rest
+    replace. Checked with parse_config; old top-level between keys are folded in first."""
+    out = fold_between(dict(cur or {}))
+    for k, v in fold_between(dict(changes)).items():
+        if k == "layers" and isinstance(v, dict):
+            lay = dict(out.get("layers") or {})
+            for name, x in v.items():
+                old = dict(lay.get(name) or {})
+                if isinstance(x, dict) and any(s in x for s in SCHEDULE_KEYS):
+                    old = {a: b for a, b in old.items() if a not in SCHEDULE_KEYS}
+                lay[name] = {**old, **x} if isinstance(x, dict) else x
+            out["layers"] = lay
+        elif k in ("between", "set_darkness", "darkness_auto") and isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = {**out[k], **v}
+        else:
+            out[k] = v
+    parse_config(out)
+    return out
+
+
 START_MODES = ("first_hit", "count_in")
 TIMINGS = ("together", "staggered")
 OLD_BETWEEN = {"gap_s": "gap_s", "count_in": "count_in", "talking": "look"}  # format 6 top-level keys

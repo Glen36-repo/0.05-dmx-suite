@@ -55,7 +55,8 @@ CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/st
                  "/api/autopilot/check", "/api/generate",
                  "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness", "/api/tempo",
                  "/api/kits",  # v5 / v6
-                 "/api/autopilot/palette")  # v7 palette bank: play / leave out (a live control)
+                 "/api/autopilot/palette",  # v7 palette bank: play / leave out (a live control)
+                 "/api/autopilot/settings")  # v7: layer timing, between songs, darkness (a store edit)
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
@@ -913,6 +914,11 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/ride" and method == "POST":  # play a Ride look: FX + palette + ride settings (v3.3)
                 try:
                     return self._json(200, app.ride_play(body.get("pick") or {}, body.get("fade_s")))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/ride/settings" and method == "POST":  # v7 Autopilot settings, saved to the rig
+                try:
+                    return self._json(200, {"ok": True, **app.save_autopilot(body.get("changes") or {})})
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
             if path == "/api/ride/palette" and method == "POST":  # v7 palette bank: play now and/or leave out

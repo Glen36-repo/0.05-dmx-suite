@@ -463,10 +463,21 @@ class DmxTools:
         return (f"palette {palette} {'left out of' if excluded else 'back in'} the autopilot's picks "
                 f"(backup {r['backup']}); excluded now: {', '.join(r['excluded']) or 'none'}")
 
-    def save_autopilot_settings(self, rig: str, yaml_text: str) -> str:
-        data = _yaml(yaml_text, "autopilot settings")
+    def save_autopilot_settings(self, rig: str, yaml_text: str = "{}", timing: str | None = None,
+                                layers: dict[str, Any] | None = None, between: dict[str, Any] | None = None) -> str:
+        from .autopilot import merge_settings
+
+        data = _yaml(yaml_text or "{}", "autopilot settings")
+        for k, v in (("timing", timing), ("layers", layers), ("between", between)):
+            if v is not None:
+                data[k] = v
+        if not data:
+            raise StoreError("no autopilot settings given")
         cur = self.local.read("rig", rig)
-        cur["autopilot"] = {**(cur.get("autopilot") or {}), **data}
+        try:
+            cur["autopilot"] = merge_settings(cur.get("autopilot"), data)
+        except ConfigError as e:
+            raise StoreError(str(e)) from e
         return self._write("PUT", f"/api/store/rig/{rig}", {"data": cur}, lambda: self.local.put("rig", rig, cur))
 
     def generate(self, kind: str, settings_yaml: str) -> str:

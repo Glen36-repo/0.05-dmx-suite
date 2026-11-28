@@ -995,8 +995,11 @@ class App:
             if new.rig.midi_inputs != old_rig.midi_inputs and self.midi_inputs is not None:
                 self.midi_inputs.wanted = [w for w in new.rig.midi_inputs if w]  # its 2 s rescan opens them
             self.engine.swap_rig(new.rig, new.look)
+            old_ap = self.autopilot.cfg
             self.autopilot.cfg = new.rig.autopilot
             self.autopilot.energy.cfg = new.rig.autopilot
+            if (old_ap.get("timing"), old_ap.get("layers")) != (new.rig.autopilot.get("timing"), new.rig.autopilot.get("layers")):
+                self.autopilot.st.layer_next.clear()  # v7: new layer timing starts its clocks from now
             self.darkness.configure(new.rig.autopilot)
             self._loaded_sig = sig
             self.files = new
@@ -1633,6 +1636,24 @@ class App:
         bid = self.store.put("rig", rig_name, data, f"autopilot: {which} darkness on rig {rig_name}")
         self.reload()
         return {"backup": bid, **self.darkness.status()}
+
+    def save_autopilot(self, changes: dict[str, Any]) -> dict[str, Any]:
+        """v7: Autopilot page settings (layer timing, between songs, darkness) merged into the running rig's
+        `autopilot:` block, checked, backed up (the store's gig lock applies)."""
+        from .autopilot import merge_settings
+        from .fixtures import ConfigError
+
+        if not isinstance(changes, dict) or not changes:
+            raise ValueError("no autopilot settings given")
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        try:
+            data["autopilot"] = merge_settings(data.get("autopilot"), changes)
+        except ConfigError as e:
+            raise ValueError(str(e)) from e
+        bid = self.store.put("rig", rig_name, data, f"autopilot settings ({', '.join(changes)}) on rig {rig_name}")
+        self.reload()
+        return {"backup": bid, "config": self.autopilot.cfg}
 
     def ride_action(self, action: str, p: dict[str, Any], level: float | None = None) -> str:
         """Autopilot page controls (v3 Ride page), from the page, MIDI or OSC."""
