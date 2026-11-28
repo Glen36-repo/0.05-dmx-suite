@@ -78,8 +78,9 @@ Simulator: https://claude.ai/artifact/HG5LxQtkx5nqQMBBNyaTcv — reference for l
 - **Stack**: segments drop down each bar one at a time (gravity) and pile up at the bottom until full, hold, clear; each drop the next palette colour; bars offset so they don't stack in sync. Non-bar lights fill bottom-up with the stack by layout height.
 - **Sparkle dark** (inverse sparkle): all lit in the palette, random units blink off briefly. Darkness = more / longer blink-offs.
 - **Theatre chase**: marquee — one on, two off — crawling along the rig (layout order) in palette colours; on the beat.
-- **Collide — vertical**: two palette colours run in from the top and bottom of each bar, meet in the middle and blend, pull back. Non-bar lights by layout height (top vs bottom).
-- **Collide — horizontal**: two palette colours run in from the left and right of the rig (layout x, across all lights and bars), meet at centre stage and blend, pull back. Own tile each.
+- **Collide — vertical**: two palette colours run in from the top and bottom of each bar, meet in the middle, pull back. Non-bar lights by layout height (top vs bottom).
+- **Collide — horizontal**: two palette colours run in from the left and right of the rig (layout x, across all lights and bars), meet at centre stage, pull back. Own tile each. Hard meet, no mixing.
+- **Collide blend — vertical / horizontal** (two more tiles): the two colours keep travelling *through* each other; where they overlap the lights show the colour the two make **as light** — add the two colours, then scale so the brightest channel is full (red + blue → magenta, blue + green → cyan, red + green → yellow; W / A channels mixed the same way). Soft edges bleed into the mix; the overlap grows until the whole bar (vertical) or rig (horizontal) is the mixed colour, holds briefly, then they pull back apart. Next pair of palette colours each cycle.
 - **Glitter**: slow-drifting palette base with quick white sparkles on top.
 - **Aurora / Ocean**: slow overlapping curtains of palette colour drifting across the rig — LOW, acoustic, opera.
 - **Candle**: gentle independent flicker per light in palette colours (Warm / White) — opera, acoustic.
@@ -134,23 +135,24 @@ All respect head limits and v7 exclusion zones; positions from the rig's saved h
 
 ## 14. FX settings panel — long-press a tile; variants and priority
 - Today: long-press (600 ms) on an FX tile toggles Exclude; the only per-look controls are the global Ride faders (speed, fade, fan, size, shift). No per-effect settings in the Autopilot bank.
-- Change: **long-press (or right-click) a tile → settings panel for that FX** (Move, Colour, Flash, Drum, Palette tiles). Exclude moves into the panel as a switch; the **Exclude mode** button stays for quick tap-to-exclude.
+- Change: **long-press (or right-click) a tile → settings panel for that FX** (Move, Colour, Flash, Drum, Palette tiles). Exclude moves into the panel (as priority 0, below); the **Exclude mode** button stays for quick tap-to-exclude.
 - Panel contents:
   - **Darkness**: Follow (default) / Exempt (this FX always plays fully lit, Darkness ignored) / Reduced (slider: how much of the Darkness value applies, 0–100 %). For effects that look wrong with black added, or ones that should stay bright (e.g. Static palette, Candle).
   - **The effect's own parameters**, generated from its `Param` list (same as the scene editor), e.g. Colour FX: period, spread, density, tail, direction, groups; Move FX: **phase / spread between heads**, size, speed, centre point, mirror on / off. Fan in / out: phase offset between heads, fan width, in/out timing.
-  - **Autopilot**: moods it can run in (LOW / MID / HIGH ticks), **priority 1–5**, min / max time on screen.
-    - Priority = pick weight: still random, but a 5 comes up about 5× as often as a 1 (weight = priority; default 3). Applied on top of the existing quality / contrast / no-repeat rules and look ratings. Shown on the tile as a small 1–5 badge. Same setting on Palette tiles.
+  - **Autopilot**: moods it can run in (LOW / MID / HIGH ticks), **priority 0–5**, min / max time on screen.
+    - Priority = pick weight: still random, but a 5 comes up about 5× as often as a 1 (weight = priority; default 3). Applied on top of the existing quality / contrast / no-repeat rules and look ratings. Shown on the tile as a small 0–5 badge. Same setting on Palette tiles.
+    - **Priority 0 = excluded.** Exclude and priority are one setting: excluding a tile (Exclude mode tap, or the switch) sets it to 0 and shows it red; un-excluding restores the priority it had before (default 3); setting priority to 0 excludes it. Existing exclude lists migrate to priority 0.
   - **Preview** button (plays it now on the rig, 10 s, like the Ride page preview) and **Reset to defaults**.
-- **Duplicate (variants)**: the panel has **Duplicate** — makes a copy of the FX as its own tile ("Fan in / out 2", renameable) with its own parameters, darkness, moods, priority and exclude. Variants sit next to their original in the bank, are picked by Autopilot as separate types (so e.g. a slow wide Fan and a fast tight Fan can both run), can be previewed, mapped to MIDI and deleted (originals can't be deleted, only excluded). No-repeat treats a variant and its original as the same type so they don't play back to back.
+- **Duplicate (variants)**: the panel has **Duplicate** — makes a copy of the FX as its own tile ("Fan in / out 2", renameable) with its own parameters, darkness, moods and priority (0 = excluded). Variants sit next to their original in the bank, are picked by Autopilot as separate types (so e.g. a slow wide Fan and a fast tight Fan can both run), can be previewed, mapped to MIDI and deleted (originals can't be deleted, only excluded). No-repeat treats a variant and its original as the same type so they don't play back to back.
 - Values saved per rig as overrides on the bank item (only changed values stored); a tile with overrides shows a small dot. Autopilot looks, presets and the Ride page use the overridden values. Ride faders still scale on top (speed × item speed etc.).
 - Under gig lock: panel opens read-only (Preview disabled while a show is running).
-- MCP / API: `get_item` / `save_item` take `overrides: {darkness: follow|exempt|<0-1>, params: {...}, moods, priority: 1-5, min_s, max_s}`; `duplicate_item {id, name}` / `delete_item {id}` for variants (`duplicate_item` / `delete_item` already exist for scenes — extend or add `*_fx` versions).
+- MCP / API: `get_item` / `save_item` take `overrides: {darkness: follow|exempt|<0-1>, params: {...}, moods, priority: 0-5, min_s, max_s}`; `duplicate_item {id, name}` / `delete_item {id}` for variants (`duplicate_item` / `delete_item` already exist for scenes — extend or add `*_fx` versions).
 - Rig file: `autopilot: fx: {<id>: {...overrides}}` and `autopilot: variants: {<new_id>: {of: <id>, name, ...overrides}}`; missing = defaults.
 
 ---
 
 ## Bank / UI
-- New tiles: Rain, Random fill, Random fill (mixed), Directional sweep, Random flash (mixed), Bounce (mixed), Wave (mixed), Ripple, Stack, Sparkle dark, Theatre chase, Collide (vertical), Collide (horizontal), Glitter, Aurora / Ocean, Candle, Alternate; Move: Fly-out, Converge / split, Beat stabs, Pendulum, Spiral, Square / triangle / star, Lissajous search, Tilt nod, Sky scan, Contrast. Renamed: Directional wave. Flash bank: Hit / Hold rows.
+- New tiles: Rain, Random fill, Random fill (mixed), Directional sweep, Random flash (mixed), Bounce (mixed), Wave (mixed), Ripple, Stack, Sparkle dark, Theatre chase, Collide (vertical), Collide (horizontal), Collide blend (vertical), Collide blend (horizontal), Glitter, Aurora / Ocean, Candle, Alternate; Move: Fly-out, Converge / split, Beat stabs, Pendulum, Spiral, Square / triangle / star, Lissajous search, Tilt nod, Sky scan, Contrast. Renamed: Directional wave. Flash bank: Hit / Hold rows.
 - Each new effect: busy score, speed class, moods, needs (`pixels` / `layout`) set like existing items; quality rules and contrast checks apply; manual page + ⓘ text.
 - MCP / API: new effects listed by `list_fx`, usable in `save_item` / `preview_look`.
 
