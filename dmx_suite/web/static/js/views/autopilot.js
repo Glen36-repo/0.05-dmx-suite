@@ -7,6 +7,7 @@ import { $, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
 import { t } from "../i18n.js";
 import { go, onLeave, onShow } from "../nav.js";
+import { picker } from "../picker.js";
 import { review } from "./review.js";
 import { live, onCatalogue, onState } from "../state.js";
 
@@ -198,9 +199,10 @@ async function saveClass(fid, value) {
 async function loadWhy() {
   const r = await get("/api/autopilot?n=12");
   $("#ride-why").replaceChildren(...r.log.slice().reverse().map((d) => el("li", {
-    title: t("autopilot.why_open"), onclick: () => { review.jump = d.look; go("review"); } },
+    title: t("autopilot.why_open"), onclick: () => { if (d.look.scene) return; review.jump = d.look; go("review"); } },
     el("span", { class: "muted", text: new Date(d.time * 1000).toLocaleTimeString("en-AU", { hour12: false }) }),
-    el("b", { text: [d.look.move, d.look.colour, d.look.drum].filter(Boolean).join(" + ") + " · " + d.look.palette }),
+    el("b", { text: d.look.scene ? t("between.scene_look", { scene: live.cat?.scenes?.[d.look.scene] || d.look.scene })
+      : [d.look.move, d.look.colour, d.look.drum].filter(Boolean).join(" + ") + " · " + d.look.palette }),
     el("span", { text: t("autopilot.why_line", { why: d.why, mood: t("autopilot.mood_" + d.mood), energy: Math.round(d.energy * 100) }) }))));
 }
 
@@ -254,6 +256,65 @@ function layerRow(k, lay) {
     field(t("layers.spread"), spread));
 }
 
+// v7 Between songs: the settings that were rig-YAML only, and a scene as the between-songs / walk look
+let apDefaults = null;
+let inputs = [];
+function lookSelect(id, look) {
+  const scenes = Object.entries(live.cat?.scenes || {}).filter(([k]) => !k.startsWith("preset:"));
+  return el("select", { id, "aria-label": t("between." + id.replace("bt-", "")) },
+    el("option", { value: "", selected: !look?.scene || undefined }, t("between.generated")),
+    ...scenes.map(([k, name]) => el("option", { value: k, selected: look?.scene === k || undefined }, name)));
+}
+function betweenSection() {
+  const b = apCfg.between;
+  const opt = (v, cur) => el("option", { value: v, selected: v === cur || undefined }, t("between.start_" + v));
+  const ignore = picker({
+    items: inputs.map((i) => ({ id: i.id, label: i.name || i.id, group: i.device })),
+    groups: [...new Map(inputs.map((i) => [i.device, { id: i.device, label: i.device_name || i.device }])).values()],
+    value: b.ignore || [], label: t("between.ignore"), all: t("between.ignore_all") });
+  ignore.id = "bt-ignore";
+  return [
+    el("h3", { text: t("between.title") }),
+    el("label", { class: "chip" }, el("input", { type: "checkbox", id: "bt-on", checked: b.on || undefined }), el("span", { text: t("between.on") })),
+    el("div", { class: "row wrap" },
+      fieldId(t("between.gap_s"), num(b.gap_s, 1, 120, 0.5, t("between.gap_s")), "bt-gap"),
+      fieldId(t("between.min_song_s"), num(b.min_song_s, 0, 600, 1, t("between.min_song_s")), "bt-min-song")),
+    el("div", { class: "row wrap" },
+      field(t("between.start"), el("select", { id: "bt-start" }, opt("first_hit", b.start), opt("count_in", b.start))),
+      fieldId(t("between.count_in"), num(b.count_in, 2, 8, 1, t("between.count_in")), "bt-count")),
+    el("div", { class: "row wrap" },
+      fieldId(t("between.fade_in"), num(b.fade_in, 0, 30, 0.1, t("between.fade_in")), "bt-fade-in"),
+      fieldId(t("between.fade_out"), num(b.fade_out, 0, 30, 0.1, t("between.fade_out")), "bt-fade-out"),
+      el("span", { class: "muted", text: t("between.fade_help") })),
+    el("div", { class: "row wrap" }, field(t("between.ignore"), ignore)),
+    el("div", { class: "row wrap" },
+      field(t("between.look"), lookSelect("bt-look", b.look)),
+      field(t("between.walk_on"), lookSelect("bt-walk_on", apCfg.walk_on)),
+      field(t("between.walk_off"), lookSelect("bt-walk_off", apCfg.walk_off))),
+    el("p", { class: "muted", text: t("between.scene_help") }),
+  ];
+}
+function fieldId(label, input, id) {
+  input.id = id;
+  return field(label, input);
+}
+function readBetween() {
+  const v = (id) => $(id).value;
+  const opt = (id) => (v(id) === "" ? null : +v(id));
+  const look = (id, cur, def) => (v(id) ? { scene: v(id) } : cur?.scene ? def : undefined);
+  const out = {
+    between: { on: $("#bt-on").checked, gap_s: +v("#bt-gap"), min_song_s: +v("#bt-min-song"), start: v("#bt-start"),
+      count_in: +v("#bt-count"), fade_in: opt("#bt-fade-in"), fade_out: opt("#bt-fade-out"), ignore: $("#bt-ignore").value },
+  };
+  const bl = look("#bt-look", apCfg.between.look, apDefaults.look);
+  if (bl) out.between.look = bl;
+  for (const k of ["walk_on", "walk_off"]) {
+    const l = look(`#bt-${k}`, apCfg[k], apDefaults[k]);
+    if (l) out[k] = l;
+  }
+  return out;
+}
+
 function renderSettings() {
   if (!apCfg) return;
   const timing = el("span", { class: "seg-row", id: "ap-timing" }, ...["together", "staggered"].map((m) => el("button", {
@@ -265,6 +326,7 @@ function renderSettings() {
     el("h3", { text: t("layers.title") }), el("div", { class: "row wrap" }, timing),
     el("p", { class: "muted", text: t("layers.help") }),
     ...LAYERS.map((k) => layerRow(k, apCfg.layers[k])),
+    ...betweenSection(),
     el("div", { class: "row" }, el("button", { id: "ap-settings-save", class: "primary", onclick: saveSettings }, t("common.save"))));
 }
 
@@ -283,13 +345,16 @@ function readLayers() {
 
 async function saveSettings() {
   const timing = $("#ap-timing button.on")?.dataset.timing || "together";
-  const r = await attempt(() => api("POST", "/api/autopilot/settings", { changes: { timing, layers: readLayers() } }), t("apset.saved"));
+  const r = await attempt(() => api("POST", "/api/autopilot/settings", { changes: { timing, layers: readLayers(), ...readBetween() } }),
+    t("apset.saved"));
   if (r) { apCfg = r.config; renderSettings(); }
 }
 
 async function loadSettings() {
-  const r = await get("/api/autopilot?n=1");
+  const [r, ins] = await Promise.all([get("/api/autopilot?n=1"), get("/api/inputs")]);
   apCfg = r.config;
+  apDefaults = r.defaults;
+  inputs = ins.inputs || [];
   renderSettings();
 }
 
@@ -354,8 +419,11 @@ function update(s) {
     b.dataset.mood === "auto" ? !ap.mood_manual : ap.mood_manual && ap.mood === b.dataset.mood));
   $("#ap-energy").style.width = Math.round(ap.energy * 100) + "%";
   $("#ap-energy").parentElement.setAttribute("aria-valuenow", Math.round(ap.energy * 100));
+  $("#ap-between").classList.toggle("hidden", !(ap.on && ap.between));
+  $("#ap-between").textContent = t("between.badge", { s: Math.round(ap.since_hit_s ?? 0) });
   $("#ap-state").textContent = [t("autopilot.mood_now", { mood: t("autopilot.mood_" + ap.mood) }),
-    ap.paused ? t("autopilot.paused") : ap.between ? t("autopilot.between") : ap.next_change_s != null ? t("autopilot.next_in", { s: Math.round(ap.next_change_s) }) : "",
+    ap.paused ? t("autopilot.paused") : ap.between ? t("autopilot.between", { s: Math.round(ap.since_hit_s ?? 0) })
+      : ap.next_change_s != null ? t("autopilot.next_in", { s: Math.round(ap.next_change_s) }) : "",
     t("autopilot.priority_" + s.priority.top)].filter(Boolean).join(" · ");
   const now = ap.pick || pick;
   // one green button per bank: the type running now ("No movement" / "No drum FX" when there's none)

@@ -282,3 +282,57 @@ def test_fx_tiles_keep_the_touch_minimum(browser):
         page.close()
         web.stop()
         app.engine.stop()
+
+
+# ------------------------------------------------------------------ A6 between songs
+
+
+def test_between_songs_settings_save(ui):
+    import yaml
+
+    page, app, root, _ = ui
+    go(page, "autopilot")
+    page.click("#ap-settings summary")
+    page.wait_for_selector("#bt-gap")
+    assert page.input_value("#bt-gap") == "4"
+    page.fill("#bt-gap", "6")
+    page.fill("#bt-min-song", "30")
+    page.select_option("#bt-start", "count_in")
+    page.fill("#bt-count", "3")
+    page.fill("#bt-fade-in", "5")
+    page.click("#bt-ignore summary")
+    first = page.eval_on_selector("#bt-ignore [data-item]", "e => e.dataset.item")
+    page.check(f"#bt-ignore [data-item='{first}']")
+    page.keyboard.press("Escape")
+    page.select_option("#bt-look", "blue_chase")
+    page.uncheck("#bt-on")
+    page.click("#ap-settings-save")
+    for _ in range(80):
+        if app.autopilot.cfg["between"]["gap_s"] == 6:
+            break
+        page.wait_for_timeout(25)
+    b = yaml.safe_load((root / "rigs" / f"{app.names[0]}.yaml").read_text())["autopilot"]["between"]
+    assert b == {"on": False, "gap_s": 6, "min_song_s": 30, "start": "count_in", "count_in": 3, "fade_in": 5,
+                 "fade_out": None, "ignore": [first], "look": {"scene": "blue_chase"}}
+    page.wait_for_selector("#bt-look")
+    page.select_option("#bt-look", "")  # back to a generated look
+    page.click("#ap-settings-save")
+    for _ in range(80):
+        if "scene" not in app.autopilot.cfg["between"]["look"]:
+            break
+        page.wait_for_timeout(25)
+    assert app.autopilot.cfg["between"]["look"]["palette"] == "white"
+
+
+def test_between_songs_badge(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    ap = app.autopilot
+    ap.cfg["between"]["min_song_s"] = 0
+    now = app.engine.clock()
+    ap.set_on(True, now)
+    app.bus.add("snare", ["snare", "activity"], 0.8, now - 9)
+    ap.tick(now)
+    assert ap.st.between
+    page.wait_for_selector("#ap-between:not(.hidden)")
+    assert page.inner_text("#ap-between").startswith("Between songs · ")

@@ -169,6 +169,7 @@ def test_every_ui_text_key_exists():
     used |= {f"layers.{k}" for k in ("move", "colour", "palette", "darkness")}
     used |= {f"layers.on_{k}" for k in ("song", "set")} | {f"layers.timing_{k}" for k in ("together", "staggered")}
     used |= {f"layers.sched_{k}" for k in ("every_s", "every_looks", "song", "set")}
+    used |= {f"between.start_{k}" for k in ("first_hit", "count_in")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

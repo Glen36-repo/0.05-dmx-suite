@@ -775,3 +775,5 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 #ride-darkness:not(.auto) .dk-auto .ap-field { display: none; }
 #dk-mode button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
 .dk-auto input[type=range] { width: 140px; }
+.between-badge { padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 28%, var(--panel)); border: 1px solid var(--accent); white-space: nowrap; }

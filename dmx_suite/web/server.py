@@ -441,8 +441,12 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                                                         int(q.get("offset", 0)), int(q.get("limit", 40))))
             if path == "/api/autopilot":  # status and the decision log (v3.4)
                 n = int(q.get("n", 50))
+                from ..autopilot import DEFAULTS as AP_DEFAULTS
+
                 return self._json(200, {"status": app.autopilot.status(app.engine.clock()), "log": app.autopilot.log_since(n),
                                         "priority": app.priority(), "config": app.autopilot.cfg,
+                                        "defaults": {k: AP_DEFAULTS[k] for k in ("walk_on", "walk_off")}
+                                        | {"look": AP_DEFAULTS["between"]["look"]},
                                         "darkness": app.darkness.status()})
             if path == "/api/kelvin":
                 from ..colourtheory import KELVIN_PRESETS, hex_of, kelvin
