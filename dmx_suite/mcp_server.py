@@ -107,6 +107,41 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.autopilot_status(n)
 
     @tool
+    def list_kits() -> str:
+        """Drum kits in inputs.yaml: which is active, each kit's name, channel and number of pieces."""
+        return t.list_kits()
+
+    @tool
+    def get_kit(kit: str = "") -> str:
+        """One drum kit (default the active one): pieces, zones (input id, notes, role, weight, velocity floor,
+        tempo, flash target, trigger), and notes heard on the kit's channel that aren't mapped (missed zones)."""
+        return t.get_kit(kit)
+
+    @tool
+    def set_kit_piece(kit: str, piece: str, zone: str = "head", notes: str = "", role: str = "",
+                      weight: float | None = None, velocity_floor: int | None = None, tempo: bool | None = None,
+                      flash_yaml: str = "", trigger_yaml: str = "", name: str = "", piece_name: str = "",
+                      remove: bool = False) -> str:
+        """Add or change one piece's zone of a kit: notes ('38 40'), role (kick, snare, hat, tom, cymbal, tap,
+        count_in, trigger_only), tempo weight 0-2, velocity_floor, tempo (include in tempo), flash_yaml
+        ('{fixtures: [bars], colour: show, length_ms: 120}' or 'none'), trigger_yaml ('{scene: blue_wave}',
+        '{preset: x}', '{flash_fx: x}' or 'none'), name, piece_name. remove=True removes the zone (zone ''
+        = the whole piece). Saved and backed up; not under gig lock."""
+        return t.set_kit_piece(kit, piece, zone, notes, role, weight, velocity_floor, tempo, flash_yaml, trigger_yaml,
+                               name, piece_name, remove)
+
+    @tool
+    def set_active_kit(kit: str) -> str:
+        """Make this kit the one tempo, drum flash and triggers use."""
+        return t.set_active_kit(kit)
+
+    @tool
+    def kit_learn_status(kit: str = "", piece: str = "", zone: str = "head", arm: bool = False, add: bool = False) -> str:
+        """Remote learn: arm=True arms kit / piece / zone so the drummer's next hit becomes its note (add=True
+        adds a note instead of replacing); without arm, says what's armed and what was learned."""
+        return t.kit_learn_status(kit, piece, zone, arm, add)
+
+    @tool
     def tempo_status() -> str:
         """The beat clock: BPM, beat in the bar, bar, confidence, freewheel (fills / drums stopped), source
         (drums / tap / midi_clock / off), where the seed came from, and the tracker settings."""

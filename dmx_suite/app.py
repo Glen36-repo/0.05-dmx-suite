@@ -82,6 +82,10 @@ class App:
         self._health_thread: threading.Thread | None = None
         self.health_probe: Any = None  # tests: a fake output.ftdi.Probe
         self._faultfind: Any = None  # v5 fault-find wizard (faultfind.FaultFinder)
+        from collections import deque as _deque
+
+        self.kit_hits: Any = _deque(maxlen=200)  # v6: (wall time, input id, velocity) of kit pad hits
+        self.kit_learning: dict[str, Any] | None = None  # v6: {kit, piece, zone, armed, result}
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
         self.store = ShowStore(files.root, self._store_locked)
@@ -1063,9 +1067,14 @@ class App:
             self.darkness.set(lvl, "cc")
             return
         if m.pressed:
+            if m.type == "note" and inp.kit:
+                self.kit_hits.append((time.time(), inp.id, m.value))
             if m.type == "note" and inp.roles:
                 self.bus.add(inp.id, inp.roles, inp.strength(m.value), now)
-                self.ctl.tempo.hit(inp.roles, m.value, now)  # v6: the drums tempo (tap pads, count-in too)
+                # v6: the drums tempo (tap pads, count-in too), with the kit zone's weight / floor / tempo flag
+                self.ctl.tempo.hit(inp.roles, m.value, now, inp.tempo_weight, inp.tempo_floor, inp.tempo)
+            if m.type == "note" and inp.trigger:
+                self._kit_trigger(inp.trigger)
             self.ctl.step_input(inp.id)
 
     # ------------------------------------------------------------------ FX banks, ride, Flash FX (v3.3)
@@ -1363,6 +1372,194 @@ class App:
                   ("flash_override", bool(e.held())), ("hold", self.autopilot.st.hold), ("autopilot", self.autopilot.st.on)]
         top = next((k for k, on in levels if on), "show")
         return {"levels": [k for k, on in levels if on], "top": top}
+
+    # ------------------------------------------------------------------ drum kits (v6 Part C)
+
+    def _kit_trigger(self, trig: dict[str, str]) -> None:
+        """A drummer trigger pad: its scene / preset / Flash FX, separate from the FCB1010."""
+        try:
+            if "scene" in trig:
+                self.ctl.select_scene(trig["scene"])
+            elif "preset" in trig:
+                self.play_preset(trig["preset"])
+            elif "flash_fx" in trig:
+                self.flash_fx(trig["flash_fx"], True, "show", length_ms=500)
+        except Exception as e:  # noqa: BLE001 - a bad trigger must never stop the show
+            log.warning("kit trigger %s failed: %s", trig, e)
+
+    def _kits_now(self) -> tuple[dict[str, Any], str | None, bool]:
+        """(kits by id, active id, derived) - a show without kits gets band_kit as a view of its drum inputs."""
+        from .kits import derive_kit
+
+        ins = self.files.inputs
+        if ins.kits:
+            return ins.kits, ins.active_kit, False
+        flashes = {m.input: {k: v for k, v in m.params.items() if k in ("fixtures", "colour", "length_ms", "min_level")}
+                   for m in self.files.midimap.mappings if m.type == "input" and m.action == "flash" and m.input}
+        kit = derive_kit(self.store.read("inputs"), flashes)
+        return ({kit.id: kit} if kit else {}), (kit.id if kit else None), True
+
+    def kit_view(self) -> dict[str, Any]:
+        from .kits import KIT_ROLES
+
+        kits, active, derived = self._kits_now()
+        now = time.time()
+        live = {}
+        for t_, iid, vel in list(self.kit_hits):
+            if now - t_ < 2.0:
+                live[iid] = {"age_ms": round((now - t_) * 1000), "velocity": vel}
+        kit = kits.get(active or "")
+        ch = kit.channel if kit else 0
+        known = {n for k in ([kit] if kit else []) for _, z in k.zones() for n in z.notes}
+        unmapped: dict[int, dict[str, Any]] = {}
+        for e in self.monitor.query(300):
+            if e.type in ("note", "note_on") and e.value > 0 and (ch in (0, e.channel)) and e.result == "unmapped" \
+                    and e.number not in known and now - e.time < 60:
+                unmapped[e.number] = {"note": e.number, "name": e.note, "velocity": e.value, "age_s": round(now - e.time, 1)}
+        return {"active": active, "derived": derived, "kits": {k: v.to_dict() for k, v in kits.items()},
+                "live": live, "unmapped": sorted(unmapped.values(), key=lambda x: x["age_s"]),
+                "learning": self.kit_learning, "roles": list(KIT_ROLES)}
+
+    def save_kit(self, kid: str, data: dict[str, Any], activate: bool = False, note: str = "") -> dict[str, Any]:
+        """Write a kit. The first kit save of a show turns the drum-input view into a real kit (migration):
+        drum inputs move into it, their flash mappings leave the MIDI map, both files backed up first."""
+        from .kits import migrate, parse_kit
+
+        kit = parse_kit(kid, data)
+        ins = self.store.read("inputs")
+        midi = self.names[2]
+        if not ins.get("kits"):  # first time: migrate (store.apply backs up inputs.yaml and the MIDI map)
+            mp = self.store.read("midi", midi)
+            kits, _, _ = self._kits_now()
+            view = kits.get("band_kit")
+            if view is not None and view.id != kid:  # the show's drum inputs become band_kit (active), then this
+                new_ins, new_mp = migrate(ins, mp, view)
+                new_ins["kits"][kid] = kit.to_dict()
+                if activate:
+                    new_ins["active_kit"] = kid
+            else:  # the kit carries its own flash targets (the view filled them in); the view's inputs go too
+                new_ins, new_mp = migrate(ins, mp, kit, also=view)
+            if activate or not ins.get("active_kit"):
+                new_ins["active_kit"] = kid
+            pi, pm = self.store.path("inputs", ""), self.store.path("midi", midi)
+            bid = self.store.apply({pi: self.store.text_for(pi, new_ins), pm: self.store.text_for(pm, new_mp)},
+                                   note or f"drum kit {kid} (from the drum inputs; MIDI map backed up)")
+        else:
+            ins["kits"] = {**ins["kits"], kid: kit.to_dict()}
+            if activate:
+                ins["active_kit"] = kid
+            bid = self.store.put("inputs", "", ins, note or f"drum kit {kid}")
+        notes = self.reload()
+        return {"backup": bid, "notes": notes, **self.kit_view()}
+
+    def _kit_data(self, kid: str) -> dict[str, Any]:
+        kits, _, _ = self._kits_now()
+        if kid not in kits:
+            raise ValueError(f"no kit {kid!r} (have {', '.join(kits) or 'none'})")
+        return kits[kid].to_dict()
+
+    def set_kit_piece(self, kid: str, piece: str, zone: str = "head", changes: dict[str, Any] | None = None,
+                      remove: bool = False) -> dict[str, Any]:
+        """Add / change / remove one piece's zone (notes, role, weight, velocity_floor, tempo, flash, trigger,
+        name; piece_name renames the piece). remove with zone "" removes the whole piece."""
+        data = self._kit_data(kid)
+        pieces = data.setdefault("pieces", {})
+        ch = dict(changes or {})
+        if remove:
+            if piece not in pieces:
+                raise ValueError(f"no piece {piece!r}")
+            if zone:
+                pieces[piece]["zones"].pop(zone, None)
+                if not pieces[piece]["zones"]:
+                    del pieces[piece]
+            else:
+                del pieces[piece]
+            return self.save_kit(kid, data, note=f"drum kit {kid}: remove {piece}{'/' + zone if zone else ''}")
+        p = pieces.setdefault(piece, {"name": ch.get("piece_name") or piece.replace("_", " ").title(), "zones": {}})
+        if ch.get("piece_name"):
+            p["name"] = ch.pop("piece_name")
+        ch.pop("piece_name", None)
+        z = dict(p["zones"].get(zone) or {"notes": [], "role": "trigger_only"})
+        for k, v in ch.items():
+            if v is None or v == "":
+                z.pop(k, None)
+            else:
+                z[k] = v
+        p["zones"][zone] = z
+        return self.save_kit(kid, data, note=f"drum kit {kid}: {piece}/{zone}")
+
+    def set_active_kit(self, kid: str) -> dict[str, Any]:
+        kits, _, derived = self._kits_now()
+        if kid not in kits:
+            raise ValueError(f"no kit {kid!r}")
+        if derived:
+            return self.save_kit(kid, kits[kid].to_dict(), activate=True)
+        ins = self.store.read("inputs")
+        ins["active_kit"] = kid
+        bid = self.store.put("inputs", "", ins, f"active drum kit {kid}")
+        notes = self.reload()
+        return {"backup": bid, "notes": notes, **self.kit_view()}
+
+    def new_kit(self, kid: str, template: str = "gm") -> dict[str, Any]:
+        from .kits import ID, gm_kit
+
+        if not ID.match(kid):
+            raise ValueError("kit ids use lower case letters, digits, _ or -")
+        kits, _, _ = self._kits_now()
+        if kid in kits:
+            raise ValueError(f"there's already a kit {kid!r}")
+        if template != "gm":
+            raise ValueError("template: gm (General MIDI)")
+        return self.save_kit(kid, gm_kit(kid).to_dict())
+
+    def export_kit(self, kid: str) -> str:
+        from .yamlio import plain_dump
+
+        return plain_dump({"kit": kid, **self._kit_data(kid)})
+
+    def import_kit(self, text: str, kid: str | None = None, activate: bool = False) -> dict[str, Any]:
+        import yaml as _yaml
+
+        try:
+            d = _yaml.safe_load(text)
+        except _yaml.YAMLError as e:
+            raise ValueError(f"not valid YAML: {e}") from e
+        if not isinstance(d, dict):
+            raise ValueError("a kit is a mapping: kit, name, channel, pieces")
+        kid = kid or str(d.pop("kit", "") or "imported_kit")
+        d.pop("kit", None)
+        return self.save_kit(kid, d, activate, note=f"import drum kit {kid}")
+
+    def kit_learn(self, kid: str, piece: str, zone: str = "head", add: bool = False) -> dict[str, Any]:
+        """Arm learn: the next pad hit becomes this piece's zone note (add=True adds a note)."""
+        self.require_unlocked("drum kit learn")
+        self._kit_data(kid)
+        self.kit_learning = {"kit": kid, "piece": piece, "zone": zone, "armed": True, "result": None}
+        state = self.kit_learning
+
+        def learned(msg: dict[str, Any]) -> None:
+            if msg.get("type") != "note":
+                state.update(armed=False, result="that wasn't a note: arm it again and hit the pad")
+                return
+            try:
+                data = self._kit_data(kid)
+                p = data.setdefault("pieces", {}).setdefault(piece, {"name": piece.replace("_", " ").title(), "zones": {}})
+                z = dict(p["zones"].get(zone) or {"role": "trigger_only"})
+                z["notes"] = list(dict.fromkeys([*(z.get("notes") or [] if add else []), msg["number"]]))
+                p["zones"][zone] = z
+                # the same note in another zone of this kit moves here
+                for opid, op in data["pieces"].items():
+                    for ozid, oz in op["zones"].items():
+                        if (opid, ozid) != (piece, zone) and msg["number"] in (oz.get("notes") or []):
+                            oz["notes"] = [n for n in oz["notes"] if n != msg["number"]]
+                with self.store.acting("ui"):
+                    self.save_kit(kid, data, note=f"learn {kid} {piece}/{zone}: note {msg['number']}")
+                state.update(armed=False, result=f"note {msg['number']} (ch {msg['channel']})")
+            except Exception as e:  # noqa: BLE001 - say so on the page
+                state.update(armed=False, result=f"not saved: {e}")
+
+        self.router.learn_input(f"kit {kid} {piece}/{zone}", learned)
+        return dict(state)
 
     # ------------------------------------------------------------------ tempo from the drums (v6 Part B)
 

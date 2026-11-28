@@ -128,6 +128,7 @@ def test_every_ui_text_key_exists():
     used |= {f"ff.a_{a}" for a in ("yes", "no", "pass", "fail", "restart")}  # v5: fault-find answers
     used |= {f"darkness.src_{s}" for s in ("default", "set", "slider", "cc", "claude")}  # v6: darkness source
     used |= {"tempo2.freewheel", "tempo2.locked"}  # v6: tempo state
+    used |= {f"kit.role_{r}" for r in ("kick", "snare", "hat", "tom", "cymbal", "tap", "count_in", "trigger_only")}
     # v3.1
     used |= {f"alerts.state_{s}" for s in ("active", "dismissed", "minimised", "snoozed", "muted", "cleared")}
     used |= {f"heads.stage_{k}" for k in "xyz"}

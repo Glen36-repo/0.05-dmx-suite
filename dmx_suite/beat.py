@@ -177,11 +177,15 @@ class BeatTracker:
 
     # ------------------------------------------------------------------ onsets
 
-    def hit(self, roles: list[str] | tuple[str, ...], velocity: int, now: float) -> bool:
-        """A drum hit. Returns whether it counted as an onset."""
+    def hit(self, roles: list[str] | tuple[str, ...], velocity: int, now: float, weight: float | None = None,
+            floor: int | None = None) -> bool:
+        """A drum hit. Returns whether it counted as an onset. `weight` / `floor` (a kit zone's) override the
+        role's weight and the velocity floor."""
         with self._lock:
             w = max((self.p.weights.get(r, 0.0) for r in roles), default=0.0)
-            if w <= 0 or velocity < self.p.velocity_floor:
+            if weight is not None and w > 0:
+                w = weight
+            if w <= 0 or velocity < (self.p.velocity_floor if floor is None else floor):
                 return False
             role = max(roles, key=lambda r: self.p.weights.get(r, 0.0))
             self._last_onset_t = now

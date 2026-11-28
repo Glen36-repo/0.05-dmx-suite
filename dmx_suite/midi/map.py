@@ -109,6 +109,7 @@ class Mapping:
     port: str | None = None  # substring of the input port name; None = any port
     address: str = ""  # OSC address (type osc)
     input: str | None = None  # named input (type "input", v3)
+    from_kit: bool = False  # v6: made from the active drum kit's flash target, never written to the map file
 
     def __post_init__(self) -> None:
         self.action = canonical(self.action)
@@ -251,7 +252,7 @@ class MidiMap:
         return self._by_key.get((type_, channel, number, ""))
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "mappings": [m.to_dict() for m in self.mappings]}
+        return {"name": self.name, "mappings": [m.to_dict() for m in self.mappings if not m.from_kit]}
 
 
 def parse_map(data: dict) -> MidiMap:

@@ -627,6 +627,25 @@
       </div>
       <div id="input-edit"></div>
       <div id="inputs"></div>
+      <h2><span data-i18n="kit.title"></span> <button type="button" class="info" data-info="kit" aria-expanded="false">ⓘ</button></h2>
+      <div class="row wrap">
+        <select id="kit-pick" data-i18n-title="kit.active"></select>
+        <span id="kit-chan" class="muted"></span>
+        <button id="kit-new" class="mini" data-i18n="kit.new_gm"></button>
+        <button id="kit-export" class="mini" data-i18n="kit.export"></button>
+        <button id="kit-import" class="mini" data-i18n="kit.import"></button>
+        <span id="kit-note" class="muted"></span>
+      </div>
+      <div id="kit-learning" class="mon-flag hidden"></div>
+      <div class="table-scroll"><table class="grid-table kit-table">
+        <thead><tr><th data-i18n="kit.piece"></th><th data-i18n="kit.zone"></th><th data-i18n="kit.notes"></th><th data-i18n="kit.role"></th>
+          <th data-i18n="kit.weight"></th><th data-i18n="kit.floor"></th><th data-i18n="kit.tempo"></th><th data-i18n="kit.flash"></th>
+          <th data-i18n="kit.trigger"></th><th></th></tr></thead>
+        <tbody id="kit-rows"></tbody></table></div>
+      <div class="row wrap"><input id="kit-add-piece" maxlength="40" data-i18n-placeholder="kit.add_placeholder">
+        <input id="kit-add-zone" maxlength="40" value="head" data-i18n-title="kit.zone">
+        <button id="kit-add" class="mini" data-i18n="kit.add"></button></div>
+      <div id="kit-unmapped" class="mon-flag hidden"></div>
       <h2><span data-i18n="midi.monitor"></span> <button type="button" class="info" data-info="midi.monitor" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap">
         <button id="midi-pause" data-i18n="midi.pause"></button>

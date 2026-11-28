@@ -2,6 +2,7 @@
 import { api, attempt, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
+import { init as initKit } from "./kit.js";
 import { onCatalogue, onMidi, onState } from "../state.js";
 import { onShow } from "../nav.js";
 
@@ -163,6 +164,7 @@ function parseParams(text) {
 }
 
 export function init() {
+  initKit(); // v6: Drum Kit section
   const filter = $("#midi-filter");
   filter.replaceChildren(el("option", { value: "" }, t("midi.all_channels")),
     ...[...Array(16)].map((_, i) => el("option", { value: i + 1 }, t("midi.channel", { n: i + 1 }))));

@@ -37,6 +37,32 @@ On the MIDI page, the **Inputs** section lists every device. **Learn** sets an i
 
 **Calibrate** on a note input, pick **Quiet**, play it a few times at that strength, press **Done**; then the same for Normal and Loud. Quiet hits then count as a quarter, normal as 60 % and loud as full, for drum flash brightness and (from v3.4) the auto show's energy. Until calibrated, the velocity is used as it comes.
 
+## Drum Kit
+
+The **Drum Kit** section (MIDI page) is the drummer's kit, defined once: the tempo, drum flashes and trigger pads all read it.
+
+- **Pieces and zones:** kick, snare (head, rim, cross-stick), hi-hat (closed, pedal, open), toms (head, rim), crashes, ride (bow, bell, edge), china / splash, extra pads, a tap pad. **Add piece** for anything else; ✕ removes a zone.
+- **Learn:** press Learn on a zone and hit that pad: its note is stored (and taken off any other zone). **+ note** adds a second note to the same zone.
+- Per zone: **role** (kick, snare, hat, tom, cymbal, tap, count-in, trigger only), **tempo weight** and **velocity floor** for the tempo (blank = the defaults), **Tempo** (in or out of the tempo), **Drum flash** (the fixtures it flashes with MASTER off; the kit owns these, not the MIDI map) and **Trigger** (`scene:name`, `preset:id` or `flash_fx:id`, fired by that pad, separate from the FCB1010).
+- Each hit lights its row. Notes heard on the kit's channel that aren't in the kit show in amber, so a missed zone is obvious.
+- **New kit (General MIDI)** starts from the GM note numbers; the menu switches the active kit; **Export** copies the kit as text and **Import** takes one from another laptop.
+
+A show from before v6 has no kit yet: its drum inputs show as **band_kit**, and the first change you make saves it as a kit (the drum inputs and their flash settings move into it; inputs.yaml and the MIDI map are backed up first). Input names stay the same, so mappings and step scenes keep working.
+
+```yaml
+kits:
+  band_kit:
+    name: Band kit
+    channel: 10
+    pieces:
+      snare:
+        name: Snare
+        zones:
+          head: {input: snare, notes: [38], role: snare, flash: {fixtures: [bars], length_ms: 120}}
+          rim: {input: snare_rim, notes: [40], role: snare}
+active_kit: band_kit
+```
+
 ## Tempo from the drums
 
 With the rig's tempo source on **Drums** (Monitor › Tempo, or the rig editor), the lights follow the drummer: every hit on a drum role counts (kick, snare, hat, toms, cymbals, weighted), soft ghost notes don't. Start it with a tap (the FCB1010's tap button, a pad with the `tap` role, or Tap on the Monitor) or a count-in (4 even hits on a `count_in` pad, e.g. the hi-hat pedal, after 2 s quiet); either sets the tempo at once. After that it holds steady: it moves only when the band is clearly faster or slower for 4 beats, then glides; a big change has to hold for 8 beats. In fills and breakdowns, or when the drums stop, it carries on at the last tempo.

@@ -81,7 +81,7 @@ Limits in this environment: no Windows, FTDI or D2XX here. Driver code is tested
 4. Input Monitor: hit lanes per role with the beat grid, raw vs output BPM graph, confidence, seed source. All parameters live-tunable (rig `tempo:` block).
 5. MCP: `tempo_status`, `tap_tempo`, `set_tempo_source`, `set_tempo_params`, plus a guide section.
 
-## Part C (v6): Drum Kit builder
+## Part C (v6): Drum Kit builder — built 28/11/2026
 1. `inputs.yaml` gains `kits: {name: {device, channel, pieces: {...}}}` and `active_kit`, within format 6. Pieces and zones carry name, notes, role, weight, velocity floor, tempo y/n, flash target and trigger.
    - Roles: kick, snare, hat, tom, cymbal, tap, count_in (`count-in` accepted), trigger_only
    - `activity` is derived (every piece except tap/trigger-only), so autopilot energy keeps working

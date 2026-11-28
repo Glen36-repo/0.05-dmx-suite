@@ -214,3 +214,32 @@ def test_tempo_pane_draws_and_switches_source(ui):
     page.click("#tempo-params-btn")
     page.wait_for_selector("#tempo-params:not(.hidden) input")
     assert page.locator("#tempo-params input").count() >= 15
+
+
+# ---------------------------------------------------------------- v6 Part C: Drum Kit
+
+
+def test_drum_kit_section_learn_live_and_unmapped(ui):
+    import mido
+
+    page, app, root, _ = ui
+    go(page, "midi")
+    page.wait_for_selector("#kit-rows tr[data-input=snare]")
+    assert "first change saves it" in page.inner_text("#kit-note")  # the view, nothing written yet
+    page.click("#kit-rows tr[data-input=tom_2] button[data-learn]")
+    page.wait_for_function("document.querySelector('#kit-learning').textContent.startsWith('Hit the')")
+    app.router.handle_mido(mido.Message("note_on", channel=9, note=41, velocity=100), "TD-25")
+    page.wait_for_function("document.querySelector('#kit-learning').textContent.includes('note 41')")
+    page.wait_for_function("document.querySelector('#kit-rows tr[data-input=tom_2] .notes').value === '41'")
+    assert yaml.safe_load((root / "inputs.yaml").read_text())["active_kit"] == "band_kit"  # saved as a real kit now
+    app.router.handle_mido(mido.Message("note_on", channel=9, note=38, velocity=100), "TD-25")
+    page.wait_for_selector("#kit-rows tr[data-input=snare].hit")
+    app.router.handle_mido(mido.Message("note_on", channel=9, note=99, velocity=90), "TD-25")
+    page.wait_for_function("document.querySelector('#kit-unmapped').textContent.includes('99')")
+    page.fill("#kit-rows tr[data-input=snare] input.wide >> nth=0", "bar_1, bar_2")
+    page.locator("#kit-rows tr[data-input=snare] input.wide >> nth=0").dispatch_event("change")
+    for _ in range(40):
+        if app.files.midimap.get_input("snare").params["fixtures"] == ["bar_1", "bar_2"]:
+            break
+        page.wait_for_timeout(50)
+    assert app.files.midimap.get_input("snare").params["fixtures"] == ["bar_1", "bar_2"]

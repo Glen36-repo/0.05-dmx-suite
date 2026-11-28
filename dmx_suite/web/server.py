@@ -53,7 +53,8 @@ CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/st
                  "/api/haze/settings", "/api/devices/set",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
                  "/api/autopilot/check", "/api/generate",
-                 "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness", "/api/tempo")  # v5 / v6
+                 "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness", "/api/tempo",
+                 "/api/kits")  # v5 / v6
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
@@ -369,6 +370,10 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.routing())
             if path == "/api/faultfind":
                 return self._json(200, app.fault_find("status"))
+            if path == "/api/kits":  # v6: drum kits, the active one's live hits and unmapped notes
+                return self._json(200, app.kit_view())
+            if path == "/api/kits/export":
+                return self._json(200, {"kit": q.get("kit", ""), "yaml": app.export_kit(q.get("kit", ""))})
             if path == "/api/tempo":  # v6: beat clock status (+ tracker debug for the Input Monitor)
                 return self._json(200, app.tempo_view(q.get("debug") == "1"))
             if path == "/api/outputs/check":  # v5: USB DMX (Open) checklist, run now
@@ -809,6 +814,26 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/outputs/latency" and method == "POST":  # set via D2XX, after the UI asked
                 return self._json(200, {"ok": True, **app.set_output_latency(int(body.get("output", -1)),
                                                                              int(body.get("ms", 1)))})
+            if path == "/api/kits" and method == "POST":  # v6: drum kit edits (store: gig-locked, backed up)
+                act, kid = str(body.get("action", "")), str(body.get("kit", ""))
+                if act == "save":
+                    return self._json(200, {"ok": True, **app.save_kit(kid, body.get("data") or {}, bool(body.get("activate")))})
+                if act == "piece":
+                    return self._json(200, {"ok": True, **app.set_kit_piece(kid, str(body.get("piece", "")),
+                                                                            str(body.get("zone", "head") or ""),
+                                                                            body.get("changes") or {}, bool(body.get("remove")))})
+                if act == "active":
+                    return self._json(200, {"ok": True, **app.set_active_kit(kid)})
+                if act == "new":
+                    return self._json(200, {"ok": True, **app.new_kit(kid, str(body.get("template", "gm")))})
+                if act == "import":
+                    return self._json(200, {"ok": True, **app.import_kit(str(body.get("yaml", "")), kid or None,
+                                                                         bool(body.get("activate")))})
+                if act == "learn":
+                    return self._json(200, {"ok": True, "learning": app.kit_learn(kid, str(body.get("piece", "")),
+                                                                                  str(body.get("zone", "head")),
+                                                                                  bool(body.get("add")))})
+                raise ApiError(400, "kits action: save, piece, active, new, import, learn")
             if path == "/api/tempo" and method == "POST":  # v6: tap, source, tracker settings
                 act = str(body.get("action", ""))
                 if act == "tap":

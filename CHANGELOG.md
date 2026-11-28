@@ -16,6 +16,12 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 - `step_beats` steps and beat-synced effects follow it; `step_s` scenes stay on timers. New input roles `hat` and `tap`.
 - Claude: `tempo_status`, `tap_tempo`, `set_tempo_source`, `set_tempo_params`.
 
+### Added (Part C: Drum Kit)
+- **Drum Kit** on the MIDI page: the drummer's kit defined once, so tempo, drum flash and trigger pads all read one map. Pieces (kick, snare, hi-hat, toms 1-4, crashes, ride, china / splash, extra pads, tap pad) with zones (head / rim / cross-stick, closed / pedal / open, bow / bell / edge). Per zone: notes (**Learn**: hit the pad), role, tempo weight, velocity floor, in tempo or not, drum flash target, and a drummer trigger (scene, preset or Flash FX). Hits light their row; notes heard that aren't in the kit are listed.
+- Start from a General MIDI kit, add / rename / remove pieces, several named kits with one active, Export / Import as YAML.
+- A show without a kit shows its drum inputs as `band_kit`; the first change saves it as a kit, moving the drum inputs and their flash mappings in (inputs.yaml and the MIDI map backed up first). Input ids stay the same, so nothing else changes.
+- Claude: `list_kits`, `get_kit`, `set_kit_piece`, `set_active_kit`, `kit_learn_status`.
+
 ## Unreleased (v5: DMX output diagnostics)
 
 Brief and plan: `docs/v5-v6-brief.md`, `docs/v5-v6-plan.md`.

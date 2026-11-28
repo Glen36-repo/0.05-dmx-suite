@@ -98,8 +98,10 @@ class TempoClock:
             self._anchor_real, self._anchor_eff = now, eff
             self.rate = ((self.bpm or REFERENCE_BPM) / REFERENCE_BPM) * self.speed
 
-    def hit(self, roles: list[str] | tuple[str, ...], velocity: int, now: float) -> None:
-        """A drum hit (named input with roles): onset for the tracker; a tap pad taps; count-in pads count in."""
+    def hit(self, roles: list[str] | tuple[str, ...], velocity: int, now: float, weight: float | None = None,
+            floor: int | None = None, tempo: bool = True) -> None:
+        """A drum hit (named input with roles): onset for the tracker (with the kit zone's weight / floor,
+        unless the zone is left out of tempo); a tap pad taps; count-in pads count in."""
         with self._lock:
             if self.source != "drums":
                 return
@@ -110,7 +112,8 @@ class TempoClock:
             if "tap" in roles:
                 self._tap(now)
                 return
-            self.tracker.hit(roles, velocity, now)
+            if tempo:
+                self.tracker.hit(roles, velocity, now, weight, floor)
 
     def _seeded(self, now: float, bpm: float) -> None:
         """The tracker was seeded: effect time carries on from here at the new tempo."""

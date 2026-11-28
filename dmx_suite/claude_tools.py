@@ -97,6 +97,15 @@ FAULT-FINDING (v4): "software running, rig dark": list_outputs, then monitor_dmx
   really sent: no frames / all zero / values per channel with names), then check MASTER, blackout, grand
   master. "Pedal does nothing": monitor_midi (each event, the named input it matched, what it did or
   'unmapped'); fix the input with save_input.
+DRUM KIT (v6): the drummer's kit defined once in inputs.yaml `kits:` (one active): pieces (kick, snare,
+  hi-hat, toms, cymbals, extra pads, tap pad) with zones (head / rim / x_stick, closed / pedal / open, bow /
+  bell / edge), each a named input with notes, role (kick, snare, hat, tom, cymbal, tap, count_in,
+  trigger_only), tempo weight, velocity floor, tempo y/n, drum flash target (fixtures / colour / length_ms:
+  the kit owns them, not the MIDI map) and an optional drummer trigger (scene / preset / flash_fx). Tempo,
+  drum flash and autopilot energy all read it. list_kits / get_kit (with unmapped notes heard), set_kit_piece,
+  set_active_kit, kit_learn_status (arm a zone, the next hit is its note). A show without kits shows
+  band_kit as a view of its drum inputs; the first change writes it (inputs and flash mappings move in,
+  backed up).
 TEMPO FROM THE DRUMS (v6): the band plays without a click, so the module's MIDI clock isn't used. Source
   `drums` (set_tempo_source; v3 `kick` = drums) tracks every drum hit weighted (kick 1, snare 1, hat 0.5,
   tom 0.6, cymbal 0.4; ghost notes under the velocity floor ignored), seeded by a tap (tap_tempo, FCB tap,
@@ -372,6 +381,51 @@ class DmxTools:
     def autopilot_status(self, n: int = 20) -> str:
         r = self._live("GET", f"/api/autopilot?n={int(n)}")
         return _dump(r)  # includes darkness: {darkness, now, source, set_darkness, cc}
+
+    def list_kits(self) -> str:
+        r = self._live("GET", "/api/kits")
+        rows = {k: {"name": v["name"], "channel": v.get("channel"), "pieces": len(v.get("pieces") or {})}
+                for k, v in r["kits"].items()}
+        note = "band_kit is a view of the drum inputs until the first kit change saves it" if r["derived"] else ""
+        return _dump({"active": r["active"], "kits": rows, **({"note": note} if note else {})})
+
+    def get_kit(self, kit: str = "") -> str:
+        r = self._live("GET", "/api/kits")
+        kid = kit or r["active"]
+        if kid not in r["kits"]:
+            raise StoreError(f"no kit {kid!r}")
+        return _dump({"kit": kid, "active": kid == r["active"], **r["kits"][kid], "unmapped_notes": r["unmapped"]})
+
+    def set_kit_piece(self, kit: str, piece: str, zone: str = "head", notes: str = "", role: str = "",
+                      weight: float | None = None, velocity_floor: int | None = None, tempo: bool | None = None,
+                      flash_yaml: str = "", trigger_yaml: str = "", name: str = "", piece_name: str = "",
+                      remove: bool = False) -> str:
+        changes: dict[str, Any] = {}
+        if notes:
+            changes["notes"] = [int(x) for x in str(notes).replace(",", " ").split()]
+        for k, v in (("role", role), ("weight", weight), ("velocity_floor", velocity_floor), ("tempo", tempo),
+                     ("name", name), ("piece_name", piece_name)):
+            if v not in ("", None):
+                changes[k] = v
+        if flash_yaml:
+            changes["flash"] = _yaml(flash_yaml, "flash") if flash_yaml.strip() not in ("none", "off") else None
+        if trigger_yaml:
+            changes["trigger"] = _yaml(trigger_yaml, "trigger") if trigger_yaml.strip() not in ("none", "off") else None
+        body = {"action": "piece", "kit": kit, "piece": piece, "zone": zone, "changes": changes, "remove": remove}
+        r = self._live("POST", "/api/kits", body)
+        return f"saved (backup {r['backup']})"
+
+    def set_active_kit(self, kit: str) -> str:
+        r = self._live("POST", "/api/kits", {"action": "active", "kit": kit})
+        return f"active kit {r['active']} (backup {r['backup']})"
+
+    def kit_learn_status(self, kit: str = "", piece: str = "", zone: str = "head", arm: bool = False,
+                         add: bool = False) -> str:
+        if arm:
+            r = self._live("POST", "/api/kits", {"action": "learn", "kit": kit, "piece": piece, "zone": zone, "add": add})
+            return _dump({**r["learning"], "note": "ask the drummer to hit that pad (zone) once"})
+        r = self._live("GET", "/api/kits")
+        return _dump(r["learning"] or {"armed": False, "note": "nothing armed"})
 
     def tempo_status(self) -> str:
         r = self._live("GET", "/api/tempo")

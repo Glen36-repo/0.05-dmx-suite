@@ -562,6 +562,10 @@ body:has(#page-monitor.on) main { max-width: none; }
 .tempo-params { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 10px; font-size: 12px; }
 .tempo-params label { display: flex; justify-content: space-between; gap: 6px; align-items: center; }
 .tempo-params input { width: 70px; }
+.kit-table input.num { width: 56px; } .kit-table input.notes { width: 80px; } .kit-table input.wide { width: 130px; }
+.kit-table tr.hit td { background: color-mix(in srgb, var(--accent) 35%, transparent); transition: none; }
+.kit-table tr td { transition: background .4s; }
+.kit-table tr.unlearned td.notes-cell input { border-color: var(--warn); }
 .mon-checks { font-size: 13px; margin: 2px 0 6px; }
 .mon-checks .ck { margin: 2px 0; } .mon-checks .ck.warn b { color: var(--warn); } .mon-checks .ck.fail b { color: var(--bad); }
 .mon-checks .fix { color: var(--muted, inherit); }
