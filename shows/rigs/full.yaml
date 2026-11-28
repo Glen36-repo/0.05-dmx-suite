@@ -1,6 +1,10 @@
 # Full rig. Levels are 0-100 %. Head limits are % of the pan/tilt range.
+version: 4
 name: Full rig
 fixtures: [all]
+
+# Rule profile: 0.05_band (MASTER on/off, drum flash, kick light ignores MASTER) or generic
+profile: 0.05_band
 
 grand_master: 100
 sub_masters: {head: 100, bar: 100, wash: 100, kick: 100}

@@ -11,14 +11,14 @@ import pytest
 from dmx_suite.app import App
 from dmx_suite.claude_tools import DmxTools
 from dmx_suite.node.link import ReconnectingSerial
-from dmx_suite.output import LogDriver, NodeSerialDriver
-from dmx_suite.output import enttec
+from dmx_suite.output import LogDriver, NodeSerialDriver, enttec
 from dmx_suite.output.enttec import EnttecOpenDriver, EnttecProDriver
 from dmx_suite.showfiles import load_show
 from dmx_suite.web.server import WebServer
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"
 TOKEN = "test-token-0123456789abcdef"
+CLAUDE = "claude-token-0123456789abcdef"
 
 
 class Plug:
@@ -74,8 +74,13 @@ def test_enttec_pro_missing_at_start_then_plugged_in():
     d.send(0, bytes(512))
     assert not plug.writes
     plug.present = True
-    time.sleep(0.06)
-    d.send(0, bytes(512))
+
+    def plugged_in():  # resends until the reopen timer allows a retry (Windows clocks tick ~16 ms)
+        d.send(0, bytes(512))
+        d.flush()
+        return bool(plug.writes)
+
+    assert wait_for(plugged_in)
     assert len(plug.writes) == 1 and d.state()["state"] == "ok"
 
 
@@ -83,13 +88,20 @@ def test_enttec_pro_unplug_and_replug():
     plug = Plug()
     d = EnttecProDriver("COM9", serial_factory=plug.factory)
     d.send(0, bytes(512))
+    d.flush()
     plug.present = False
     d.send(0, bytes(512))  # write fails: port dropped
+    d.flush()
     assert d.state()["state"] == "bad" and "unplugged" in d.state()["detail"]
     plug.present = True
-    time.sleep(0.06)
-    d.send(0, bytes(512))
-    assert d.state()["state"] == "ok" and plug.opens == 2
+
+    def back():  # resends until the reopen timer allows a retry
+        d.send(0, bytes(512))
+        d.flush()
+        return d.state()["state"] == "ok"
+
+    assert wait_for(back)
+    assert plug.opens == 2
 
 
 def test_enttec_open_keeps_streaming_after_replug():
@@ -197,7 +209,7 @@ def server(tmp_path):
     root = tmp_path / "shows"
     shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups", ".state.json"))
     a = App(load_show(root), [LogDriver()])
-    web = WebServer(a, "127.0.0.1", 0, token=TOKEN)
+    web = WebServer(a, "127.0.0.1", 0, token=TOKEN, claude_token=CLAUDE)
     web.start()
     yield a, f"http://127.0.0.1:{web.port}", root
     web.stop()
@@ -206,13 +218,13 @@ def server(tmp_path):
 
 def test_claude_ping_and_calls_tracked(server):
     a, url, root = server
-    t = DmxTools(shows=root, url=url, token=TOKEN)
+    t = DmxTools(shows=root, url=url, token=CLAUDE)
     assert t.ping()
     assert a.clients["claude"]["calls"] == 0  # a check-in isn't a call
     t.call_label = "now_playing"
     t.now_playing()
     assert a.clients["claude"]["last_call"] == "now_playing"
-    assert not DmxTools(shows=root, url="http://127.0.0.1:9", token=TOKEN).ping()
+    assert not DmxTools(shows=root, url="http://127.0.0.1:9", token=CLAUDE).ping()
 
 
 def test_screens_counted(server):

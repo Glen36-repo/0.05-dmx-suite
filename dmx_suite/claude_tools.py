@@ -15,27 +15,36 @@ from typing import Any
 
 import yaml
 
+from . import effects
 from .fixtures import ConfigError, load_patch
+from .look import INTENSITY_RULE1
 from .palettes import load_palettes
-from .scenes import EFFECTS, parse_scene
-from .paths import default_shows
+from .paths import default_shows, giglock_on
+from .rig import load_rig
+from .scenes import parse_scene
 from .store import ShowStore, StoreError
+from .versions import upgrade
 
 DEFAULT_URL = "http://127.0.0.1:8505"
 
 GUIDE = """\
 0.05 DMX Suite: how shows are built, and the rules every change is checked against.
 
-HARD RULES (a write that breaks one is rejected with the reason):
-1. MASTER owns on/off. Scenes never set dimmers; switch a light on/off with its colour (off = "off").
-2. MASTER off: the rig is dark and drum hits flash it. Scenes don't control this.
-3. MASTER never affects the kick-drum light.
+RULES (a write that breaks one is rejected with the reason).
+Safety rules, always on:
 4. No background glow: anything not lit by the scene is fully off.
 5. Haze is never set by scenes or shows, only by the haze controls (set_haze).
 6. The grand master scales brightness only (not position, colour choice or haze).
+8. Moving-head pan/tilt limits from the rig are always enforced at output.
+Profile rules: each rig file has a `profile:` ("0.05_band", or "generic"); now_playing shows it.
+1. "0.05 band": MASTER owns on/off. Scenes never set dimmers or `intensity`; switch a light on/off
+   with its colour (off = "off"). "generic": lights follow the scene; a layer may set
+   `intensity: 0-1`. A scene is checked against every rig's profile.
+2. "0.05 band": MASTER off = the rig is dark and drum hits flash it. "generic": no drum flash.
+3. "0.05 band": MASTER never affects the kick-drum light (`master_exempt`).
+Fixture definition:
 7. U'King heads (colour_only) are colour only: no position, sweep or random_move on them.
    Use the `movers` group for movement, `heads` for colour.
-8. Moving-head pan/tilt limits from the rig are always enforced at output.
 
 SCENE (scenes/<name>.yaml): layers applied in order; later layers override earlier ones.
   name: Blue kit
@@ -50,23 +59,31 @@ SCENE (scenes/<name>.yaml): layers applied in order; later layers override earli
   [r, g, b] 0-1, or {red, green, blue, white, amber, uv} 0-1. Positions: palette names or
   {pan, tilt} 0-1. Timing: period_s = one cycle; spread 0-1 = how much of a cycle is spread
   across the layer's fixtures (0 in step, 1 evenly round). Static keys: colour, pixels,
-  position, gobo, colour_wheel, strobe, speed (0-1, 1 = fastest).
-EFFECTS and their keys:
+  position, gobo, colour_wheel, strobe, speed (0-1, 1 = fastest); they can sit alongside an effect
+  (not a position with a movement effect). Layer keys: level 0-1, blend replace|max|add, mute.
+  Effects that run across lights also take: mapping order|spatial (spatial = by where the lights
+  are on the layout, each pixel where it's drawn), direction forward|reverse|centre_out|out_centre|
+  random|angle, angle (degrees, 0 = left to right, 90 = top to bottom), groups_of N.
+  Scene `length_s` = one cycle (default: the longest effect period).
+EFFECTS (name: what it does. Settings):
 {effects}
-SHOW (shows/<name>.yaml): sets on fixed step timers; each set has `scenes` (order: sequence|random)
-  or `auto` {colours, energy: low|mid|high, head_mix: [matching, white, contrast],
-  patterns: [all, heads_only, bars_only, kit], movement: [random, sweep, static], flash, fades}.
+SHOW (shows/<name>.yaml): sets; each set has `steps` [{scene, repeats N | hold_s | hold_beats |
+  hold_bars, fade_s}] with set `fade_s`, `order` sequence|random, `loop`; or `auto` {colours,
+  energy: low|mid|high, head_mix: [matching, white, contrast], patterns: [all, heads_only,
+  bars_only, kit], movement: [random, sweep, static], flash, fades} with `step_s`.
+  (Old files with `scenes` + `step_s` still load.) Layers may time effects in `beats`.
+BUSK PANELS (panels.yaml): panels of widgets (colour, flash, solo, effect, go, fader, haze).
 SETLIST (setlists/<name>.yaml): songs: [{name, show, set} or {name, scene}, optional master: on/off].
 PALETTES: colours / positions (per head or {pan, tilt}) / gobos (DMX value, or per fixture type).
 
-Every save keeps the previous file in .backups/ (list_backups, restore_backup).
+Every save keeps the previous file in .backups/ (list_backups, restore_backup); undo_last_change
+undoes your own last change (never one made at the laptop).
 Gig lock (set by the band at the laptop): read only, no preview, no haze changes.
 """
 
 
 def guide() -> str:
-    eff = "\n".join(f"  {k}: {', '.join(sorted(v))}" for k, v in EFFECTS.items())
-    return GUIDE.replace("{effects}", eff)
+    return GUIDE.replace("{effects}", effects.guide())
 
 
 class Offline(Exception):
@@ -91,10 +108,20 @@ def _yaml(text: str | dict, what: str) -> dict:
 
 class DmxTools:
     def __init__(self, shows: Path | None = None, url: str | None = None, token: str | None = None) -> None:
+        from .package import DmsProject, is_dms, work_dir
+
         self.shows = Path(shows or default_shows())
         self.url = (url or os.environ.get("DMX_SUITE_URL") or DEFAULT_URL).rstrip("/")
         self._token = token
-        self.local = ShowStore(self.shows)
+        # a .dms show file: Claude reads its own unpacked copy, refreshed when the file changes
+        self.project = None
+        if is_dms(self.shows):
+            self.project = DmsProject(self.shows, work_dir(self.shows, "-claude"), lock=False)
+            self.project.open()
+            self.shows = self.project.work
+        self.local = ShowStore(self.shows, giglock_on)  # the app's gig lock binds offline edits too
+        if self.project is not None:
+            self.local.after_commit = self.project.save
         self.call_label: str | None = None  # which Claude tool is running, for the status bar
 
     # ------------------------------------------------------------------ transport
@@ -102,10 +129,10 @@ class DmxTools:
     @property
     def token(self) -> str:
         if self._token is None:
-            from .web.server import TOKEN_FILE
+            from .access import claude_token
 
             try:
-                self._token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+                self._token = claude_token()
             except OSError:
                 self._token = ""
         return self._token
@@ -159,8 +186,29 @@ class DmxTools:
             notes = "; ".join(r.get("notes") or [])
             return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
         except Offline:
-            bid = local()
+            bid = self._offline(local)
             return f"saved to the show files (backup {bid}); the engine isn't running"
+
+    def refresh(self) -> None:
+        """Pick up a .dms show file saved by the app since the last call."""
+        if self.project is not None:
+            self.project.refresh()
+
+    def _offline(self, change: Any) -> Any:
+        """An edit with the app closed; a .dms show file is locked while it's written."""
+        if self.project is None:
+            return change()
+        from .package import drop_lock, take_lock
+
+        other = take_lock(self.project.dms)
+        if other is not None:
+            raise StoreError(f"{self.project.name} is open on {other.get('host', '?')}: start the app there "
+                             "and make the change through it")
+        try:
+            self.project.refresh()
+            return change()
+        finally:
+            drop_lock(self.project.dms)
 
     # ------------------------------------------------------------------ read
 
@@ -170,9 +218,10 @@ class DmxTools:
     def list_fixtures(self) -> str:
         patch = load_patch(self.shows / "fixtures.yaml")
         out = {
-            "fixtures": [{"id": f.id, "type": f.type.key, "kind": f.kind.value, "address": f.address, "universe": f.universe,
-                          "groups": f.groups, "colour_only": f.type.colour_only, "moves": f.type.has("pan") and not f.type.colour_only,
-                          "pixels": f.type.pixels} for f in patch.fixtures.values()],
+            "fixtures": [{"id": f.id, "type": f.type.key, "kind": f.kind.value, "address": f.address,
+                          "universe": f.universe, "groups": f.groups, "colour_only": f.type.colour_only,
+                          "moves": f.type.has("pan") and not f.type.colour_only, "pixels": f.type.pixels}
+                         for f in patch.fixtures.values()],
             "groups": patch.groups(),
             "types": {k: {"name": t.name, "kind": t.kind.value, "verified": t.verified,
                           "channels": [c.role + (f"[px{c.pixel + 1}]" if c.pixel is not None else "") for c in t.channels]}
@@ -220,7 +269,13 @@ class DmxTools:
         patch = load_patch(self.shows / "fixtures.yaml")
         pal = load_palettes(self.shows / "palettes.yaml", patch)
         try:
+            data = upgrade(data, "scene", "scene")
             sc = parse_scene(data, patch, pal, data.get("name", "scene"))
+            if sc.uses_intensity:  # rule 1: only rigs whose profile doesn't use MASTER on/off
+                gated = [rp.stem for rp in sorted((self.shows / "rigs").glob("*.yaml"))
+                         if load_rig(rp, patch).profile.master_gate]
+                if gated:
+                    return f"rejected: {sc.name} {INTENSITY_RULE1} (rig {', '.join(gated)})"
         except ConfigError as e:
             return f"rejected: {e}"
         return f"ok: {sc.name}, {len(sc.layers)} layers"
@@ -254,6 +309,15 @@ class DmxTools:
                            lambda: self.local.restore(backup, file))
 
     # ------------------------------------------------------------------ live (engine must be running)
+
+    def undo_last_change(self) -> str:
+        """Undo Claude's own last change (never one made at the laptop)."""
+        try:
+            r = self._call("POST", "/api/undo/claude", {})
+            c = r["change"]
+        except Offline:
+            c = self._offline(self.local.undo)
+        return f"undone: {c['note']} ({', '.join(c['files'])})"
 
     def preview_scene(self, scene: str, seconds: float = 10) -> str:
         """`scene` is a scene name, or a whole scene in YAML (try it before saving)."""

@@ -1,0 +1,16 @@
+/* 0.05 theme. Colours and font: PLACEHOLDER until the band's brand assets arrive (SCOPE open
+   item); change them here and the logo in this folder. Every colour the UI uses is a variable. */
+:root {
+  --bg: #08080b;
+  --panel: #121218;
+  --panel-2: #1a1a22;
+  --line: #24242e;
+  --text: #d8d8e0;
+  --muted: #7c7c8c;
+  --accent: #6a5cff;
+  --ok: #2fbf71;
+  --warn: #e0a526;
+  --bad: #e0444b;
+  --cell-off: #16161c;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}

@@ -35,7 +35,7 @@ def test_program_change_toggles_master(engine, midi):
     assert midi.program(0) == "MASTER on"
 
 
-def test_drum_hit_flashes_with_velocity(engine, midi, view):
+def test_drum_hit_flashes_with_velocity(engine, midi, view, clock):
     midi.program(0)  # MASTER off
     assert midi.note(38, 127).startswith("flash bars")
     assert view("bar_1", "blue", 0) == 255

@@ -10,6 +10,9 @@ Channels are 1-16 as printed on the gear (mido uses 0-15).
 `port` (optional) ties a mapping to one MIDI input: any port whose name contains it (case doesn't
 matter), e.g. "H2MIDI" for the SamplePad through the H2MIDI Pro. A port-specific mapping wins over
 one without a port, so the SamplePad and the TD-25 can both send ch 10 notes and do different things.
+
+OSC messages share the same map: `{type: osc, address: /dmx/grand, action: grand_master}` (no
+channel or number). Faders (grand_master, sub_master, flash_level) take OSC or a MIDI CC.
 """
 
 from __future__ import annotations
@@ -18,11 +21,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from ..fixtures import ConfigError, Kind
 
-TYPES = ("note", "program_change", "control_change")
+TYPES = ("note", "program_change", "control_change", "osc")
 
 # action -> allowed extra params
 ACTIONS: dict[str, set[str]] = {
@@ -48,8 +49,10 @@ ACTIONS: dict[str, set[str]] = {
     "next_song": set(),
     "prev_song": set(),
     "tap_tempo": set(),
+    "speed": set(),
+    "busk": {"panel", "widget"},  # a busk widget: press / release, or a fader's value
 }
-CONTINUOUS = {"grand_master", "sub_master", "flash_level"}  # need a CC
+CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed"}  # need a CC or OSC
 
 
 @dataclass
@@ -60,9 +63,12 @@ class Mapping:
     action: str
     params: dict[str, Any] = field(default_factory=dict)
     port: str | None = None  # substring of the input port name; None = any port
+    address: str = ""  # OSC address (type osc)
 
     @property
     def key(self) -> tuple[str, int, int, str]:
+        if self.type == "osc":
+            return ("osc", 0, 0, self.address)  # OSC addresses are case-sensitive
         return (self.type, self.channel, self.number, (self.port or "").lower())
 
     def matches_port(self, port_name: str) -> bool:
@@ -73,6 +79,8 @@ class Mapping:
         return f"{self.action} {extra}".strip() + (f" [port {self.port}]" if self.port else "")
 
     def to_dict(self) -> dict[str, Any]:
+        if self.type == "osc":
+            return {"type": "osc", "address": self.address, "action": self.action, **self.params}
         d: dict[str, Any] = {"type": self.type, "channel": self.channel, "number": self.number}
         if self.port:
             d["port"] = self.port
@@ -80,10 +88,13 @@ class Mapping:
 
 
 def validate(m: Mapping) -> None:
-    where = f"{m.type} ch{m.channel} #{m.number}"
+    where = f"osc {m.address}" if m.type == "osc" else f"{m.type} ch{m.channel} #{m.number}"
     if m.type not in TYPES:
         raise ConfigError(f"{where}: type must be one of {TYPES}")
-    if not 1 <= m.channel <= 16 or not 0 <= m.number <= 127:
+    if m.type == "osc":
+        if not m.address.startswith("/") or " " in m.address:
+            raise ConfigError(f"{where}: an OSC address starts with / and has no spaces, e.g. /dmx/grand")
+    elif not 1 <= m.channel <= 16 or not 0 <= m.number <= 127:
         raise ConfigError(f"{where}: channel 1-16, number 0-127")
     if m.action not in ACTIONS:
         raise ConfigError(f"{where}: unknown action {m.action!r}")
@@ -92,8 +103,8 @@ def validate(m: Mapping) -> None:
     bad = set(m.params) - ACTIONS[m.action]
     if bad:
         raise ConfigError(f"{where}: {m.action} doesn't take {sorted(bad)}")
-    if m.action in CONTINUOUS and m.type != "control_change":
-        raise ConfigError(f"{where}: {m.action} needs a control_change")
+    if m.action in CONTINUOUS and m.type not in ("control_change", "osc"):
+        raise ConfigError(f"{where}: {m.action} needs a control_change or OSC")
     if m.action == "flash":
         if not m.params.get("fixtures"):
             raise ConfigError(f"{where}: flash needs fixtures")
@@ -103,6 +114,8 @@ def validate(m: Mapping) -> None:
     for action, key in (("select_show", "show"), ("select_set", "set"), ("select_scene", "scene")):
         if m.action == action and not m.params.get(key):
             raise ConfigError(f"{where}: {action} needs {key}")
+    if m.action == "busk" and (not m.params.get("panel") or not m.params.get("widget")):
+        raise ConfigError(f"{where}: busk needs panel and widget")
     if m.action == "sub_master":
         try:
             Kind(m.params.get("kind"))
@@ -132,7 +145,11 @@ class MidiMap:
         """key: (type, channel, number) or (type, channel, number, port)."""
         if len(key) == 3:
             key = (*key, "")
-        self._by_key.pop((key[0], key[1], key[2], (key[3] or "").lower()), None)
+        last = key[3] or ""
+        self._by_key.pop((key[0], key[1], key[2], last if key[0] == "osc" else last.lower()), None)
+
+    def get_osc(self, address: str) -> Mapping | None:
+        return self._by_key.get(("osc", 0, 0, address))
 
     def get(self, type_: str, channel: int, number: int, port_name: str | None = None) -> Mapping | None:
         """The mapping for this input. With a port name, a port-specific mapping wins."""
@@ -151,6 +168,11 @@ def parse_map(data: dict) -> MidiMap:
     for d in data.get("mappings") or []:
         d = dict(d)
         try:
+            if d.get("type") == "osc":
+                d.pop("type")
+                m = Mapping("osc", 0, 0, d.pop("action"), address=str(d.pop("address")), params=d)
+                out.append(m)
+                continue
             m = Mapping(d.pop("type"), int(d.pop("channel")), int(d.pop("number")), d.pop("action"),
                         port=d.pop("port", None), params=d)
         except KeyError as e:
@@ -160,8 +182,15 @@ def parse_map(data: dict) -> MidiMap:
 
 
 def load_map(path: str | Path) -> MidiMap:
-    return parse_map(yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {})
+    from ..versions import read_doc
+
+    return parse_map(read_doc(path, "midi"))
 
 
 def save_map(midimap: MidiMap, path: str | Path) -> None:
-    Path(path).write_text(yaml.safe_dump(midimap.to_dict(), sort_keys=False, allow_unicode=True), encoding="utf-8")
+    """Plain write, keeping the file's comments. The app saves through ShowStore instead
+    (validated and backed up); this is for tools and tests."""
+    from ..yamlio import update_text
+
+    p = Path(path)
+    p.write_text(update_text(p.read_text(encoding="utf-8") if p.exists() else None, midimap.to_dict()), encoding="utf-8")

@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 function Check($what) { if ($LASTEXITCODE -ne 0) { throw "$what failed (exit $LASTEXITCODE)" } }
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
-$version = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
+$version = (Select-String -Path dmx_suite\__init__.py -Pattern '^__version__\s*=\s*"(.+)"').Matches[0].Groups[1].Value
 Write-Host "Building 0.05 DMX Suite $version"
 
 python -m venv .build-venv; Check "venv"
@@ -31,6 +31,13 @@ $p = Start-Process -FilePath "dist\dmx-suite\0.05 DMX Suite.exe" -PassThru -Wait
     -ArgumentList "--shows", "`"$smokeShows`"", "app", "--sim", "--fresh", "--port", "8599", "--smoke-test", "10"
 Get-Content (Join-Path $env:TEMP "dmx-suite-smoke\logs\desktop.log") -ErrorAction SilentlyContinue
 if ($p.ExitCode -ne 0) { throw "desktop app smoke test failed (exit $($p.ExitCode))" }
+
+# and on a .dms show file (one file for the whole show)
+$smokeDms = Join-Path $env:TEMP "dmx-suite-smoke\smoke.dms"
+& dist\dmx-suite\dmx-suite.exe pack shows $smokeDms; Check "pack a .dms"
+& dist\dmx-suite\dmx-suite.exe --shows $smokeDms check; Check ".dms show file check"
+& dist\dmx-suite\dmx-suite.exe --shows $smokeDms app --sim --fresh --port 8597 --smoke-test 10
+Check "desktop app smoke test (.dms)"
 
 $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
 if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }

@@ -16,7 +16,7 @@ import sys
 import time
 
 from ..node import protocol as p
-from ..node.health import HealthTracker, State
+from ..node.health import HealthTracker
 from ..node.link import NodeLink, SerialTransport
 from ..node.sim import SimTransport, default_sim
 
@@ -80,7 +80,7 @@ def print_nodes(health: HealthTracker) -> None:
         print("nodes: none heard")
         return
     print(f"{'MAC':17}  {'state':7}  {'type':6}  {'name':16}  {'uni':3}  {'fw':6}  {'rssi':>5}  {'loss':>4}  {'age':>7}")
-    for r in health.nodes.values():
+    for r in health.records():
         hb = r.heartbeat
         if hb is None:
             print(f"{r.mac:17}  {r.state.value:7}  {'-':6}  {r.name:16}")

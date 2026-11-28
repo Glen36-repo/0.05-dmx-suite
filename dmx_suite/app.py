@@ -6,51 +6,70 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
+from . import effects
+from .busk import Override
 from .engine import Engine
+from .fixtures import EMITTERS, ConfigError, Kind
 from .layout import full_layout
-from .fixtures import EMITTERS, Kind
+from .look import INTENSITY_RULE1
 from .midi.map import ACTIONS
 from .midi.monitor import MidiMonitor
 from .midi.router import MidiRouter
 from .node.health import HealthEvent
 from .output import NodeSerialDriver, OutputDriver
+from .profile import resolve_exempt
+from .rig import parse_placement
 from .scenes import ScenePlayer, parse_scene
 from .showctl import ShowController
 from .showfiles import ShowFiles, load_show
 from .store import LockedError, ShowStore
+from .versions import upgrade
 
 log = logging.getLogger(__name__)
 
 
 class App:
     def __init__(self, files: ShowFiles, drivers: list[OutputDriver], state_path: Path | None = None,
-                 log_dir: Path | None = None, rig: str = "full", look: str = "default", midi: str = "default") -> None:
+                 log_dir: Path | None = None, rig: str = "full", look: str = "default", midi: str = "default",
+                 clock: Any = None) -> None:
         self.files = files
         self.names = (rig, look, midi)
-        self.engine = Engine(files.rig, drivers, files.look)
+        self.engine = Engine(files.rig, drivers, files.look, **({"clock": clock} if clock else {}))
         self.ctl = ShowController(self.engine, files, state_path)
         self.monitor = MidiMonitor()
         self.router = MidiRouter(self.engine, files.midimap, self.monitor, self.ctl)
+        self.router.busk = self.busk  # MIDI / OSC action `busk`
         self.gig_lock = False
-        self.store = ShowStore(files.root, lambda: self.gig_lock)
+        self.project: Any = None  # package.DmsProject when running a .dms show file
+        self.on_restart: Any = None  # restart the app on another show file (set by the cli)
+        self.store = ShowStore(files.root, self._store_locked)
         self.log_dir = log_dir
         self.alerts: list[dict[str, Any]] = []  # node dropped / weak, newest last
+        self.show_problem: dict[str, str] | None = None  # running the last good show files (cli start-up)
+        self.osc: Any = None  # osc.OscServer, when the rig turns OSC on
+        self.osc_error: str | None = None
         self.midi_inputs: Any = None  # MidiInputs when running live
         self.clients: dict[str, dict[str, Any]] = {}  # e.g. "claude": {first, last, calls, last_call}
         self.screens: dict[int, dict[str, Any]] = {}  # open browser streams: id -> {ip, local, since}
         self._fps = (time.monotonic(), 0, 0.0)  # (window start, frames at start, last rate)
         self._lock = threading.RLock()
         self.started = time.time()
+        self.node_setup: dict[str, Any] = {}  # last node set-up: when, firmware, what was pushed, problems
         for d in drivers:
             if isinstance(d, NodeSerialDriver):
                 d.link.health.expect(files.rig.nodes)
                 d.link.health.listeners.append(self._health_event)
+                d.on_connect = self.setup_node
+                if d.link.node_fw is not None:  # it announced itself before the app was built
+                    d._connected()
         self._load_lock_state(state_path)
+        self._loaded_sig = self._rig_sig()
 
     # ------------------------------------------------------------------ gig lock
 
@@ -65,6 +84,25 @@ class App:
             self._lock_path.write_text("on" if on else "off")
         if on:
             self.engine.end_preview()
+
+    def _store_locked(self) -> bool | str:
+        if self.gig_lock:
+            return True
+        if self.project is not None and self.project.read_only:
+            return f"{self.project.name} is open on another computer: read-only here"
+        return False
+
+    def attach_project(self, project: Any) -> None:
+        """Run on a .dms: every saved change is packed back into it."""
+        self.project = project
+        self.store.after_commit = project.save
+
+    def project_info(self) -> dict[str, Any] | None:
+        p = self.project
+        if p is None:
+            return None
+        return {"name": p.name, "path": str(p.dms), "read_only": p.read_only, "error": p.save_error,
+                "notes": list(p.notes)}
 
     def require_unlocked(self, what: str) -> None:
         if self.gig_lock:
@@ -87,10 +125,10 @@ class App:
                 log.exception("health log write failed")
 
     def nodes(self) -> list[dict[str, Any]]:
-        out = []
+        out: list[dict[str, Any]] = []
         for d in self.engine.drivers:
             if isinstance(d, NodeSerialDriver):
-                for r in d.link.health.nodes.values():
+                for r in d.link.health.records():
                     hb = r.heartbeat
                     out.append({
                         "mac": r.mac, "name": r.name, "state": r.state.value, "expected": r.expected,
@@ -102,6 +140,123 @@ class App:
             else:
                 out.append({"mac": None, "name": d.name, "state": "connected", "driver": d.status()})
         return out
+
+    # ------------------------------------------------------------------ 0.05 node set-up (R8)
+
+    MIN_NODE_FW = (0, 2, 0)
+
+    def fallback_frames(self) -> dict[int, bytes]:
+        """What each universe shows if the laptop goes away: the static look, MASTER on, full
+        masters, no haze, run through the rules like any frame."""
+        from .faders import Masters
+        from .rules import ControlState, RuleLayer
+
+        rig = self.engine.rig
+        frames = RuleLayer(rig).render(self.files.look, ControlState(True, False, {}, 0.0), Masters(1.0, {}, 1.0, 0.0))
+        return {u: bytes(f) for u, f in frames.items()}
+
+    def setup_node(self, driver: Any) -> dict[str, Any]:
+        """A node connected or restarted: store the fallback looks, move it to the rig's radio
+        channel, and note anything to fix (old firmware, development pairing key)."""
+        from .node import protocol as p
+
+        link = driver.link
+        out: dict[str, Any] = {"at": time.time(), "fw": ".".join(map(str, link.node_fw or ())), "fallbacks": {},
+                               "problems": []}
+        if link.node_fw is not None and tuple(link.node_fw) < self.MIN_NODE_FW:
+            out["problems"].append(f"node firmware {out['fw']} is older than this app expects "
+                                   f"({'.'.join(map(str, self.MIN_NODE_FW))}): update it (firmware/README.md)")
+        own = next((r.heartbeat.universe for r in link.health.records()
+                    if r.heartbeat and r.heartbeat.node_type == p.NodeType.DMX_TX), 0) or 0
+        frames = self.fallback_frames()
+        universes = sorted(frames, key=lambda u: (u != own, u))[:p.MAX_FALLBACKS if link.v11 else 1]
+        for u in universes:
+            if not link.v11 and u != own:
+                continue
+            look = p.FallbackLook(hold_ms=2000, period_s=0, level=0, rgb_addr=[], base=frames[u])
+            code = link.set_fallback(look, universe=u if link.v11 else None, timeout=2.0)
+            out["fallbacks"][u] = code.name.lower() if code is not None else "no answer"
+        skipped = [u for u in frames if u not in universes]
+        if skipped:
+            out["problems"].append(f"universes {skipped} have no fallback look (the node keeps {p.MAX_FALLBACKS})")
+        ch = self.engine.rig.radio_channel
+        if ch is not None and link.v11:
+            code = link.set_channel(ch, timeout=2.0)
+            out["channel"] = ch if code == p.AckCode.OK else f"not set ({code.name.lower() if code else 'no answer'})"
+        self.node_setup = out
+        return out
+
+    def node_problems(self) -> list[str]:
+        out = list(self.node_setup.get("problems", []))
+        for d in self.engine.drivers:
+            if isinstance(d, NodeSerialDriver):
+                st = d.link.stats.last_status
+                if st is not None and st.dev_key:
+                    out.append("node built with the development pairing key: set PAIRING_KEY for the gig")
+                if st is not None and st.dmx_failed:
+                    out.append("node's DMX output didn't start: check the Unit DMX wiring")
+        return out
+
+    def assign_node(self, mac: str, universe: int, name: str) -> dict[str, Any]:
+        from .node.protocol import AckCode, parse_mac
+
+        self.require_unlocked("naming nodes")
+        code, confirmed = self.node_link().assign_confirmed(parse_mac(mac), universe, name)
+        if code != AckCode.OK:
+            raise ValueError(f"node answered {code.name if code is not None else 'nothing'}")
+        return {"ok": True, "confirmed": confirmed}
+
+    def replace_node(self, old_mac: str, new_mac: str) -> dict[str, Any]:
+        """A node or receiver died and a spare is in: give the spare the dead one's name and
+        universe, and put its MAC in the rig in place of the old one."""
+        self.require_unlocked("replacing a node")
+        link = self.node_link()
+        recs = {r.mac: r for r in link.health.records()}
+        old, new = recs.get(old_mac.upper()), recs.get(new_mac.upper())
+        if old is None:
+            raise ValueError(f"no node {old_mac}")
+        if new is None or new.heartbeat is None:
+            raise ValueError(f"{new_mac} isn't heard: switch the spare on first")
+        if old.heartbeat and new.heartbeat.node_type != old.heartbeat.node_type:
+            raise ValueError("the spare is a different kind of board")
+        name = old.name
+        if not name:
+            raise ValueError("the old node has no name to pass on")
+        universe = old.heartbeat.universe if old.heartbeat and old.heartbeat.universe is not None else 0
+        result = self.assign_node(new_mac, universe, name)
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        nodes = [n for n in data.get("nodes") or [] if str(n.get("mac", "")).upper() != old_mac.upper()]
+        nodes.append({"mac": new_mac.upper(), "name": name})
+        data["nodes"] = nodes
+        self.store.put("rig", rig_name, data, f"replace node {name}: {old_mac} -> {new_mac}")
+        with link.health._lock:
+            link.health.nodes.pop(old_mac.upper(), None)
+        self.reload()
+        return {**result, "name": name, "universe": universe}
+
+    def set_radio_channel(self, channel: int) -> dict[str, Any]:
+        from .node.protocol import AckCode
+
+        self.require_unlocked("changing the radio channel")
+        link = self.node_link()
+        if not link.v11:
+            raise ValueError("the node's firmware can't change channel: update it to 0.2")
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        data["radio_channel"] = int(channel)
+        self.store.put("rig", rig_name, data, f"radio channel {channel}")  # checked (1-13) like any edit
+        self.reload()
+        code = link.set_channel(int(channel), timeout=2.0)
+        if code != AckCode.OK:
+            raise ValueError(f"node answered {code.name if code is not None else 'nothing'}")
+        return {"ok": True, "channel": int(channel)}
+
+    def node_driver(self) -> Any:
+        for d in self.engine.drivers:
+            if isinstance(d, NodeSerialDriver):
+                return d
+        raise ValueError("no 0.05 node output in this rig")
 
     def node_link(self) -> Any:
         for d in self.engine.drivers:
@@ -133,16 +288,37 @@ class App:
         out: list[dict[str, Any]] = []
         fps = self.engine_fps()
         running = self.engine._thread is not None
-        out.append({"kind": "engine", "name": "Engine", "state": ("ok" if fps >= 35 else "warn") if running else "warn",
-                    "detail": f"{fps:.0f} fps" if running else "not running"})
+        e = self.engine
+        fault_age = e.clock() - e.fault_at if e.fault is not None and e.fault_at is not None else None
+        if fault_age is not None and fault_age < 300:
+            out.append({"kind": "engine", "name": "Engine", "state": "bad",
+                        "detail": f"fault {_ago(fault_age)} ago, back to the static look: {e.fault}"})
+        else:
+            out.append({"kind": "engine", "name": "Engine", "state": ("ok" if fps >= 35 else "warn") if running else "warn",
+                        "detail": f"{fps:.0f} fps" if running else "not running"})
+        p = self.project
+        if p is not None:
+            state = "bad" if p.save_error else "warn" if p.read_only or p.recovered else "ok"
+            detail = p.save_error or "; ".join(p.notes) or p.name
+            out.append({"kind": "files", "name": "Show file", "state": state, "detail": detail})
+        if self.show_problem:
+            out.append({"kind": "files", "name": "Show files", "state": "bad",
+                        "detail": f"running the last good version (backup {self.show_problem['backup']}): "
+                                  f"{self.show_problem['problem']}"})
         for d in self.engine.drivers:
             out.append(d.state())
+        for msg in self.node_problems():
+            out.append({"kind": "node", "name": "0.05 node", "state": "warn", "detail": msg})
         if self.midi_inputs is not None:
             for m in self.midi_inputs.status():
                 out.append({"kind": "midi", "name": f"MIDI {m['name']}", "state": "ok" if m["connected"] else "bad",
                             "detail": m.get("port") or ("connected" if m["connected"] else "unplugged")})
         else:
             out.append({"kind": "midi", "name": "MIDI", "state": "sim", "detail": "simulated input"})
+        if self.osc is not None:
+            out.append(self.osc.state())
+        elif self.osc_error:
+            out.append({"kind": "osc", "name": "OSC", "state": "bad", "detail": self.osc_error})
         c = self.clients.get("claude")
         now = time.time()
         if c is None or now - c["last"] > 75:
@@ -164,30 +340,110 @@ class App:
     # ------------------------------------------------------------------ reload after edits
 
     def reload(self) -> list[str]:
-        """Pick up edited scenes, palettes, shows, setlists and MIDI map without stopping.
-        Fixture and rig changes need a restart (the patch is live on the rig)."""
+        with self._lock:  # the web page, Claude and a restore can all reload at once
+            return self._reload()
+
+    def _rig_sig(self) -> str:
+        """What the patch and rig were loaded from (a change means the rig is rebuilt live)."""
+        import hashlib
+
+        h = hashlib.sha1()
+        root, rig = self.files.root, self.names[0]
+        for p in (root / "fixtures.yaml", *sorted((root / "rigs").glob(f"{rig}.y*ml"))):
+            try:
+                h.update(p.read_bytes())
+            except OSError:
+                pass
+        h.update(rig.encode())
+        return h.hexdigest()
+
+    def switch_rig(self, name: str) -> list[str]:
+        """Run another rig config (e.g. the small rig) without a restart."""
+        self.require_unlocked("switching rig")
+        if not (self.files.root / "rigs" / f"{name}.yaml").exists():
+            raise ValueError(f"no rig {name!r}")
+        with self._lock:
+            old = self.names
+            self.names = (name, old[1], old[2])
+            try:
+                return self._reload()
+            except Exception:
+                self.names = old
+                raise
+
+    def _reload(self) -> list[str]:
+        """Pick up edited show files without stopping. A changed patch or rig (fixtures, addresses,
+        profile, limits, haze...) is rebuilt and swapped in on the next frame; what's playing is
+        built again on it. Output and input settings (DMX interfaces, MIDI ports, OSC) still need
+        a restart."""
         rig, look, midi = self.names
         new = load_show(self.files.root, rig, look, midi)
         notes = []
-        if new.patch.fixtures.keys() != self.files.patch.fixtures.keys() or new.rig.present != self.files.rig.present:
-            notes.append("fixture/rig changes take effect after a restart")
+        sig = self._rig_sig()
+        if sig != getattr(self, "_loaded_sig", None) and hasattr(self, "_loaded_sig"):
+            old_rig = self.files.rig
+            if (new.rig.outputs, new.rig.midi_inputs, new.rig.osc) != (old_rig.outputs, old_rig.midi_inputs, old_rig.osc):
+                notes.append("output, MIDI input and OSC changes take effect after a restart")
+                new.rig.outputs, new.rig.midi_inputs, new.rig.osc = old_rig.outputs, old_rig.midi_inputs, old_rig.osc
+            self.engine.swap_rig(new.rig, new.look)
+            self._loaded_sig = sig
+            self.files = new
+            self.ctl.files = new
+            self.router.map = new.midimap
+            self.ctl.replay()
+            notes.append(f"rig {new.rig.name} updated live")
+            if self.show_problem:
+                notes.append("show files fixed: now running them, not the last good version")
+                self.show_problem = None
+            return notes
+        self._loaded_sig = sig
         live = self.files.rig
-        live.stage, live.layout = new.rig.stage, new.rig.layout  # the stage plan is display only: apply now
+        live.layout = new.rig.layout  # the layout is display only: apply now
+        for fid, fx in live.patch.fixtures.items():  # groups are labels: apply now too
+            if fid in new.patch.fixtures:
+                fx.groups = list(new.patch.fixtures[fid].groups)
+        live.exempt = resolve_exempt(live.profile, live.patch, live.present)
         new.rig, new.patch = live, self.files.patch  # keep the live patch
         self.files = new
         self.ctl.files = new
         self.router.map = new.midimap
+        if self.show_problem:
+            notes.append("show files fixed: now running them, not the last good version")
+            self.show_problem = None
         return notes
 
-    def save_layout(self, stage: dict[str, Any] | None, layout: dict[str, Any]) -> str:
-        """Write the stage plan into this rig's file (validated + backed up like any edit)."""
+    def make_starter(self, overwrite: bool = False) -> dict[str, Any]:
+        """Write the starter show (and its scenes) for the running rig, then play it."""
+        from .starters import starter
+        from .versions import stamped
+
+        self.require_unlocked("making the starter show")
+        scenes, show = starter(self.engine.rig)
+        changes: dict[Any, str | None] = {}
+        exists = []
+        for name, data in scenes.items():
+            p = self.store.path("scene", name)
+            exists += [p.name] if p.exists() else []
+            changes[p] = self.store.text_for(p, stamped(data))
+        p = self.store.path("show", "starter")
+        exists += [p.name] if p.exists() else []
+        changes[p] = self.store.text_for(p, stamped(show))
+        if exists and not overwrite:
+            raise ValueError(f"there's already a starter show ({', '.join(exists)}): replace it?")
+        bid = self.store.apply(changes, "starter show")
+        notes = self.reload()
+        self.ctl.select_show("starter", "calm")
+        return {"backup": bid, "scenes": sorted(scenes), "notes": notes}
+
+    def save_layout(self, layout: dict[str, Any]) -> str:
+        """Write the light layout into this rig's file (validated + backed up like any edit)."""
         rig_name = self.names[0]
         data = self.store.read("rig", rig_name)
-        if stage is not None:
-            data["stage"] = {"width": round(float(stage["width"]), 2), "depth": round(float(stage["depth"]), 2)}
-        data["layout"] = {fid: {"x": round(float(p["x"]), 2), "y": round(float(p["y"]), 2),
-                                "rot": round(float(p.get("rot", 0)) % 360)} for fid, p in layout.items()}
-        bid = self.store.put("rig", rig_name, data, f"stage plan for rig {rig_name}")
+        if not isinstance(layout, dict):
+            raise ValueError("layout must map fixture ids to {x, y, rot, shape}")
+        data["layout"] = {fid: parse_placement(fid, p).to_dict() for fid, p in layout.items()}
+        data.pop("stage", None)
+        bid = self.store.put("rig", rig_name, data, f"light layout for rig {rig_name}")
         self.reload()
         return bid
 
@@ -200,12 +456,125 @@ class App:
                 raise ValueError(f"no scene {scene!r}")
             sc = self.files.scenes[scene]
         else:
+            scene = upgrade(scene, "scene", "preview")
             sc = parse_scene(scene, self.files.patch, self.files.palettes, scene.get("name", "preview"))
+            if sc.uses_intensity and self.engine.rig.profile.master_gate:
+                raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
         self.engine.preview(ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff), seconds, sc)
         msg = f"previewing {sc.name} for {seconds:.0f} s, then back to {self.ctl.describe()}"
-        if not self.engine.master:
+        if self.engine.rig.profile.master_gate and not self.engine.master:
             msg += " (MASTER is off, so the rig stays dark)"
         return msg
+
+    # ------------------------------------------------------------------ busking
+
+    def busk(self, panel_key: str, wid: str, down: bool = True, level: float | None = None) -> str:
+        """A busk widget pressed (down), let go, or its fader moved (level 0-1). From the Busk page,
+        or MIDI / OSC (action busk)."""
+        panel = self.files.panels.get(panel_key)
+        if panel is None:
+            raise ValueError(f"no busk panel {panel_key!r}")
+        w = panel.widget(wid)
+        e, key = self.engine, f"{panel_key}/{wid}"
+        present = frozenset(f for f in w.fixtures if f in e.rig.present)
+        held = any(o.key == key for o in e.held())
+        if w.type in ("colour", "flash", "solo"):
+            momentary = w.type == "solo" or w.mode == "flash"
+            if momentary and not down:
+                e.release(key, 0.0 if w.type == "flash" or w.mode == "flash" else panel.release_fade_s)
+                return f"{w.label} off"
+            if not down:
+                return "release"
+            if held and not momentary:
+                e.release(key, panel.release_fade_s)
+                return f"{w.label} off"
+            if w.type == "solo":
+                keep = frozenset(e.rig.exempt) - present  # the kick light keeps its own rules (rule 3)
+                e.hold(Override(key, "solo", present, keep=keep))
+            else:
+                e.hold(Override(key, "colour", present, colour=w.colour))
+            return f"{w.label} on"
+        if w.type == "effect":
+            if not down:
+                return "release"
+            if held:
+                e.release(key, panel.release_fade_s)
+                return f"{w.label} off"
+            assert w.scene is not None
+            sc = self.files.scenes[w.scene]
+            e.hold(Override(key, "effect", source=ScenePlayer(sc, e.rig, e.clock(), self.ctl.tempo.eff)))
+            return f"{w.label} on"
+        if w.type == "go":
+            if not down:
+                return "release"
+            if w.scene:
+                self.ctl.select_scene(w.scene)
+            elif w.show:
+                self.ctl.select_show(w.show, w.set)
+            return self.ctl.describe()
+        if w.type == "fader":
+            if level is None:
+                return "fader: needs a value"
+            t = w.target or ""
+            if t == "grand":
+                e.set_grand(level)
+            elif t == "flash_level":
+                e.set_flash_level(level)
+            elif t == "speed":
+                self.ctl.set_speed(4 ** (2 * level - 1))
+            elif t.startswith("sub:"):
+                e.set_sub(t[4:], level)
+            return f"{w.label} {round(level * 100)}%"
+        # haze
+        if w.action == "boost":
+            ok = e.haze_boost(down)
+            return f"{w.label} {'on' if down and ok else 'off'}"
+        if not down:
+            return "release"
+        {"off": e.haze_stop, "manual": e.haze_toggle_manual, "pulse": lambda: e.haze_mode("pulse")}[str(w.action)]()
+        return f"haze {w.action}"
+
+    def validate_scene(self, data: Any) -> dict[str, Any]:
+        """Check scene data the way saving would, without saving (scene builder). Says which
+        layer is at fault so the builder can mark it."""
+        try:
+            if not isinstance(data, dict):
+                raise ValueError("a scene is a mapping with layers")
+            data = upgrade(data, "scene", "scene")
+            sc = parse_scene(data, self.files.patch, self.files.palettes, data.get("name") or "scene")
+            if sc.uses_intensity and self.engine.rig.profile.master_gate:
+                raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
+        except (ConfigError, ValueError, TypeError, KeyError, AttributeError) as e:
+            m = re.search(r"layer (\d+)", str(e))
+            return {"ok": False, "error": str(e), "layer": int(m.group(1)) if m else None}
+        return {"ok": True, "length_s": sc.length, "layers": len(sc.layers)}
+
+    def _busk_state(self) -> dict[str, Any]:
+        held = self.engine.held()
+        lights: dict[str, list[str]] = {}
+        for o in held:
+            for fid in (o.fixtures if o.kind != "effect" else []):
+                lights.setdefault(fid, []).append(o.key)
+        return {"held": [o.key for o in held], "lights": lights}
+
+    def effects_catalogue(self) -> dict[str, Any]:
+        """What the scene builder needs: every effect's settings, and the palette to pick from."""
+        pal = self.files.palettes
+
+        def hexed(c: dict[str, float]) -> str:
+            r = min(1.0, c.get("red", 0) + c.get("white", 0) + c.get("amber", 0))
+            g = min(1.0, c.get("green", 0) + c.get("white", 0) + 0.6 * c.get("amber", 0))
+            b = min(1.0, c.get("blue", 0) + c.get("white", 0) + c.get("uv", 0))
+            return "#" + "".join(f"{round(v * 255):02x}" for v in (r, g, b))
+
+        return {
+            "effects": effects.schemas(),
+            "blends": list(effects.BLENDS),
+            "colours": {k: hexed(c) for k, c in pal.colours.items()},
+            "positions": sorted(pal.positions),
+            "gobos": sorted(pal.gobos),
+            "intensity": not self.engine.rig.profile.master_gate,  # scenes may set intensity
+        }
 
     # ------------------------------------------------------------------ snapshot for the UI
 
@@ -254,6 +623,12 @@ class App:
         return {
             "time": time.time(),
             "master": e.master,
+            "profile": e.rig.profile.summary(),
+            "tempo": self.ctl.tempo.status(e.clock()),
+            "busk": self._busk_state(),
+            "fault": {"message": e.fault, "count": e.faults} if e.fault else None,
+            "show_problem": self.show_problem,
+            "project": self.project_info(),
             "blackout": e.blackout,
             "gig_lock": self.gig_lock,
             "grand": e.masters.grand.target,
@@ -269,6 +644,7 @@ class App:
                                                    for (u, c), v in e.channel_test.items()]},
             "fixtures": self.fixture_view(),
             "nodes": self.nodes(),
+            "node_setup": self.node_setup,
             "alerts": self.alerts[-5:],
             "learning": self.router.learning,
             "rig": e.rig.name,
@@ -280,19 +656,28 @@ class App:
         """Names for the UI's buttons and lists."""
         f = self.files
         return {
-            "shows": {k: {"name": s.name, "sets": list(s.sets), "default_set": s.default_set} for k, s in f.shows.items()},
+            "shows": {k: {"name": s.name, "sets": list(s.sets), "default_set": s.default_set,
+                          "steps": {sk: [{"scene": st.scene, "name": f.scenes[st.scene].name, "repeats": st.repeats,
+                                          "hold_s": st.hold_s, "hold_beats": st.hold_beats}
+                                         for st in ss.steps] for sk, ss in s.sets.items()}}
+                      for k, s in f.shows.items()},
             "scenes": {k: s.name for k, s in f.scenes.items()},
             "setlists": {k: {"name": s.name, "songs": [x.name for x in s.songs]} for k, s in f.setlists.items()},
             "positions": sorted(f.palettes.positions),
             "fixtures": [{"id": fx.id, "kind": fx.kind.value, "type": fx.type.name, "colour_only": fx.type.colour_only,
                           "moves": fx.type.has("pan") and not fx.type.colour_only, "pixels": fx.type.pixels,
+                          "gobo": fx.type.has("gobo"), "wheel": fx.type.has("colour_wheel"),
                           "pan_range": fx.type.pan_range, "tilt_range": fx.type.tilt_range}
                          for fx in self.engine.rig.fixtures],
-            "stage": {"width": self.engine.rig.stage[0], "depth": self.engine.rig.stage[1]},
-            "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot} for fid, p in full_layout(self.engine.rig).items()},
+            "layout": {fid: {"x": p.x, "y": p.y, "rot": p.rot, "shape": p.shape, "cols": p.cols}
+                       for fid, p in full_layout(self.engine.rig).items()},
             "rig_name": self.names[0],
+            "rigs": sorted(p.stem for p in (self.files.root / "rigs").glob("*.yaml")),
             "groups": self.engine.rig.patch.groups(),
             "actions": sorted(ACTIONS),
+            "panels": {k: {"name": p.name, "widgets": [{"id": w.id, "type": w.type, "label": w.label, "mode": w.mode,
+                                                         "target": w.target, "action": w.action} for w in p.widgets]}
+                       for k, p in f.panels.items()},
         }
 
 

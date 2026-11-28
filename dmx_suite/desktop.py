@@ -14,8 +14,9 @@ import logging
 import sys
 import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 
@@ -36,7 +37,7 @@ def running_ui(port: int, timeout: float = 1.0) -> bool:
     """True if this app's UI is already being served on the port (the app is already open)."""
     try:
         with urllib.request.urlopen(ui_url(port), timeout=timeout) as r:
-            return r.status == 200 and f"<title>{TITLE}</title>".encode() in r.read(4096)
+            return r.status == 200 and b'<meta name="application-name" content="dmx-suite">' in r.read(4096)
     except (OSError, ValueError):
         return False
 
@@ -72,6 +73,7 @@ def make_tray(on_open: Callable[[], None], on_blackout: Callable[[], None], is_b
         from PIL import Image
     except Exception:  # noqa: BLE001 - tray is optional (e.g. Linux without an indicator)
         return None
+    image: Any
     try:
         image = Image.open(ICON)
     except OSError:
@@ -83,6 +85,51 @@ def make_tray(on_open: Callable[[], None], on_blackout: Callable[[], None], is_b
         pystray.MenuItem("Quit (lights off)", lambda: on_quit()),
     )
     return pystray.Icon("dmx-suite", image, TITLE, menu)
+
+
+class Bridge:
+    """Called from the page (window.pywebview.api): native file dialogs for show files."""
+
+    def __init__(self, desktop: Desktop) -> None:
+        self._desktop = desktop
+
+    def pick(self, mode: str, suggested: str = "") -> str | None:
+        import webview
+
+        w = self._desktop.window
+        kinds = ("Show files (*.dms)",)
+        dialog = getattr(webview, "FileDialog", None)
+        if mode == "save":
+            kind = dialog.SAVE if dialog else webview.SAVE_DIALOG
+            got = w.create_file_dialog(kind, save_filename=suggested or "show.dms", file_types=kinds)
+        else:
+            kind = dialog.OPEN if dialog else webview.OPEN_DIALOG
+            got = w.create_file_dialog(kind, file_types=kinds)
+        if not got:
+            return None
+        return str(got[0] if isinstance(got, (list, tuple)) else got)
+
+
+def hand_over(port: int, shows: Any) -> bool:
+    """Another copy is running: ask it to open this show file instead. True if it took it."""
+    import json as _json
+
+    from .package import is_dms
+    from .paths import app_token_file
+
+    if not is_dms(shows):
+        return False
+    try:
+        saved_port, token = app_token_file().read_text(encoding="utf-8").split()
+        if int(saved_port) != port:
+            return False
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/project/open", method="POST",
+                                     data=_json.dumps({"path": str(Path(shows).resolve())}).encode(),
+                                     headers={"Content-Type": "application/json", "X-DMX-Token": token})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status == 200
+    except (OSError, ValueError):
+        return False
 
 
 class Desktop:
@@ -134,7 +181,10 @@ class Desktop:
     def create(self) -> int:
         """Set up the window (and engine). Returns the exit code to use after the window closes."""
         port = self.args.port
-        if running_ui(port):  # already open: another window on the running engine
+        if running_ui(port):  # already open: hand it the show file (double-clicked), or another window on it
+            dms = getattr(self.args, "dms_path", None)
+            if dms is not None and hand_over(port, dms):
+                time.sleep(3)  # it restarts on the file
             self.window = self.webview.create_window(TITLE, ui_url(port), **WINDOW)
             return 0
         try:
@@ -146,20 +196,22 @@ class Desktop:
             log.exception("start-up failed")
             self.window = self.webview.create_window(TITLE, html=error_page("Couldn't start", str(e)), **WINDOW)
             return 1
-        self.window = self.webview.create_window(TITLE, ui_url(self.session.web.port), **WINDOW)
+        self.window = self.webview.create_window(TITLE, ui_url(self.session.web.port), js_api=Bridge(self), **WINDOW)
         self.window.events.closing += self.on_closing
         self.tray = make_tray(self.open, self.blackout, self.is_blackout, self.quit)
         return 0
 
     def smoke(self, seconds: float) -> None:
-        """Build check: wait for the page, record its title, quit."""
+        """Build check: wait for the page, check it's this app's UI and it started, quit."""
         time.sleep(seconds)
         try:
-            title = self.window.evaluate_js("document.title")
+            app = self.window.evaluate_js(
+                "(document.querySelector('meta[name=application-name]') || {}).content"
+                " + (document.body.classList.contains('ready') ? ' ready' : ' not ready')")
         except Exception as e:  # noqa: BLE001
-            title = f"error: {e}"
-        print(f"smoke test: window title {title!r}", flush=True)
-        self.smoke_ok = title == TITLE
+            app = f"error: {e}"
+        print(f"smoke test: page {app!r}", flush=True)
+        self.smoke_ok = app == "dmx-suite ready"
         self.quit()
 
     def run(self) -> int:
@@ -187,7 +239,9 @@ def run_desktop(args: argparse.Namespace) -> int:
     from .cli import start_session
 
     if getattr(sys, "frozen", False) or sys.stdout is None:
-        log_to_file(args.shows.parent / "logs")
+        from .paths import log_dir
+
+        log_to_file(log_dir())
     try:
         import webview
     except ImportError:
@@ -201,7 +255,8 @@ def main(argv: list[str] | None = None) -> int:
     from .cli import main as cli_main
 
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"app", "run", "check", "midi-ports", "midi-monitor", "mcp", "claude-setup", "addresses", "import-ofl"}
+    commands = {"app", "run", "check", "midi-ports", "midi-monitor", "mcp", "claude-setup", "addresses", "import-ofl",
+                "export-ofl", "pack", "unpack", "update-check"}
     if not any(a in commands for a in argv):
         # global options (--shows X) go before the command, the rest (e.g. --sim) after it
         head = argv[:2] if argv[:1] == ["--shows"] else [a for a in argv[:1] if a.startswith("--shows=")]

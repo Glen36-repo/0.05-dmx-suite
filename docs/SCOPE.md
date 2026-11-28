@@ -4,14 +4,17 @@ Nov 26, 2026 · @Glen Mahony
 
 ## Purpose and goals
 
-Replace Daslight 5 and the LR512 with a self-built show engine on the laptop, driving the band's own ESP32 DMX nodes over USB. No subscription, no locked hardware, and the show rules are written into the software instead of worked around.
+A general-use live lighting program for Windows: build scenes and shows on screen, run them from MIDI or OSC with no operator at the laptop, and output DMX through USB interfaces, Art-Net/sACN or the 0.05 ESP32 nodes. No subscription, no locked hardware, and the show rules are written into the software instead of worked around.
 
-- Run the band's rig live from MIDI (FCB1010, TD-25, SamplePad) with no operator at the laptop
-- Automatic shows that follow the band's lighting rules out of the box
+The band 0.05 is the reference setup: it replaces their Daslight 5 and LR512, and the "0.05 band" rule profile matches their rig rules.
+
+- Everything can be done in the UI with no YAML or Claude; Claude (MCP) is an optional extra
+- Run a rig live from MIDI (e.g. FCB1010, TD-25, SamplePad) or OSC with no operator at the laptop
+- Automatic shows that follow the active rule profile out of the box
 - Laptop talks straight to the CoreS3 node by USB serial; node handles DMX out and wireless to the receivers
-- Simple enough for one person (Glen) to maintain, edit and fix at a gig
+- Simple enough for one person to maintain, edit and fix at a gig
 
-Out of scope for v1: video, timecode, audio-reactive BPM, multi-universe, and a general-purpose fixture editor.
+Out of scope: video, timecode and audio-reactive BPM (v1 and v2); macOS/Linux builds.
 
 ## Rig and I/O
 
@@ -37,17 +40,23 @@ One DMX universe (512 ch) covers the rig now; the engine supports more for phase
 
 ## Functional requirements
 
-The engine enforces the rig rules itself, so no look can break them.
+The engine enforces the rules itself in the rule layer, so no look can break them. From v2 the rules are split in two.
 
-**Hard rules (engine-level):**
+**Safety rules (always on, for every user; scenes can't turn them off):**
 
-- MASTER owns on/off; scenes never set dimmer channels, only colour
-- MASTER off → drum hits flash the rig (see Drum flash, priority feature)
-- MASTER does not affect the kick-drum light
-- No background glow: any channel not in the active effect is fully off
-- HAZE is never set by scenes or auto shows; it runs only from the Haze controls
-- Kick light bright most of the time, follows the active effect on bars or movers
-- U'King heads colour only; MHL36 speed channel 0 = fastest
+- No background glow: any channel not in the active effect is fully off (rule 4)
+- HAZE is never set by scenes or auto shows; it runs only from the Haze controls (rule 5)
+- Grand master scales intensity only: never pan/tilt, colour choice or haze (rule 6)
+- Moving head pan/tilt limits from the active rig config are always enforced (rule 8)
+
+**Profile rules (settings per rig config; "Generic" and "0.05 band" profiles ship):**
+
+- MASTER owns on/off; scenes never set dimmer channels, only colour (rule 1)
+- MASTER off → drum hits flash the rig (rule 2, see Drum flash)
+- Fixtures excluded from MASTER, e.g. the kick-drum light (rule 3)
+- Colour-only heads and speed-channel direction are set in the fixture definition (rule 7), e.g. U'King heads colour only, MHL36 speed channel 0 = fastest
+
+The "0.05 band" profile turns on rules 1-3 with the kick light excluded from MASTER (bright most of the time, follows the active effect on bars or movers). "Generic" uses standard dimmer behaviour with no drum flash.
 
 **Drum flash (priority feature):**
 
@@ -187,7 +196,7 @@ Optional later: Enttec DMX USB Pro framing on the same port, so QLC+ could also 
 | 0.05 node (USB serial) | Main output | Node handles timing and wireless |
 | Enttec Open DMX USB | Backup / small gigs | PC generates the DMX timing; set the FTDI latency timer to 1 ms; possible flicker if Windows is busy |
 | Enttec DMX USB Pro (and clones) | Spare | Interface handles timing; reliable |
-| Art-Net / sACN | Network nodes, later | Any network DMX node |
+| Art-Net / sACN | Network nodes, visualisers, other software (v2 R4) | Any network DMX node |
 
 ## Programming and editing looks
 
@@ -239,6 +248,20 @@ Each phase ends with something usable at rehearsal; Daslight stays as backup unt
 5. **Browser UI and MCP:** preview, overrides, position picker, node status page; MCP server for Claude to read, edit, validate and preview scenes
 6. **Phase 2 MIDI:** SamplePad via H2MIDI Pro, drummer triggers, guitar boards; second DMX universe for receiver-per-light
 
+## v2 (general release)
+
+Planned 26/11/2026. One release per branch, hardening and features side by side; every item has tests and is tested against every rule under both shipped profiles.
+
+1. **R1 Rule profiles and safety net:** safety/profile rule split (first; later releases depend on it), Generic and 0.05 band profiles, `version:` in every show file with automatic upgrade, engine loop timing fix, crash-proof render with fallback to the last good show files, value range checks, comment-keeping YAML saves, MIT licence and project files, user manual, CI (tests, lint, type-check, firmware build), file log, signed installer and update check
+2. **R2 Layout, groups, themes:** left-hand page menu; grid light layout (one square per light or pixel, live colours, group tabs, select, arrange, zoom, beam-line overlay) replacing the metre stage plan; groups made from a selection; themes (neutral default + 0.05); all UI text in one strings file
+3. **R3 Effects and scene builder:** effect registry; layer level and blend; new effects; spatial (matrix) mapping across the layout; spread, direction, width, waveform and groups-of on every effect; on-screen scene builder with live preview
+4. **R4 Outputs and OSC:** non-blocking driver threads; Art-Net and sACN; OSC input sharing the MIDI map and learn; thread-safety fixes
+5. **R5 Fades, shows, beat sync, busking:** crossfades; Daslight super-scene style show steps (repeat a scene N times, hold for time or bars, fade per step); show and setlist builders; beat sync (tap, kick taps, MIDI Clock); Busk page of user-built buttons and faders
+6. **R6 Security, undo, copy/paste:** PIN/password, localhost by default, LAN with QR code; Claude bound by gig lock server-side; shared live feed; undo/redo; copy/paste a look across fixture types
+7. **R7 Fixtures and setup wizard:** colour mixing to RGBW/amber/wheel, fuller fixture model, fixture editor and patch with auto-patch, OFL import and export, live rig changes, first-run wizard, starter shows
+8. **R8 Node and firmware:** per-universe radio sequence, fallback and blackout on every universe, fallback pushed by the app, firmware version check, CoreS3 screen, node LED and identify
+9. **R9 Rehearsal sign-off:** the open items below that need the real rig
+
 ## Decisions and open questions
 
 Decided 26/11/2026:
@@ -280,18 +303,18 @@ Decided 26/11/2026:
 | Heads move dark | `random_move` has `dark_move_s`: the head is blacked (via colour) for that long after each new position |
 | Find fixture | Lights the one fixture full white, ignoring MASTER, grand master and the kick light; head limits still apply |
 | Channel tester | Raw values over the show output until cleared; refuses the haze channel |
-| Missing fixtures in a scene | Skipped for now; moving their effects to fixtures that are present comes with auto shows (phase 4) |
-| Fixture import | Open Fixture Library JSON first (`dmx-suite import-ofl`); always lands as `verified: false` |
-| Setup page | Console commands for now; the browser page comes in phase 5 |
+| Missing fixtures in a scene | Skipped; a layer can name a `fallback` group to use instead (see "Missing fixtures in shows") |
+| Fixture import | Open Fixture Library JSON first (`dmx-suite import-ofl`, or the Fixtures page); always lands as `verified: false`. R7: wheel slots, pixel matrices, 16-bit; export with `export-ofl` |
+| Setup page | Setup tab in the UI (phase 5); console commands kept |
 | Auto shows | Generated per step from a style (colours, energy, head mix, patterns, movement), deterministic per seed, checked against the hard rules like any scene |
 | Set steps | Fixed timers (`step_s`); tap tempo changes effect speed only, never step length |
-| Tap tempo | Effects are timed at 120 BPM reference; a tapped tempo (pedal or a mapped drum note) scales effect time and lines up on the tap |
+| Tap tempo | Effects are timed at 120 BPM reference; a tapped tempo (pedal or a mapped drum note) scales effect time and lines up on the tap (v2 R5: also kick or MIDI clock, see Beat sync) |
 | Set pedal outside a show | LOW / MID / HIGH goes to the current show if it has that set, otherwise the first show that does |
-| Resume after restart | Live runs save show/set/setlist song/MASTER to `shows/.state.json` on every change; restored on start if under 12 hours old |
+| Resume after restart | Live runs save show/set/setlist song/MASTER on every change to app data (`%LOCALAPPDATA%\0.05 DMX Suite\state`, one file per show folder; v1's `shows/.state.json` is moved there once); restored on start if under 12 hours old |
 | Missing fixtures in shows | Auto shows only use fixtures in the rig; hand-written scene layers can name a `fallback` group |
 | Kick light in auto shows | White most steps, the show colour about 30 % of steps |
 | Browser UI | Standard-library web server + server-sent events; no build step, no internet needed |
-| UI access | Localhost only by default; `--lan` for phones, which need the token link; every change needs the token; Host header must be localhost or an IP (blocks DNS-rebinding) |
+| UI access | Localhost only by default; Host header must be localhost or an IP (blocks DNS-rebinding). v2 R6: PIN sign-in for phones replaces the token link (see Access (R6)) |
 | Gig lock | Blocks file changes, preview, Claude haze changes, MIDI map save and node naming; the band's live controls still work; survives a restart |
 | Claude haze control | off / manual / pulse only; boost stays on the footswitch |
 | Preview | Plays under the current MASTER (rule 1), so with MASTER off the rig stays dark and Claude is told so |
@@ -300,10 +323,79 @@ Decided 26/11/2026:
 | Claude without the engine | MCP edits the show files directly with the same checks; live tools report the engine isn't running |
 | Universes | 0-15 per fixture; every universe rendered and sent each frame (and on drum hits) |
 | Port-specific MIDI | Mappings can name an input (`port`, part of the port name); a port-specific mapping wins, so SamplePad and TD-25 can share ch 10 notes |
-| Stage plan | 2D top-down view like Daslight's: per-rig `stage` + `layout` (metres, rotation), defaults for unplaced lights, arranged by drag on the Setup tab, applied live without a restart |
+| Stage plan | Replaced in v2 R2 by the grid light layout (see "Light layout" below); v1 metre stage plans upgrade to grid cells (file format 3) |
 | Status bar | Engine fps, every output driver, MIDI inputs, Claude (MCP check-in every 20 s; last tool), open screens, nodes; red banner + beep when anything drops |
 | USB DMX unplug | Enttec Open/Pro and the node keep the show running when unplugged and reopen the port every 2 s |
 | MIDI hot-plug | Wanted ports (rig `midi_inputs`) rescanned every 2 s; reconnect under a new name; status shown as connected/unplugged |
+
+Decided 26/11/2026 (v2):
+
+| Item | Decision |
+| --- | --- |
+| Audience | General use, not just 0.05; 0.05 is the reference setup |
+| Platform | Windows only |
+| Licence | MIT; no telemetry |
+| Name | "0.05 DMX Suite" kept for now |
+| UI first | Everything can be done in the UI with no YAML or Claude; MCP is an optional extra |
+| Rule profiles | Rules split into safety rules (always on) and profile rules (per rig config); "Generic" and "0.05 band" profiles ship; existing 0.05 shows run under "0.05 band" unchanged |
+| Strobe limit | Not included: no rate limit on flashing (decided 26/11/2026, replacing the earlier 3 Hz safety rule). Flash effects and drum hits run at the rate set |
+| File versions | `version:` in every show file; older files upgraded automatically after a backup; newer files refused with a clear message |
+| Light layout | Grid layout (one square per light or pixel, group tabs, zoom) replaces the metre-based stage plan; beam lines kept as an overlay |
+| Navigation | Page menu down the left-hand side; bottom bar on a phone |
+| UI stack | HTML/JS in the desktop window, plain ES modules, no build step, works offline |
+| Scenes and shows | Scenes built on screen from a selection; shows hold steps (Daslight super-scene style) that repeat a scene N times or hold for a time or bars, with an optional fade per step |
+| v2 features | Spatial effects, effect spread, busking page, beat sync, undo/redo + copy/paste, OSC input added to v2 (26/11/2026), alongside fades, Art-Net/sACN and the fixture editor |
+| Access | PIN or password on the UI and API; localhost only until LAN/phone access is turned on |
+| Colour mixing for old types (R7) | Off for every type that existed before R7 so the 0.05 shows look exactly as they did; turn on per type on the Fixtures page |
+| Show file (26/11/2026) | One `.dms` file per show (Glen, option 1): opened through a working copy, saved on every change, double-click to open; show folders still work |
+| Set steps (v2) | Fixed timers stay the default; a step can instead follow the tempo (`hold_beats` / `hold_bars`) |
+| Crossfades (R5) | `Crossfade` source mixes the old and new looks over `fade_s`: colour channels blend, wheel and gobo snap, a head whose position changes goes dark, moves and fades in, channels unused by the new look end at 0 (rule 4), haze untouched (rule 5). Used for show steps, rig `change_fade_s` (default 0 = cut, as v1) and busk release |
+| Show steps (R5) | `steps:` of `{scene, repeats | hold_s | hold_beats | hold_bars, fade_s}`; set `fade_s`, `order` sequence/random, `loop`. `repeats` counts the scene's `length_s`. v1 `scenes:` + `step_s` read as steps with `hold_s` (no format bump: both forms load). Live page shows the step, repeat count and time left; tap a step to jump |
+| Beat sync (R5) | Rig `tempo: {source: tap|kick|midi_clock, kick_note, timeout_s}`. Kick: average of the last 4 beats, outliers ignored. MIDI clock: 24 ppqn, start lines up the beat; clock messages kept out of the monitor. Lost source keeps the last tempo for `timeout_s`, then fixed timers. Effect clock stays continuous on tempo changes (the old snap jump is gone). Global `speed` 0.25-4; layer `beats`. Ableton Link left out: no maintained Python binding for Windows |
+| Busking (R5) | `shows/panels.yaml`, one panel per show or `default`; widgets colour/flash/solo/effect/go/fader/haze; MIDI/OSC action `busk`. Overrides sit above the show and below the rule layer; release crossfades back over `release_fade_s`. The static look is kept separately from what's shown, so overrides and held head positions are never baked into it |
+| Show file saves (v2) | ruamel.yaml round trip: only changed data is rewritten, comments kept, unchanged lines keep their spacing; result must read back (PyYAML) as exactly the saved data, else written plainly. MIDI map saves go through the store (validated, backed up). Restore only takes `.yaml` files. Logs and resume state live in app data, not the OneDrive show folder |
+| File format versions | Show files carry `version: 2` (format, not app version); no `version:` = format 1. One reader for every loader: newer formats refused, older upgraded in memory, then written back at start-up (`ShowStore.upgrade`, originals backed up, comments kept, not gig-locked). Format 1 → 2: rigs get `profile: 0.05_band`. Data from the UI/Claude is taken as the current format unless it says otherwise |
+| Engine faults (v2) | Any error while rendering is caught: logged (once a minute per message), the engine drops to the static look, and if that fails too it keeps sending the last good frame; the status bar shows "Engine: fault" for 5 min. Driver and frame-listener errors never stop output |
+| Loop timing (v2) | Frames on a fixed 40 Hz grid; early wakes (control changes, faders, flash ends) never move it. A control change sends once (no second frame from the loop). `time.perf_counter` clock; 1 ms Windows timer while running |
+| Broken show files at start-up (v2) | Values are range-checked at load (raw DMX 0-255, seconds, %, shapes), and any malformed file is reported by name. If the folder won't load, `run` uses the newest earlier version from `.backups` that does (on a copy; the folder isn't touched), shows "Show files: running the last good version", and switches to the real files once they load again (fix or restore) |
+| Project basics (v2) | MIT licence; contributing guide, code of conduct, issue/PR templates, changelog, user manual in `docs/manual/`. One app version (`dmx_suite/__init__.py`, read by pyproject and the installer); the firmware keeps its own (`config.h`, the simulator matches it). No telemetry |
+| CI (v2) | GitHub Actions on every push: ruff, mypy, pytest on Windows and Linux (the firmware parity test must run on Linux, never skip), `pio run` for node and receiver; the installer workflow signs the installer when the certificate secrets exist |
+| Logs (v2) | `dmx-suite.log` in app data, INFO and up, 1 MB x 5 rotating; warnings also on the console |
+| Update check (v2) | On request only (`dmx-suite update-check`, `/api/update`): reads the latest GitHub release and says if it's newer. Check only, nothing downloaded. The repo is private, so it needs the repo public, a public release feed, or DMX_SUITE_UPDATE_URL |
+| Light layout (R2) | Grid cells, not metres: `layout: {id: {x, y, rot, shape, cols}}`, x/y the light's centre from the top left (back of the stage at the top), half cells; pixel lights draw each pixel as a square laid out as a row, ring or grid. Format 2 -> 3 converts metre plans at 4 cells a metre and drops `stage:`. Defaults: heads at the back, bars end to end, washes and kick at the front, haze to the side |
+| Layout editing (R2) | Select by tap/shift-tap/box/lasso/group tab; move, align, space out, make row/ring/grid, rotate 45°, pixel shape; undo; save rewrites the rig's `layout:` (validated, backed up) and applies live |
+| Groups (R2) | Stored on the fixture entries in fixtures.yaml; `POST /api/store/group` set/rename/delete; rename updates every scene, look, rig and MIDI map in one change; delete refused while used; names can't be a fixture id, kind or `all`; applied live |
+| Themes (R2) | Folders under `web/static/themes/` (theme.css variables, logo, name); Neutral default, 0.05 shipped; chosen per laptop in app data `settings.json`; the page names itself with `application-name` meta (desktop app and installer smoke test check that, not the title) |
+| UI text (R2) | Every string in `web/static/i18n/en.json`, filled by `data-i18n*` attributes and `t()`; tests fail on missing, unused or hard-coded text |
+| UI code (R2) | ES modules under `web/static/js/` (no build step); browser tests with Playwright in `tests/test_ui.py` (skipped without a browser, run in CI on Linux) |
+| Effect registry (R3) | `dmx_suite/effects/`: one class per effect with a settings schema (`GET /api/effects`) and a render; the five v1 effects ported with identical output (golden frames); auto shows, the scene builder and Claude's guide read the registry |
+| Layers (R3) | Static settings may sit alongside an effect (not a position with a movement effect); `level` 0-1 and `blend` replace/max/add mix colour with the layers below; `mute`; scene `length_s` (default: longest effect period) for show repeats |
+| Spread controls (R3) | `mapping` order/spatial, `direction` forward/reverse/centre_out/out_centre/random (fixed per scene)/angle, `angle`, `groups_of` on every effect that runs across lights; `waveform` and `width` on the wave effects. Defaults keep v1 maths exactly |
+| Spatial mapping (R3) | Positions from the layout grid, each pixel where it's drawn (same cell maths as the UI), scaled so the layer's lights span 0-1 on their longer side (angles stay true), worked out once per scene player; lights missing from the rig drop out |
+| New effects (R3) | rainbow, sparkle, wave, strobe (colour channels), circle, figure8 (head limits still clamp); matrix: linear_wave, radial, gradient, bars, noise |
+| Scene builder (R3) | Scenes page: selectable layout, layer list, forms from the schema, swatches, direction arrow, live preview of unsaved scenes (`/api/preview`, renewed while ticked), `POST /api/validate/scene` marks the failing layer; settings at defaults aren't written |
+| Output threads (R4) | node_serial and enttec_pro write on a sender thread (newest frame per universe; an unwritten one is replaced, never queued; wakes at once for drum hits); port reopen happens there too. The simulated node stays synchronous for exact tests |
+| Art-Net / sACN (R4) | Standard-library UDP, non-blocking. Art-Net: ArtDmx with sequence 1-255, broadcast or unicast, universes map to port-addresses (number or net:subnet:universe), default n -> n. sACN: E1.31, multicast 239.255.x.y or unicast, priority 0-200, CID stable per computer, default n -> n + 1. Only mapped universes are sent |
+| OSC input (R4) | Rig `osc: {port, allow}`, off by default; allow defaults to this computer + private networks. Own parser (no new dependency), bundles unpacked. Mappings `{type: osc, address, action}` in the MIDI map; float 0-1 drives faders, >= 0.5 or no argument = press; learn takes MIDI or OSC. Feedback to controllers: not in v2 |
+| Access (R6) | `access.json` in app data: PIN as salted PBKDF2 (200,000 rounds), `lan`, `pin_local`, `session_hours` (default 12). Phone/LAN access needs a PIN; turning it on or off moves the server between 127.0.0.1 and 0.0.0.0 on the same port. Phones sign in on a sign-in page: HttpOnly SameSite=Strict session cookie, a per-session token for changes, idle timeout, 5 wrong PINs = 30 s wait per address; all signed out when the PIN changes, phones too when LAN goes off. This computer gets in without a PIN unless `pin_local`. Access changes only from this computer. QR code from our own encoder (byte mode, level M, versions 1-10; installing a QR library wasn't possible here) |
+| Claude role (R6) | Claude's token (`claude_token` in app data) is accepted only from this computer and only for store edits, preview, haze, node assign, scene validation and its own undo; never gig lock, access, settings, control, MIDI learn or layout. The page's token is new each run and never written to disk (a second launch hands over a file with a separate app token). Offline Claude edits respect the gig lock file in app data. MIDI learn and mapping removal honour gig lock |
+| Live feed (R6) | One snapshot a tick (10 Hz) turned into JSON once for every screen; sent only when it changed, MIDI lines as they come, `{"beat": 1}` after 5 s of nothing. 5 s write timeout per screen; the page reconnects after 12 s of silence and shows a lost-connection box |
+| Undo/redo (R6) | `ShowStore` remembers every change since start-up (files' text before and after, who: ui or claude), unlimited; a new change clears redo. Undo/redo go through the same validation, backups and gig lock; refused if a file changed another way since. Layout keeps its own undo for unsaved moves |
+| Copy/paste (R6) | Scene builder: copy a layer (or the layer lighting the first selected light) without its lights; paste splits the selection by what each light has (moves, gobo, colour wheel) into one layer each, dropping position/movement effects, gobo and wheel where they don't fit. Colours copied as they are (RGB) until R7 |
+| Fixture model (R7) | Show file format 4: fixture types gain `colour_mix` (auto/off; the 3 → 4 upgrade sets off on existing types so golden frames stay identical), named `wheel` slots (value + optional colour) and `gobos`, `sub` (sub-master apart from kind, on the type or a patched fixture), roles zoom/focus/frost/prism and `<role>_fine` for dimmer/pan/tilt/zoom/focus, invert on pan/tilt/zoom/focus/frost/pt_speed. Mixing: white = min(R,G,B) out of RGB, amber = min(R, 2G) − B, UV only when asked; white-only = max(R,G,B); no emitters (dimmer/wheel only): scale by brightness, nearest named wheel slot by hue. Slot names resolve per fixture at load, so looks and scenes carry DMX values |
+| Live rig changes (R7) | A changed fixtures.yaml or running rig file is swapped into the engine under its lock: new rule layer (heads keep position), static look, haze; MASTER, masters and what's playing stay (show/scene rebuilt on the new rig, setlist and song kept). Outputs, MIDI inputs and OSC need a restart and say so (the running ones are kept). Rig switch (`rig` control command, Fixtures page) does the same with another rig file; refused under gig lock |
+| Fixtures page (R7) | Patch, fixture types and rig settings on screen. Patch saves replace the patch list (`PUT /api/store/patch`); removing a light (`POST /api/store/fixture/remove`) also takes it out of every rig's layout, head limits and fixture list in one checked change. OFL import/export through `/api/ofl/import` and `/api/ofl/export/<type>`. Channel test uses the existing channel tester |
+| Node protocol v1.1 (R8) | Firmware 0.2. Additive to v1: SET_FALLBACK_U (0x08), SET_CHANNEL (0x09), optional trailing request id on ACKed requests (echoed as a third ACK byte), STATUS 20 bytes (+flags, +channel). The app reads the node's firmware from its heartbeat and uses v1.1 only with 0.2+; 0.1 keeps working and is flagged |
+| Node radio (R8) | Sequence number per universe (16 kept). Every universe the laptop sends is kept alive (last frame resent every 100 ms) for 10 s after its last frame, or for good with a fallback look. Fallback looks for up to 4 universes in NVS (`fb0`-`fb3`, firmware 0.1's single look read once as the node's own); fallback and blackout cover every kept universe, black where no look. App pushes each universe's static look (MASTER on, no haze, through the rules) on connect |
+| Radio channel (R8) | Rig `radio_channel` 1-13, set on connect and from Setup. Node broadcasts SET_CHANNEL for 400 ms on the old channel, then moves; receivers follow and store it; a receiver silent for 10 s scans 1-13 at 300 ms each and stores where it finds the rig. ESP-NOW broadcast peer on channel 0 (= current) so no re-pairing |
+| Node naming and spares (R8) | ASSIGN is confirmed by the target's own heartbeat (name and universe) within 4 s, reported as confirmed or not. Replace with spare: an online new node of the same kind takes an offline node's name and universe, the rig file's `nodes` swaps the MAC, the old record goes |
+| Node screen (R8) | CoreS3 via M5Unified 0.2.2: name, mode, universe, fps, receivers, channel, firmware, DMX-failed and dev-key warnings; redrawn only on change, at most twice a second; identify and touch flash it. `M5.begin` with output power on for PORT.C (bench test) |
+| Dev pairing key (R8) | Compile-time `#warning`, screen warning, STATUS flag shown in the app's status bar |
+| Setup wizard (R7) | Opens when `settings.json` has no `wizard: done/skipped` (a new laptop), and from Setup. Interfaces from pyserial's port list: Espressif 303A = node, "DMX USB Pro" = Enttec Pro, FTDI 0403 = Open DMX. Every step skippable; writes through the store. Starter show: scenes `starter_*` and show `starter`, hex colours (no palette needed), no intensity or haze (valid under every profile), never overwritten unless asked |
+| `.dms` show file (R6) | Zip: `dms.json` {dms: 1, format, app, saved} + the `.yaml` files; deflated, fixed timestamps; written to a temp file then `os.replace`. Unpack takes only safe relative `.yaml` names (no `..`, absolute, backslash, drive, hidden, links), at most 2,000 entries and 50 MB; newer `dms` or `format` refused. Runs on a working copy `app data/open/<name>-<hash>/`; `ShowStore.after_commit` packs after every commit. Recovery: a working copy whose content hash differs from the last pack is saved as "<name> (recovered DD-MM-YYYY).dms". Lock `<name>.dms.lock` {pid, host, at}: dead process on this computer or older than 12 h from another = left over. Switching files restarts the process (`os.execv`, same arguments, new `--shows`). Show file format stays 3 | Locks on ShowController (RLock on every public method), App.reload, HealthTracker (records() copies), MidiMonitor (since() copies). Measured render cost 0.1-0.3 ms a frame on the full rig, so per-frame caching was left out |
+| Profile in rig files | `profile: 0.05_band`, `generic`, or a block with `base` + `master_gate` / `drum_flash` / `master_exempt`; no `profile:` = v1 file, runs as "0.05 band"; drum flash needs `master_gate` |
+| Intensity | Without `master_gate`, looks and scene layers may set `intensity` (0-1), scaled by the masters; with it, `intensity` is refused at validation (checked against every rig) and ignored by the rule layer. The raw `dimmer` key stays refused everywhere |
+| MASTER-exempt fixtures | Fixture ids, groups or a kind name (`kick` = every kick-kind fixture, as v1); they ignore MASTER and drum flashes and use the rig's `kick_colour` when the scene leaves them off. Under "generic" nothing is exempt and a kick-kind light is an ordinary light (auto shows use it like a wash) |
 
 Open:
 
@@ -314,8 +406,8 @@ Open:
 - [ ] Daslight import: need a sample Daslight show/patch file to read its format
 - [ ] Palette positions and gobo values (`shows/palettes.yaml`): set at rehearsal
 - [ ] Rehearsal: tune auto-show styles (colours, step times, energy) and write the real setlist
-- [ ] Brand assets: replace `dmx_suite/web/static/brand/logo.svg` and `brand.css` (placeholders now); CoreS3 boot logo
-- [ ] Stage plan: arrange the real layout at rehearsal (Setup tab); set pan_range/tilt_range per head type and calibrate palette positions so beam lines point the right way
+- [ ] Brand assets: replace `dmx_suite/web/static/themes/005/logo.svg` and `theme.css` (placeholders now); app icon `static/brand/icon.svg`; CoreS3 boot logo
+- [ ] Light layout: arrange the real layout at rehearsal (Layout page); set pan_range/tilt_range per head type and calibrate palette positions so beam lines point the right way
 - [ ] Phase 2: node fallback look only covers the node's own universe; receivers on other universes go black 5 s after the laptop stops. Decide whether each universe needs its own fallback
 - [ ] Phase 2: SamplePad note numbers and pad map, H2MIDI Pro port name, guitar board MIDI (generic PC/CC/notes already supported)
 - [ ] 0.05 brand assets: logo files (SVG preferred), colours, font

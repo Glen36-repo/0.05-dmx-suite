@@ -7,10 +7,15 @@ under Program Files, so its show folder is the one picked in the installer (defa
 shows on first run; an existing one is never overwritten, so upgrades keep the band's edits.
 
 Order: `--shows` on the command line, then the DMX_SUITE_SHOWS environment variable, then the default.
+
+What the app writes for itself (resume state, logs) lives in per-user app data, not in the show
+folder, so it doesn't sync through OneDrive: `%LOCALAPPDATA%/0.05 DMX Suite` on Windows,
+`~/.local/state/0.05 DMX Suite` elsewhere, or DMX_SUITE_DATA if set.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import sys
@@ -18,6 +23,7 @@ from pathlib import Path
 
 APP_DIR_NAME = "0.05 DMX Suite"
 ENV_VAR = "DMX_SUITE_SHOWS"
+DATA_ENV_VAR = "DMX_SUITE_DATA"
 
 
 def frozen() -> bool:
@@ -54,10 +60,22 @@ def seed_shows(target: Path, source: Path | None = None) -> bool:
 
 
 def prepare(shows: Path) -> Path:
-    """Installed app: fill a new show folder with the starter shows. From source: leave it."""
+    """Installed app: a new show folder or .dms show file starts from the starter shows. From
+    source: leave it."""
     if frozen():
-        seed_shows(shows)
+        if Path(shows).suffix.lower() == ".dms":
+            if not Path(shows).exists():
+                from .package import create
+
+                create(Path(shows), bundled_shows())
+        else:
+            seed_shows(shows)
     return shows
+
+
+def app_token_file() -> Path:
+    """The running app's token for its own other copies (a second launch hands over a show file)."""
+    return data_dir() / "run" / "app_token"
 
 
 def default_shows() -> Path:
@@ -67,3 +85,48 @@ def default_shows() -> Path:
         return prepare(Path(env))
     # installed app without a folder picked in the installer: Documents
     return prepare(user_shows()) if frozen() else bundled_shows()
+
+
+def data_dir() -> Path:
+    """Per-user app data (resume state, logs), outside the show folder."""
+    env = os.environ.get(DATA_ENV_VAR)
+    if env:
+        return Path(env)
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / APP_DIR_NAME
+    return Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / APP_DIR_NAME
+
+
+def state_file(shows: Path) -> Path:
+    """Resume state for one show folder (several show folders don't share it)."""
+    key = hashlib.sha1(str(Path(shows).resolve()).lower().encode()).hexdigest()[:10]
+    return data_dir() / "state" / f"{Path(shows).name}-{key}.json"
+
+
+def giglock_file() -> Path:
+    """Gig lock on this laptop (the running app writes it; Claude's tools read it when the app is off)."""
+    return data_dir() / "state" / ".giglock"
+
+
+def giglock_on() -> bool:
+    try:
+        return giglock_file().read_text(encoding="utf-8").strip() == "on"
+    except OSError:
+        return False
+
+
+def log_dir() -> Path:
+    return data_dir() / "logs"
+
+
+def move_old_state(shows: Path) -> Path:
+    """v1 kept resume state in the show folder: move it once, so an upgrade mid-gig still resumes."""
+    new = state_file(shows)
+    old = Path(shows) / ".state.json"
+    if old.exists() and not new.exists():
+        try:
+            new.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(old), str(new))
+        except OSError:
+            pass
+    return new

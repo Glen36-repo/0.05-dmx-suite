@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dmx-suite"
-version = "0.1.0"
-description = "0.05 DMX Suite: live lighting for the band 0.05"
+dynamic = ["version"]  # from dmx_suite/__init__.py
+description = "0.05 DMX Suite: live lighting software for Windows, MIDI/OSC in, DMX out"
 requires-python = ">=3.12"
-dependencies = ["pyserial>=3.5", "mido>=1.3", "PyYAML>=6"]
+dependencies = ["pyserial>=3.5", "mido>=1.3", "PyYAML>=6", "ruamel.yaml>=0.18,<0.19"]
 
 [project.optional-dependencies]
 # real MIDI ports (gig laptop); prebuilt wheels on Windows, needs ALSA/JACK headers on Linux
@@ -15,14 +15,36 @@ hw = ["python-rtmidi>=1.5"]
 claude = ["mcp>=2.3"]
 # desktop app window and tray icon (WebView2 on Windows)
 desktop = ["pywebview>=5", "pystray>=0.19", "Pillow>=10"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "types-PyYAML"]
 
 [project.scripts]
 dmx-suite = "dmx_suite.cli:main"
 dmx-node-test = "dmx_suite.tools.node_test:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "dmx_suite.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["dmx_suite*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["first_run: the browser test starts on a laptop that hasn't been through the setup wizard"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# B023: inner helpers here are called inside the same loop pass; B905/UP042: style only
+ignore = ["B023", "B905", "UP042"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dmx_suite"]
+known-local-folder = ["conftest", "golden"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true

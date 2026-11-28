@@ -5,8 +5,8 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 
 @dataclass
@@ -34,14 +34,20 @@ class MidiMonitor:
         self.seq = 0
 
     def add(self, e: MonitorEntry) -> None:
-        if self.paused:
-            return
         with self._lock:
+            if self.paused:
+                return
             self.seq += 1
             e.seq = self.seq
             self.entries.append(e)
-        for fn in self.listeners:
+            listeners = list(self.listeners)
+        for fn in listeners:  # outside the lock: a listener may read the monitor
             fn(e)
+
+    def since(self, seq: int) -> list[MonitorEntry]:
+        """Entries after `seq`, copied under the lock (MIDI and OSC threads keep adding)."""
+        with self._lock:
+            return [e for e in self.entries if e.seq > seq]
 
     def clear(self) -> None:
         with self._lock:

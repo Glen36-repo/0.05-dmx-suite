@@ -1,8 +1,13 @@
 """Browser UI + JSON API on the gig laptop. Standard library only, no internet needed.
 
-Security: every change needs the session token (sent by the page in a header); the server binds to
-localhost unless started with --lan; from another device (phone) the page must be opened with the
-token link; and the Host header must be localhost or an IP address, which blocks DNS-rebinding pages.
+Security (see access.py):
+- The server listens on localhost only, unless phone/LAN access is on (which needs a PIN).
+- On this computer the page gets in without a PIN, unless "ask for the PIN here too" is ticked.
+- Other devices sign in with the PIN and get a session cookie that times out.
+- Every change needs a token in a header: the page's own (per run, or per session), or Claude's.
+- Claude's token works only from this computer and only for show edits, preview, haze and nodes,
+  so Claude can't turn gig lock off or change access settings.
+- The Host header must be localhost or an IP address, which blocks DNS-rebinding pages.
 """
 
 from __future__ import annotations
@@ -14,44 +19,39 @@ import secrets
 import threading
 import time
 from dataclasses import asdict
-from http import HTTPStatus
+from html import escape as html_escape
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from .. import qr, settings
+from ..access import Access, lan_addresses
+from ..access import claude_token as default_claude_token
 from ..app import App
 from ..fixtures import ConfigError
-from ..midi.map import save_map
+from ..paths import app_token_file
 from ..setup import patch_report
 from ..store import LockedError, StoreError
+from .feed import HEARTBEAT_S, LiveFeed
 
 log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon"}
+         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
+         ".json": "application/json; charset=utf-8"}
 DEFAULT_PORT = 8505
-TOKEN_FILE = Path.home() / ".dmx_suite" / "token"
+# what Claude's token may change (everything else is the people at the laptop's call)
+MAX_UPLOAD = 20 * 1024 * 1024
+CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/claude/haze", "/api/nodes/assign", "/api/validate/scene",
+                 "/api/undo/claude")
+SESSION_COOKIE = "dmx_session"
 
 
-def load_token(path: Path = TOKEN_FILE) -> str:
-    """Session token shared by the web UI and the local MCP server. Created on first run."""
-    try:
-        tok = path.read_text(encoding="utf-8").strip()
-        if len(tok) >= 20:
-            return tok
-    except OSError:
-        pass
-    tok = secrets.token_urlsafe(24)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(tok, encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
-    return tok
+def _same(a: str, b: str) -> bool:
+    return bool(a) and bool(b) and secrets.compare_digest(a.encode(), b.encode())
 
 
 class ApiError(Exception):
@@ -71,6 +71,8 @@ def _f(args: dict, key: str) -> float:
 
 
 def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
+    if cmd == "rig":  # run another rig config, live
+        return {"ok": True, "notes": app.switch_rig(str(a.get("name", "")))}
     e, c = app.engine, app.ctl
     if cmd == "master":
         e.toggle_master() if a.get("on") is None else e.set_master(bool(a["on"]))
@@ -113,6 +115,16 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
     elif cmd == "song":
         which = a.get("song", "next")
         {"next": c.next_song, "prev": c.prev_song}.get(which, lambda: c.go_song(int(which)))()
+    elif cmd == "step":
+        c.go_step(int(a["step"]))
+    elif cmd == "speed":
+        c.set_speed(float(a["value"]))
+    elif cmd == "busk":
+        v = a.get("value")
+        return {"result": app.busk(str(a["panel"]), str(a["widget"]), bool(a.get("down", True)),
+                                   None if v is None else float(v))}
+    elif cmd == "release_all":
+        app.engine.release_all(float(a.get("fade_s", 0.5)))
     elif cmd == "tap":
         return {"bpm": c.tap()}
     elif cmd == "tempo":
@@ -144,7 +156,10 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
 # --------------------------------------------------------------------------- handler
 
 
-def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
+def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any = None,
+                 feed: LiveFeed | None = None, app_token: str = "") -> type[BaseHTTPRequestHandler]:
+    live = feed or LiveFeed(app.snapshot)
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "dmx-suite"
         protocol_version = "HTTP/1.1"
@@ -170,20 +185,41 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             except ValueError:
                 return False
 
-        def _query_token(self) -> str | None:
-            return (parse_qs(urlparse(self.path).query).get("t") or [None])[0]
-
-        def _cookie_token(self) -> str | None:
+        def _sid(self) -> str | None:
             c = SimpleCookie(self.headers.get("Cookie") or "")
-            return c["dmx_token"].value if "dmx_token" in c else None
+            return c[SESSION_COOKIE].value if SESSION_COOKIE in c else None
 
-        def _can_read(self) -> bool:
-            if self._local():
-                return True
-            return secrets.compare_digest(self._query_token() or self._cookie_token() or "", token)
+        def _session(self) -> Any:
+            return access.session(self._sid())
 
-        def _can_write(self) -> bool:
-            return secrets.compare_digest(self.headers.get("X-DMX-Token") or "", token)
+        def _is_claude(self) -> bool:
+            return self._local() and _same(self.headers.get("X-DMX-Token") or "", claude)
+
+        def _reader(self) -> str | None:
+            """Who is reading: "ui", "claude" or nobody signed in."""
+            if self._is_claude():
+                return "claude"
+            if self._local() and not access.pin_local:
+                return "ui"
+            return "ui" if self._session() else None
+
+        def _writer(self) -> str | None:
+            """Who is changing something: the page's token for this computer or session, or Claude's."""
+            tok = self.headers.get("X-DMX-Token") or ""
+            if self._is_claude():
+                return "claude"
+            if self._local() and not access.pin_local and _same(tok, token):
+                return "ui"
+            if self._local() and _same(tok, app_token):  # another copy of the app on this computer
+                return "ui"
+            s = self._session()
+            return "ui" if s is not None and _same(tok, s.csrf) else None
+
+        def _page_token(self) -> str:
+            if self._local() and not access.pin_local:
+                return token
+            s = self._session()
+            return s.csrf if s else ""
 
         # ---------------------------------------------------------------- responses
 
@@ -204,6 +240,12 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
 
         def _error(self, status: int, msg: str) -> None:
             self._json(status, {"ok": False, "error": msg})
+
+        def _raw_body(self, limit: int) -> bytes:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > limit:
+                raise ApiError(413, "file too large")
+            return self.rfile.read(n) if n else b""
 
         def _body(self) -> dict[str, Any]:
             n = int(self.headers.get("Content-Length") or 0)
@@ -231,6 +273,8 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
         def _guarded(self, fn: Any) -> None:
             if not self._host_ok():
                 return self._error(403, "unknown host")
+            if not self._local() and not access.lan:
+                return self._error(403, "phone/LAN access is off on the laptop")
             self._note_client()
             try:
                 fn()
@@ -238,6 +282,8 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 self._error(e.status, str(e))
             except LockedError as e:
                 self._error(423, str(e))
+            except PermissionError as e:
+                self._error(403, str(e))
             except (StoreError, ConfigError, ValueError, KeyError) as e:
                 msg = f"missing {e}" if isinstance(e, KeyError) else str(e)
                 self._error(400, msg)
@@ -262,24 +308,39 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
         def _get(self) -> None:
             url = urlparse(self.path)
             path = url.path
-            if not self._can_read():
-                return self._error(401, "open the link with the access token (shown in the console)")
-            extra = {}
-            if self._query_token():
-                extra["Set-Cookie"] = f"dmx_token={token}; Path=/; HttpOnly; SameSite=Strict"
-            if path in ("/", "/index.html"):
-                html = (STATIC / "index.html").read_text(encoding="utf-8").replace("__TOKEN__", token)
-                return self._send(200, html.encode(), TYPES[".html"], extra)
-            if path.startswith("/static/"):
+            if path.startswith("/static/"):  # the app's own files: no secrets, needed by the sign-in page
                 f = (STATIC / path[len("/static/"):]).resolve()
                 if not f.is_relative_to(STATIC.resolve()) or not f.is_file():
                     return self._error(404, "not found")
-                return self._send(200, f.read_bytes(), TYPES.get(f.suffix, "application/octet-stream"), extra)
+                return self._send(200, f.read_bytes(), TYPES.get(f.suffix, "application/octet-stream"))
+            who = self._reader()
+            if path in ("/", "/index.html", "/login"):
+                page = "index.html" if who == "ui" and path != "/login" else "login.html"
+                return self._page(page)
+            if who is None:
+                return self._error(401, "sign in with the PIN")
+            if who == "claude" and path.startswith("/api/access"):
+                return self._error(403, "not available to Claude")
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
+            if path == "/api/access":
+                return self._json(200, self._access_status())
             if path == "/api/ping":
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
+            if path == "/api/effects":
+                return self._json(200, app.effects_catalogue())
+            if path == "/api/settings":
+                return self._json(200, {"settings": settings.load(), "themes": settings.themes(),
+                                        "first_run": settings.first_run()})
+            if path == "/api/update":  # only when the user asks (UI button); check only, nothing installed
+                from ..update import check
+
+                return self._json(200, check())
             if path == "/api/devices":
                 return self._json(200, app.devices())
+            if path == "/api/interfaces":  # setup wizard: what's plugged in
+                from ..detect import interfaces
+
+                return self._json(200, interfaces())
             if path == "/api/state":
                 return self._json(200, app.snapshot())
             if path == "/api/catalogue":
@@ -288,7 +349,7 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 return self._events(int(q.get("since", 0)))
             if path == "/api/midi":
                 since = int(q.get("since", 0))
-                return self._json(200, [asdict(e) for e in app.monitor.entries if e.seq > since])
+                return self._json(200, [asdict(e) for e in app.monitor.since(since)])
             if path == "/api/midi/map":
                 return self._json(200, app.router.map.to_dict())
             if path == "/api/addresses":
@@ -296,16 +357,193 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 return self._json(200, {"rows": [asdict(r) for r in rows], "notes": notes})
             if path == "/api/backups":
                 return self._json(200, app.store.backups())
+            if path == "/api/undo":
+                return self._json(200, app.store.history())
+            if path == "/api/project":
+                return self._json(200, self._project_info())
+            if path == "/api/project/download":
+                return self._download()
+            if path.startswith("/api/ofl/export/"):
+                return self._ofl_export(path.rsplit("/", 1)[1])
             if path.startswith("/api/store/"):
                 parts = path.split("/")[3:]
                 if len(parts) == 1:
                     kind = parts[0]
-                    if kind in ("palettes", "fixtures"):
+                    if kind in ("palettes", "fixtures", "panels"):
                         return self._json(200, app.store.read(kind))
                     return self._json(200, app.store.names(kind))
                 if len(parts) == 2:
                     return self._json(200, app.store.read(parts[0], parts[1]))
             return self._error(404, "not found")
+
+        def _page(self, name: str) -> None:
+            key, meta = settings.theme()
+            html = (STATIC / name).read_text(encoding="utf-8")
+            for k, v in (("__TOKEN__", self._page_token()), ("__THEME__", key),
+                         ("__APP_NAME__", html_escape(meta["app_name"]))):
+                html = html.replace(k, v)
+            self._send(200, html.encode(), TYPES[".html"])
+
+        def _access_status(self) -> dict[str, Any]:
+            port = int(self.server.server_address[1])  # type: ignore[index]
+            urls = [f"http://{ip}:{port}/" for ip in lan_addresses()]
+            out = {**access.status(), "local": self._local(), "port": port, "urls": urls, "qr": None}
+            if access.lan and urls:
+                out["qr"] = qr.svg(urls[0])
+            return out
+
+        def _access_change(self, b: dict) -> dict[str, Any]:
+            if not self._local():
+                raise PermissionError("access settings can only be changed on the laptop")
+            action = b.get("action")
+            was = access.lan
+            if action == "set_pin":
+                access.set_pin(b.get("pin"), b.get("old"))
+            elif action == "clear_pin":
+                access.clear_pin(b.get("old"))
+            elif action == "configure":
+                access.configure(b.get("lan"), b.get("pin_local"), b.get("session_hours"))
+            else:
+                raise ApiError(400, "unknown access action")
+            if access.lan != was and on_lan is not None:
+                on_lan(access.lan)  # listen on the network, or localhost only (after this reply)
+            return {"ok": True, **self._access_status()}
+
+        # ---------------------------------------------------------------- Open Fixture Library
+
+        def _ofl_import(self, b: dict) -> dict[str, Any]:
+            """An OFL fixture JSON (picked in the browser) as a fixture type, not saved yet."""
+            from ..ofl import ofl_to_type
+
+            data = b.get("json")
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError as e:
+                    raise ApiError(400, f"not an Open Fixture Library file (JSON): {e}") from e
+            if not isinstance(data, dict):
+                raise ApiError(400, "not an Open Fixture Library file")
+            modes = [m.get("name") for m in data.get("modes") or [] if isinstance(m, dict)]
+            mode = b.get("mode") or (modes[0] if len(modes) == 1 else None)
+            if mode is None:
+                return {"ok": True, "modes": modes, "entry": None}
+            entry, warnings = ofl_to_type(data, mode, b.get("key") or None, b.get("kind") or None)
+            return {"ok": True, "modes": modes, "entry": entry, "warnings": warnings}
+
+        def _ofl_export(self, key: str) -> None:
+            from ..ofl import type_to_ofl
+
+            types = app.store.read("fixtures").get("types") or {}
+            if key not in types:
+                return self._error(404, f"no fixture type {key!r}")
+            data = type_to_ofl(key, types[key], time.strftime("%Y-%m-%d"))
+            self._send(200, json.dumps(data, indent=2).encode(), "application/json",
+                       {"Content-Disposition": f'attachment; filename="{key}.json"'})
+
+        # ---------------------------------------------------------------- .dms show files
+
+        def _project_info(self) -> dict[str, Any]:
+            return {"project": app.project_info(), "folder": str(app.files.root),
+                    "recent": settings.load().get("recent", []), "local": self._local()}
+
+        def _switch(self, target: Path) -> dict[str, Any]:
+            """Restart the app on another show file (the lights go dark for a moment)."""
+            from ..package import read_manifest
+
+            app.require_unlocked("opening another show file")
+            read_manifest(target)  # refuse a bad or newer file before stopping anything
+            settings.add_recent(str(target))
+            if app.on_restart is None:
+                raise ApiError(409, "this copy of the app can't switch show files; restart it with the file")
+            app.on_restart(target)
+            return {"ok": True, "restarting": True, "file": str(target)}
+
+        def _project(self, action: str, b: dict) -> dict[str, Any]:
+            from ..package import DmsError, create, is_dms, pack
+            from ..paths import bundled_shows
+
+            if not self._local():
+                raise PermissionError("open and save show files on the laptop (phones can download and upload)")
+            raw = str(b.get("path") or "").strip()
+            if not raw:
+                raise ApiError(400, "no file picked")
+            target = Path(raw).expanduser()
+            if not target.is_absolute():
+                raise ApiError(400, "give the full path of the show file")
+            if not is_dms(target):
+                target = target.with_suffix(".dms")
+            if action == "open":
+                if not target.exists():
+                    raise ApiError(404, f"no show file {target}")
+                return self._switch(target)
+            if action == "new":
+                app.require_unlocked("starting a new show file")
+                create(target, bundled_shows())
+                return self._switch(target)
+            if action == "save_as":
+                if target.exists() and not b.get("overwrite"):
+                    raise ApiError(409, f"{target.name} already exists")
+                if app.project is not None:
+                    app.project.save_as(target)
+                else:  # a plain show folder: save it as a .dms and carry on with that
+                    pack(app.files.root, target)
+                    settings.add_recent(str(target))
+                    return {"ok": True, "saved": str(target), "restart_to_use": True, **self._project_info()}
+                settings.add_recent(str(target))
+                return {"ok": True, "saved": str(target), **self._project_info()}
+            raise DmsError(f"unknown show file action {action!r}")
+
+        def _download(self) -> None:
+            import tempfile
+
+            from ..package import pack
+
+            name = app.project.name if app.project else f"{app.files.root.name}.dms"
+            with tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp) / "show.dms"
+                pack(app.files.root, out)
+                data = out.read_bytes()
+            safe = "".join(c for c in name if c.isalnum() or c in " ._-()") or "show.dms"
+            self._send(200, data, "application/octet-stream",
+                       {"Content-Disposition": f'attachment; filename="{safe}"'})
+
+        def _upload(self) -> dict[str, Any]:
+            """A .dms from a phone or browser: kept next to the open show file (or show folder), then opened."""
+            import tempfile
+
+            from ..package import is_dms, unpack
+
+            data = self._raw_body(MAX_UPLOAD)
+            name = Path(parse_qs(urlparse(self.path).query).get("name", ["upload.dms"])[0]).name
+            name = "".join(c for c in name if c.isalnum() or c in " ._-()").strip() or "upload.dms"
+            if not is_dms(name):
+                name += ".dms"
+            with tempfile.TemporaryDirectory() as tmp:  # check it fully before keeping it
+                f = Path(tmp) / "check.dms"
+                f.write_bytes(data)
+                unpack(f, Path(tmp) / "shows")
+            folder = app.project.dms.parent if app.project else app.files.root.parent
+            folder.mkdir(parents=True, exist_ok=True)
+            target = folder / name
+            n = 2
+            while target.exists():
+                target = folder / f"{Path(name).stem} ({n}).dms"
+                n += 1
+            target.write_bytes(data)
+            return self._switch(target)
+
+        def _login(self, b: dict) -> None:
+            try:
+                sid, _ = access.login(self.client_address[0], b.get("pin"))
+            except PermissionError as e:
+                return self._error(429 if "wait" in str(e) else 401, str(e))
+            cookie = f"{SESSION_COOKIE}={sid}; Path=/; HttpOnly; SameSite=Strict; Max-Age={7 * 24 * 3600}"
+            self._send(200, json.dumps({"ok": True}).encode(), "application/json", {"Set-Cookie": cookie})
+
+        def _logout(self) -> None:
+            access.logout(self._sid())
+            self._send(200, json.dumps({"ok": True}).encode(), "application/json",
+                       {"Set-Cookie": f"{SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"})
 
         def _events(self, since: int) -> None:
             """Server-sent events: state 10 times a second, plus new MIDI monitor lines."""
@@ -315,6 +553,7 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             self.send_header("Connection", "close")
             self.end_headers()
             self.close_connection = True
+            self.connection.settimeout(5.0)  # a phone that stops reading can't hold this thread forever
             seq = since
             sid = id(self)
             app.screens[sid] = {"ip": self.client_address[0], "local": self._local(), "since": time.time()}
@@ -324,33 +563,84 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 app.screens.pop(sid, None)
 
         def _stream(self, seq: int) -> None:
-            while not app_stopping.is_set():
-                midi = [asdict(e) for e in list(app.monitor.entries) if e.seq > seq]
+            """Send the shared state when it changes, new MIDI monitor lines, else a heartbeat."""
+            local, sid = self._local(), self._sid()
+            seen, quiet = -1, time.monotonic()
+            while not app_stopping.is_set() and not live.stopped:
+                if not local and (not access.lan or access.session(sid, touch=False) is None):
+                    return
+                version, state = live.wait(seen, live.tick_s * 2)
+                midi = [asdict(e) for e in app.monitor.since(seq)]
+                parts = []
+                if version != seen:
+                    parts.append(f'"state": {state}')
+                    seen = version
                 if midi:
                     seq = midi[-1]["seq"]
-                payload = json.dumps({"state": app.snapshot(), "midi": midi}, default=str)
-                self.wfile.write(f"data: {payload}\n\n".encode())
+                    parts.append(f'"midi": {json.dumps(midi, default=str)}')
+                if not parts:
+                    if time.monotonic() - quiet < HEARTBEAT_S:
+                        continue
+                    parts.append('"beat": 1')
+                quiet = time.monotonic()
+                self.wfile.write(("data: {" + ", ".join(parts) + "}\n\n").encode())
                 self.wfile.flush()
-                time.sleep(0.1)
 
         def _write(self, method: str) -> None:
-            if not self._can_write():
-                return self._error(401, "missing or wrong X-DMX-Token")
             path = urlparse(self.path).path
+            if path == "/api/login" and method == "POST":
+                return self._login(self._body())
+            if path == "/api/logout" and method == "POST":
+                return self._logout()
+            who = self._writer()
+            if who is None:
+                return self._error(401, "missing or wrong X-DMX-Token (sign in again)")
+            if who == "claude" and not path.startswith(CLAUDE_WRITES):
+                return self._error(403, "not available to Claude")
+            if path == "/api/project/upload" and method == "POST":
+                return self._json(200, self._upload())
             body = self._body()
+            with app.store.acting(who):  # undo remembers who made each change
+                return self._dispatch(method, path, body)
+
+        def _dispatch(self, method: str, path: str, body: dict) -> None:
+            if path == "/api/access" and method == "POST":
+                return self._json(200, self._access_change(body))
+            if path == "/api/starter" and method == "POST":
+                return self._json(200, {"ok": True, **app.make_starter(bool(body.get("overwrite")))})
+            if path == "/api/ofl/import" and method == "POST":
+                return self._json(200, self._ofl_import(body))
+            if path.startswith("/api/project/") and method == "POST":
+                return self._json(200, self._project(path.rsplit("/", 1)[1], body))
+            if path in ("/api/undo", "/api/redo", "/api/undo/claude") and method == "POST":
+                if path == "/api/redo":
+                    done = app.store.redo()
+                else:
+                    done = app.store.undo("claude" if path.endswith("/claude") else None)
+                return self._json(200, {"ok": True, "change": done, "notes": app.reload(), **app.store.history()})
             if path == "/api/control" and method == "POST":
                 return self._json(200, control(app, body.get("cmd", ""), body))
+            if path == "/api/validate/scene" and method == "POST":  # read-only check, allowed under gig lock
+                return self._json(200, app.validate_scene(body.get("data")))
+            if path == "/api/settings" and method == "POST":  # this laptop's settings (theme)
+                try:
+                    return self._json(200, {"ok": True, "settings": settings.save(body)})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/giglock" and method == "POST":
                 app.set_gig_lock(bool(body.get("on")))
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
             if path == "/api/layout" and method == "PUT":
-                bid = app.save_layout(body.get("stage"), body.get("layout") or {})
+                bid = app.save_layout(body.get("layout") or {})
                 return self._json(200, {"ok": True, "backup": bid})
             if path == "/api/claude/haze" and method == "POST":
                 app.require_unlocked("changing haze")
                 return self._json(200, control(app, "haze", body))
             if path == "/api/preview" and method == "POST":
-                msg = app.preview_scene(body.get("scene") or body.get("scene_data"), float(body.get("seconds", 10)))
+                scene = body.get("scene") or body.get("scene_data")
+                if not isinstance(scene, (str, dict)):
+                    raise ApiError(400, "preview needs a scene name or scene data")
+                msg = app.preview_scene(scene, float(body.get("seconds", 10)))
                 return self._json(200, {"ok": True, "message": msg})
             if path.startswith("/api/midi/") and method == "POST":
                 return self._json(200, self._midi(path.rsplit("/", 1)[1], body))
@@ -363,6 +653,7 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
         def _midi(self, action: str, b: dict) -> dict:
             r, m = app.router, app.monitor
             if action == "learn":
+                app.require_unlocked("MIDI learn")
                 r.learn(b["action"], b.get("params") or {})
                 return {"ok": True, "learning": b["action"]}
             if action == "cancel":
@@ -372,11 +663,16 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             elif action == "clear":
                 m.clear()
             elif action == "remove":
-                r.map.remove((b["type"], int(b["channel"]), int(b["number"]), b.get("port") or ""))
+                app.require_unlocked("removing a mapping")
+                if b["type"] == "osc":
+                    r.map.remove(("osc", 0, 0, b["address"]))
+                else:
+                    r.map.remove((b["type"], int(b["channel"]), int(b["number"]), b.get("port") or ""))
             elif action == "save":
                 app.require_unlocked("saving the MIDI map")
-                save_map(r.map, app.files.midimap_path)
-                return {"ok": True, "saved": str(app.files.midimap_path.name)}
+                path = app.files.midimap_path  # validated and backed up like every other edit
+                bid = app.store.put("midi", path.stem, r.map.to_dict(), f"save MIDI map {path.stem}")
+                return {"ok": True, "saved": str(path.name), "backup": bid}
             else:
                 raise ApiError(404, "unknown MIDI action")
             return {"ok": True}
@@ -384,11 +680,17 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
         def _nodes(self, action: str, b: dict) -> dict:
             from ..node.protocol import AckCode, parse_mac
 
+            if action == "assign":  # waits for the node's heartbeat to confirm it
+                return app.assign_node(str(b["mac"]), int(b.get("universe", 0)), str(b["name"]))
+            if action == "replace":
+                return app.replace_node(str(b["old"]), str(b["new"]))
+            if action == "channel":
+                return app.set_radio_channel(int(b["channel"]))
+            if action == "setup":  # push the fallback looks and channel again
+                app.require_unlocked("node set-up")
+                return {"ok": True, **app.setup_node(app.node_driver())}
             link = app.node_link()
-            if action == "assign":
-                app.require_unlocked("assigning nodes")
-                code = link.assign(parse_mac(b["mac"]), int(b.get("universe", 0)), b["name"])
-            elif action == "identify":
+            if action == "identify":
                 code = link.identify(parse_mac(b["mac"]), int(b.get("seconds", 5)))
             else:
                 raise ApiError(404, "unknown node action")
@@ -402,8 +704,16 @@ def make_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
                 bid = s.restore(b["backup"], b["file"])
             elif parts == ["fixture"] and method == "POST":
                 bid = s.put_fixture(b["entry"])
+            elif parts == ["fixture", "remove"] and method == "POST":
+                bid = s.remove_fixture(str(b.get("id", "")))
+            elif parts == ["patch"] and method == "PUT":
+                bid = s.put_patch(b.get("fixtures"))
+            elif parts == ["group"] and method == "POST":
+                bid = s.edit_group(str(b.get("action", "")), str(b.get("name", "")), b.get("fixtures"), b.get("new_name"))
             elif len(parts) == 3 and parts[0] in ("palettes", "fixtures") and method in ("PUT", "DELETE"):
                 bid = s.put_entry(parts[0], parts[1], parts[2], None if method == "DELETE" else b.get("value"))
+            elif parts == ["panels"] and method == "PUT":
+                bid = s.put("panels", "", b.get("data"))
             elif len(parts) == 2 and method == "PUT":
                 bid = s.put(parts[0], parts[1], b.get("data"))
             elif len(parts) == 2 and method == "DELETE":
@@ -422,11 +732,31 @@ app_stopping = threading.Event()
 
 
 class WebServer:
-    def __init__(self, app: App, host: str = "127.0.0.1", port: int = DEFAULT_PORT, token: str | None = None) -> None:
-        self.token = token or load_token()
-        self.httpd = ThreadingHTTPServer((host, port), make_handler(app, self.token))
-        self.httpd.daemon_threads = True
-        self.thread = threading.Thread(target=self.httpd.serve_forever, name="web", daemon=True)
+    """`host=None` (the app) follows the access settings: localhost, or every network when phone/LAN
+    access is on, switching over when it's turned on or off. A fixed host (tests) stays put."""
+
+    def __init__(self, app: App, host: str | None = None, port: int = DEFAULT_PORT, token: str | None = None,
+                 claude_token: str | None = None, access: Access | None = None) -> None:
+        self.access = access or Access()
+        self.token = token or secrets.token_urlsafe(24)  # the page's, new each run
+        self.claude_token = claude_token or default_claude_token()
+        self.follow = host is None
+        self.host = self._wanted() if host is None else host
+        self.feed = LiveFeed(app.snapshot)  # one snapshot a tick, shared by every screen
+        self.app_token = secrets.token_urlsafe(24)  # for a second launch of the app on this computer
+        self.handler = make_handler(app, self.token, self.access, self.claude_token, self.lan_changed, self.feed,
+                                    self.app_token)
+        self.httpd = self._serve(self.host, port)
+        self.thread: threading.Thread | None = None
+        self._swap = threading.Lock()
+
+    def _wanted(self) -> str:
+        return "0.0.0.0" if self.access.lan else "127.0.0.1"
+
+    def _serve(self, host: str, port: int) -> ThreadingHTTPServer:
+        httpd = ThreadingHTTPServer((host, port), self.handler)
+        httpd.daemon_threads = True
+        return httpd
 
     @property
     def port(self) -> int:
@@ -434,9 +764,42 @@ class WebServer:
 
     def start(self) -> None:
         app_stopping.clear()
+        self.feed.start()
+        if self.follow:  # the real app (not a test server): a second launch can hand over a file
+            try:
+                p = app_token_file()
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"{self.port} {self.app_token}", encoding="utf-8")
+                p.chmod(0o600)
+            except OSError:
+                log.warning("couldn't write the app token file")
+        self.thread = threading.Thread(target=self.httpd.serve_forever, name="web", daemon=True)
         self.thread.start()
 
     def stop(self) -> None:
         app_stopping.set()
+        self.feed.stop()
         self.httpd.shutdown()
         self.httpd.server_close()
+
+    def lan_changed(self, on: bool) -> None:
+        if self.follow:  # after the reply that turned it on/off has gone
+            threading.Timer(0.3, self.rebind).start()
+
+    def rebind(self) -> None:
+        """Listen where the access settings say, on the same port. Open screens reconnect by themselves."""
+        with self._swap:
+            host = self._wanted()
+            if host == self.host:
+                return
+            port = self.port
+            self.httpd.shutdown()
+            self.httpd.server_close()
+            try:
+                self.httpd = self._serve(host, port)
+                self.host = host
+            except OSError:
+                log.exception("couldn't listen on %s:%s; staying on %s", host, port, self.host)
+                self.httpd = self._serve(self.host, port)
+            self.thread = threading.Thread(target=self.httpd.serve_forever, name="web", daemon=True)
+            self.thread.start()

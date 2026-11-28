@@ -19,6 +19,7 @@ from dmx_suite.web.server import WebServer
 
 SHOWS = Path(__file__).resolve().parents[1] / "shows"
 TOKEN = "test-token-0123456789abcdef"
+CLAUDE = "claude-token-0123456789abcdef"
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ def running(tmp_path):
     shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups", ".state.json"))
     app = App(load_show(root), [LogDriver()], state_path=root / ".state.json", log_dir=tmp_path / "logs")
     app.ctl.select_show("band", "mid")
-    web = WebServer(app, "127.0.0.1", 0, token=TOKEN)
+    web = WebServer(app, "127.0.0.1", 0, token=TOKEN, claude_token=CLAUDE)
     web.start()
     yield app, f"http://127.0.0.1:{web.port}", root
     web.stop()
@@ -57,9 +58,10 @@ def test_state_and_page(running):
     assert status == 200 and s["now"]["show"] == "band" and len(s["fixtures"]) == 12
     with urllib.request.urlopen(url + "/") as r:
         html = r.read().decode()
-    assert TOKEN in html and "0.05 DMX Suite" in html
-    with urllib.request.urlopen(url + "/static/app.js") as r:
-        assert r.status == 200
+    assert TOKEN in html and "/static/themes/neutral/theme.css" in html and "<title>DMX Suite</title>" in html
+    for f in ("js/main.js", "js/grid.js", "i18n/en.json", "themes/005/theme.css"):
+        with urllib.request.urlopen(url + "/static/" + f) as r:
+            assert r.status == 200
 
 
 def test_writes_need_token(running):
@@ -103,7 +105,8 @@ def test_control_commands(running):
 
 def test_store_via_api_reloads_live(running):
     app, url, root = running
-    status, r = call(url + "/api/store/scene/teal", "PUT", {"data": {"name": "Teal", "layers": [{"fixtures": ["bars"], "colour": "#00a090"}]}})
+    teal = {"name": "Teal", "layers": [{"fixtures": ["bars"], "colour": "#00a090"}]}
+    status, r = call(url + "/api/store/scene/teal", "PUT", {"data": teal})
     assert status == 200 and r["backup"]
     assert "teal" in app.files.scenes  # live reload
     call(url + "/api/control", "POST", {"cmd": "scene", "scene": "teal"})
@@ -133,7 +136,10 @@ def test_midi_learn_and_monitor_over_api(running):
     status, rows = call(url + "/api/midi?since=0")
     assert rows[-1]["result"].startswith("learned")
     assert app.router.map.get("note", 10, 70).action == "flash"
-    assert call(url + "/api/midi/save", "POST", {})[1]["ok"]
+    res = call(url + "/api/midi/save", "POST", {})[1]
+    assert res["ok"] and res["backup"]  # through the store: validated and backed up
+    saved = app.files.midimap_path.read_text(encoding="utf-8")
+    assert "number: 70" in saved and "# TD-25" in saved  # new mapping written, comments kept
 
 
 def test_events_stream(running):
@@ -153,8 +159,8 @@ def test_events_stream(running):
 
 def test_claude_tools_online(running):
     app, url, root = running
-    t = DmxTools(shows=root, url=url, token=TOKEN)
-    assert "HARD RULES" in t.get_guide()
+    t = DmxTools(shows=root, url=url, token=CLAUDE)
+    assert "Safety rules" in t.get_guide()
     assert "mh_a" in t.list_fixtures()
     scene = "name: Slow purple\nlayers:\n  - {fixtures: [bars], colour: purple}\n  - {fixtures: [movers], position: drum_kit}"
     assert t.validate_scene(scene).startswith("ok")
@@ -179,7 +185,7 @@ def test_claude_tools_online(running):
 def test_claude_tools_offline(tmp_path):
     root = tmp_path / "shows"
     shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups", ".state.json"))
-    t = DmxTools(shows=root, url="http://127.0.0.1:9", token=TOKEN)  # nothing listening
+    t = DmxTools(shows=root, url="http://127.0.0.1:9", token=CLAUDE)  # nothing listening
     assert "engine isn't running" in t.save("scene", "teal", "layers:\n  - {fixtures: [bars], colour: blue}")
     assert (root / "scenes" / "teal.yaml").exists()
     assert "colours:" in t.get_palettes()
@@ -192,7 +198,7 @@ def test_mcp_server_lists_tools(tmp_path):
     pytest.importorskip("mcp")
     from dmx_suite.mcp_server import build_server
 
-    server = build_server(DmxTools(shows=SHOWS, url="http://127.0.0.1:9", token=TOKEN))
+    server = build_server(DmxTools(shows=SHOWS, url="http://127.0.0.1:9", token=CLAUDE))
     names = {t.name for t in asyncio.run(server.list_tools())}
     assert {"get_guide", "save_item", "validate_scene", "preview_scene", "set_haze", "node_health"} <= names
     result = asyncio.run(server.call_tool("validate_scene", {"scene_yaml": "layers:\n  - {fixtures: [bars], dimmer: 1}"}))
@@ -208,7 +214,6 @@ def test_node_drop_alert_and_health_log(tmp_path):
     clock = [1000.0]
     health = node.link.health
     health._clock = lambda: clock[0]
-    rx = node.link.t.node.receivers[0]
     for _ in range(2):
         node.link.t.node._next_hb_ms = 0
         node.link.poll()
@@ -219,3 +224,48 @@ def test_node_drop_alert_and_health_log(tmp_path):
     assert '"to": "offline"' in log
     assert {"mac", "state", "rssi"} <= set(app.nodes()[0])
     app.engine.stop()
+
+
+def test_groups_over_http_apply_live(running):
+    app, url, _ = running
+    status, r = call(url + "/api/store/group", "POST", {"action": "set", "name": "front", "fixtures": ["wash_l", "wash_r"]})
+    assert status == 200 and r["backup"]
+    assert app.catalogue()["groups"]["front"] == ["wash_l", "wash_r"]  # no restart
+    status, r = call(url + "/api/store/group", "POST", {"action": "set", "name": "all", "fixtures": ["kick"]})
+    assert status == 400
+    app.set_gig_lock(True)
+    assert call(url + "/api/store/group", "POST", {"action": "delete", "name": "front"})[0] == 423
+
+
+# ------------------------------------------------------------------ scene builder API (v2 R3)
+
+
+def test_effects_catalogue(running):
+    _, url, _ = running
+    status, cat = call(url + "/api/effects")
+    assert status == 200
+    names = [e["name"] for e in cat["effects"]]
+    assert "linear_wave" in names and "colour_chase" in names
+    assert cat["colours"]["blue"].startswith("#") and "drum_kit" in cat["positions"]
+    assert cat["blends"] == ["replace", "max", "add"] and cat["intensity"] is False  # 0.05 band rig
+
+
+def test_validate_scene_points_at_the_layer(running):
+    _, url, _ = running
+    good = {"name": "T", "layers": [{"fixtures": ["bars"], "effect": "rainbow", "period_s": 4}]}
+    status, r = call(url + "/api/validate/scene", "POST", {"data": good})
+    assert status == 200 and r["ok"] and r["length_s"] == 4
+    bad = {"name": "T", "layers": [{"fixtures": ["bars"], "colour": "blue"}, {"fixtures": ["ukings"], "effect": "circle",
+                                                                                 "centre": "drum_kit"}]}
+    r = call(url + "/api/validate/scene", "POST", {"data": bad})[1]
+    assert not r["ok"] and r["layer"] == 2 and "rule 7" in r["error"]
+    r = call(url + "/api/validate/scene", "POST", {"data": {"layers": [{"fixtures": ["bars"], "colour": "blue",
+                                                                         "intensity": 0.5}]}})[1]
+    assert not r["ok"] and "rule 1" in r["error"]
+
+
+def test_guide_lists_registry_effects():
+    from dmx_suite.claude_tools import guide
+
+    g = guide()
+    assert "linear_wave:" in g and "blend replace|max|add" in g and "mapping order|spatial" in g

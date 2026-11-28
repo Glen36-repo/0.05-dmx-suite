@@ -18,15 +18,19 @@ inline uint32_t net_id() {
   return proto::fnv1a32((const uint8_t*)key, sizeof(key) - 1);
 }
 
-inline bool begin(esp_now_recv_cb_t on_recv) {
+inline bool valid_channel(uint8_t ch) { return ch >= proto::MIN_CHANNEL && ch <= proto::MAX_CHANNEL; }
+
+inline void set_channel(uint8_t ch) { esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE); }
+
+inline bool begin(esp_now_recv_cb_t on_recv, uint8_t channel = RADIO_CHANNEL) {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   esp_wifi_set_ps(WIFI_PS_NONE);  // lowest latency
-  esp_wifi_set_channel(RADIO_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  set_channel(valid_channel(channel) ? channel : RADIO_CHANNEL);
   if (esp_now_init() != ESP_OK) return false;
   esp_now_peer_info_t peer = {};
   memcpy(peer.peer_addr, BROADCAST, 6);
-  peer.channel = RADIO_CHANNEL;
+  peer.channel = 0;  // 0 = whatever channel the radio is on, so a channel change needs no new peer
   peer.encrypt = false;
   if (esp_now_add_peer(&peer) != ESP_OK) return false;
   return esp_now_register_recv_cb(on_recv) == ESP_OK;

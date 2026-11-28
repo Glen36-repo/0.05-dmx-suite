@@ -1,17 +1,26 @@
-"""Show engine: owns control state, runs the 40 Hz output loop, sends immediately on drum hits."""
+"""Show engine: owns control state, runs the 40 Hz output loop, sends immediately on drum hits.
+
+The show must go on: an error while rendering (a bad value in a show file, a bug in an effect)
+never stops output. The engine logs it, drops to the static look, and if even that can't render
+keeps sending the last good frame. `fault` says what happened for the status bar.
+"""
 
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
-from typing import Callable
+from collections.abc import Callable
 
+from .busk import Override, apply_with_releases
+from .fade import Crossfade
 from .faders import Masters
 from .fixtures import DMX_CHANNELS, Kind
 from .haze import Haze, HazeMode
 from .look import Colour, FixtureLook, Look
-from .output import OutputDriver
+from .output import NodeSerialDriver, OutputDriver
+from .output.timer import high_res
 from .rig import Rig
 from .rules import ControlState, Flash, RuleLayer
 from .scenes import Scene, ScenePlayer
@@ -28,7 +37,7 @@ class Engine:
         rig: Rig,
         drivers: list[OutputDriver],
         look: Look | None = None,
-        clock: Callable[[], float] = time.monotonic,
+        clock: Callable[[], float] = time.perf_counter,  # high resolution on Windows too
     ) -> None:
         self.rig = rig
         self.drivers = drivers
@@ -37,7 +46,9 @@ class Engine:
         now = clock()
         self.master = rig.startup_master  # safe default on (re)start
         self.blackout = False
-        self.look = look or Look()  # static look (or last look a scene produced)
+        self.look = look or Look()  # what's on the rig: the base look with positions and busking laid over
+        self.base_look = self.look  # the static look playing when no scene or show is
+        self.static_look = self.look  # what the engine falls back to after a fault
         self.source: Callable[[float], Look] | None = None  # scene player
         self.scene: Scene | None = None
         # setup/test page: find one fixture, raw channel tester
@@ -48,22 +59,57 @@ class Engine:
         # preview: play something for a while, then put back what was running
         self._preview: tuple[float, Callable[[float], Look] | None, Scene | None, Look] | None = None
         self.flashes: dict[str, Flash] = {}
+        self.overrides: list[Override] = []  # busking: laid over the show, under the rules
         self.masters = Masters(rig.grand_master, rig.sub_masters, rig.flash_level, rig.fade_s)
         self.haze = Haze(rig.haze, now)
         self.rules = RuleLayer(rig)
         self.frames: dict[int, bytearray] = {}
         self.frames_sent = 0
         self.driver_errors = 0
+        self.fault: str | None = None  # last render error, for the status bar
+        self.fault_at: float | None = None
+        self.faults = 0
+        self._logged: dict[str, float] = {}  # message -> when last logged (rate limit)
         self.on_frame: list[Callable[[dict[int, bytearray]], None]] = []
         self._last_tick = now
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
+    # ------------------------------------------------------------------ live rig changes (R7)
+
+    def swap_rig(self, rig: Rig, look: Look) -> None:
+        """Run on a changed patch or rig from the next frame: new rule layer (heads keep where they
+        are), static look, haze settings; MASTER, masters and what's playing stay. Anything aimed at
+        a fixture that's gone (flash, find, held position) is dropped."""
+        with self.lock:
+            old = self.rig
+            self.rig = rig
+            held = self.rules.position
+            self.rules = RuleLayer(rig)
+            for fid in self.rules.position:
+                if fid in held and fid in old.present:
+                    self.rules.position[fid] = held[fid]
+            if rig.haze != old.haze:
+                self.haze = Haze(rig.haze, self.clock())
+            if self.source is None:  # the static look is what's playing
+                self.base_look = look
+            self.static_look = look
+            present = set(rig.present)
+            self.flashes = {f: v for f, v in self.flashes.items() if f in present}
+            self.position_override = {f: v for f, v in self.position_override.items() if f in present}
+            if self.find not in present:
+                self.find = None
+            self.frames = {}
+            for d in self.drivers:
+                if isinstance(d, NodeSerialDriver):
+                    d.link.health.expect(rig.nodes)
+        self._wake.set()
+
     # ------------------------------------------------------------------ output
 
     def _state(self, now: float) -> ControlState:
-        return ControlState(self.master, self.blackout, self.flashes, self.haze.tick(now))
+        return ControlState(self.master, self.blackout, self.flashes, self.haze.tick(now), now)
 
     def output(self) -> dict[int, bytearray]:
         """Render and send now. Called by the loop and directly by anything that must not wait."""
@@ -72,38 +118,82 @@ class Engine:
             for fid in [f for f, fl in self.flashes.items() if fl.until <= now]:
                 del self.flashes[fid]
             if self._preview is not None and now >= self._preview[0]:
-                _, self.source, self.scene, self.look = self._preview
+                _, self.source, self.scene, self.base_look = self._preview
                 self._preview = None
-            if self.source is not None:
-                self.look = self.source(now)
+            if isinstance(self.source, Crossfade) and self.source.done(now):
+                self.source = self.source.new  # fade finished: drop the old look
+            # start from the clean base every frame: overrides are laid over it, never baked in
+            look = self.source(now) if self.source is not None else self.base_look
             if self.position_override:
-                self.look = self._with_positions(self.look)
+                look = self._with_positions(look)
+            if self.overrides:
+                look, self.overrides = apply_with_releases(look, self.overrides, now)
+            self.look = look
             if self.find is not None:
-                self.frames = self._render_find(now)
+                frames = self._render_find(now)
             else:
-                self.frames = self.rules.render(self.look, self._state(now), self.masters)
+                frames = self.rules.render(self.look, self._state(now), self.masters)
             for (uni, ch), val in self.channel_test.items():
-                if uni in self.frames:
-                    self.frames[uni][ch - 1] = val
-            for drv in self.drivers:
-                for uni, frame in self.frames.items():
-                    try:
-                        drv.send(uni, bytes(frame))
-                    except Exception:
-                        self.driver_errors += 1
-                        log.exception("output driver %s failed", drv.name)
-            self.frames_sent += 1
-            for fn in self.on_frame:
-                fn(self.frames)
-            return self.frames
+                if uni in frames:
+                    frames[uni][ch - 1] = val
+            self.frames = frames  # only a frame that rendered completely replaces the last good one
+            self._send(frames)
+            return frames
+
+    def _send(self, frames: dict[int, bytearray]) -> None:
+        for drv in self.drivers:
+            for uni, frame in frames.items():
+                try:
+                    drv.send(uni, bytes(frame))
+                except Exception:
+                    self.driver_errors += 1
+                    self._log_once(f"output driver {drv.name} failed", exc=True)
+        self.frames_sent += 1
+        for fn in self.on_frame:
+            try:
+                fn(frames)
+            except Exception:
+                self._log_once(f"frame listener {getattr(fn, '__name__', fn)} failed", exc=True)
+
+    def _log_once(self, msg: str, exc: bool = False, every_s: float = 60.0) -> None:
+        """Log a repeating problem once a minute, not 40 times a second."""
+        now = self.clock()
+        if now - self._logged.get(msg, -math.inf) >= every_s:
+            self._logged[msg] = now
+            (log.exception if exc else log.error)(msg)
+
+    def _safe_output(self) -> None:
+        """Render and send, and never let an error stop the show."""
+        try:
+            self.output()
+        except Exception as e:  # noqa: BLE001 - anything at all: the lights must keep going
+            self._fault(e)
+
+    def _fault(self, e: Exception) -> None:
+        with self.lock:
+            self.faults += 1
+            self.fault = f"{type(e).__name__}: {e}"
+            self.fault_at = self.clock()
+            self._log_once(f"render failed, back to the static look: {self.fault}", exc=True)
+            # drop whatever was playing and fall back to the static look
+            self._preview = None
+            self.source, self.scene = None, None
+            self.look = self.base_look = self.static_look
+            try:
+                self.output()
+            except Exception as e2:  # noqa: BLE001
+                self.fault = f"{type(e2).__name__}: {e2} (holding the last good frame)"
+                self._log_once(f"static look failed too, holding the last good frame: {e2}", exc=True)
+                if self.frames:
+                    self._send(self.frames)
 
     def tick(self) -> None:
-        """One loop step: advance fades, then render and send."""
+        """One loop step: advance fades, then render and send. Never raises (see _fault)."""
         with self.lock:
             now = self.clock()
             self.masters.tick(max(0.0, now - self._last_tick))
             self._last_tick = now
-            self.output()
+            self._safe_output()
 
     def flash_deadline(self) -> float:
         """When the earliest running flash ends (inf if none), so the loop can cut it exactly."""
@@ -116,18 +206,33 @@ class Engine:
         if self._thread:
             return
         self._stop.clear()
+        self._end_timer = high_res()  # 1 ms timer on Windows while running
         self._thread = threading.Thread(target=self._run, name="engine", daemon=True)
         self._thread.start()
+
+    def loop_step(self, next_tick: float) -> tuple[float, float]:
+        """One pass of the loop: tick if a frame is due (the 40 Hz grid) or a flash has just ended.
+        Returns (next grid time, how long to wait). Early wakes (control changes, fader moves)
+        never move the grid, so a burst of changes can't push frames into the future."""
+        now = self.clock()
+        due = now >= next_tick
+        if due or self.flash_deadline() <= now:
+            self.tick()
+        if due:
+            period = 1 / FRAME_HZ
+            next_tick += period * (math.floor((now - next_tick) / period) + 1)  # next grid point after now
+        return next_tick, max(0.0, min(next_tick, self.flash_deadline()) - self.clock())
 
     def _run(self) -> None:
         next_tick = self.clock()
         while not self._stop.is_set():
-            self._wake.clear()  # before tick, so a control change during it isn't missed
-            self.tick()
-            now = self.clock()
-            next_tick = max(next_tick + 1 / FRAME_HZ, now)
-            deadline = min(next_tick, self.flash_deadline())
-            self._wake.wait(max(0.0, deadline - now))
+            self._wake.clear()  # before looking, so a change made meanwhile wakes the wait at once
+            try:
+                next_tick, wait = self.loop_step(next_tick)
+            except Exception as e:  # noqa: BLE001 - tick never raises; this is the last line of defence
+                self._fault(e)
+                next_tick, wait = self.clock() + 1 / FRAME_HZ, 1 / FRAME_HZ
+            self._wake.wait(wait)
 
     def stop(self) -> None:
         self._stop.set()
@@ -135,12 +240,15 @@ class Engine:
         if self._thread:
             self._thread.join(timeout=1)
             self._thread = None
+        getattr(self, "_end_timer", lambda: None)()
+        self._end_timer = lambda: None
         for d in self.drivers:
             d.close()
 
     def _changed(self) -> None:
-        """Control change: send now rather than on the next tick."""
-        self.output()
+        """Control change: send now rather than on the next tick. The loop only re-plans its wait
+        (a new flash end), it doesn't render the same frame again."""
+        self._safe_output()
         self._wake.set()
 
     # ------------------------------------------------------------------ controls
@@ -149,7 +257,7 @@ class Engine:
         with self.lock:
             self._preview = None
             self.source, self.scene = None, None
-            self.look = look
+            self.look = self.base_look = look
         self._changed()
 
     def _with_positions(self, look: Look) -> Look:
@@ -180,7 +288,7 @@ class Engine:
         if not 0 < seconds <= 300:
             raise ValueError("preview 0-300 s")
         with self.lock:
-            prev = self._preview[1:] if self._preview else (self.source, self.scene, self.look)
+            prev = self._preview[1:] if self._preview else (self.source, self.scene, self.base_look)
             self._preview = (self.clock() + seconds, *prev)
             self.source, self.scene = source, scene
         self._changed()
@@ -194,14 +302,22 @@ class Engine:
     def end_preview(self) -> None:
         with self.lock:
             if self._preview:
-                _, self.source, self.scene, self.look = self._preview
+                _, src, self.scene, look = self._preview
                 self._preview = None
+                back = src if src is not None else (lambda now, lk=look: lk)
+                fade = self.rig.change_fade_s
+                self.source = Crossfade(self.source, back, self.clock(), fade) if fade and self.source else back
+                self.look = self.base_look = look
         self._changed()
 
-    def set_source(self, source: Callable[[float], Look], scene: Scene | None = None) -> None:
-        """Play any look source (a show, a scene with tap tempo). The rule layer still applies."""
+    def set_source(self, source: Callable[[float], Look], scene: Scene | None = None, fade_s: float = 0.0) -> None:
+        """Play any look source (a show, a scene with tap tempo), crossfading from what's on now
+        over `fade_s` seconds (0 = cut). The rule layer still applies."""
         with self.lock:
             self._preview = None  # a real selection ends any preview
+            if fade_s > 0:
+                old = self.source if self.source is not None else (lambda now, lk=self.base_look: lk)
+                source = Crossfade(old, source, self.clock(), fade_s)
             self.source, self.scene = source, scene
         self._changed()
 
@@ -220,11 +336,11 @@ class Engine:
     def _render_find(self, now: float) -> dict[int, bytearray]:
         full = Masters(1.0, {}, 1.0, 0.0)
         white = {e: 1.0 for e in ("red", "green", "blue", "white")}
-        look = Look(fixtures={self.find: FixtureLook(colour=white)})
-        state = ControlState(True, False, {}, self.haze.tick(now))
+        look = Look(fixtures={self.find: FixtureLook(colour=white)} if self.find else {})
+        state = ControlState(True, False, {}, self.haze.tick(now), now)
         frames = self.rules.render(look, state, full)
-        for fx in self.rig.fixtures:  # the kick light ignores MASTER, so dark it explicitly
-            if fx.kind == Kind.KICK and fx.id != self.find:
+        for fx in self.rig.fixtures:  # exempt fixtures (kick light) ignore MASTER: dark them explicitly
+            if fx.id in self.rig.exempt and fx.id != self.find:
                 for ch in fx.type.channels:
                     frames[fx.universe][fx.slot(ch)] = 0
         return frames
@@ -266,6 +382,39 @@ class Engine:
             self.channel_test.clear()
         self._changed()
 
+    # ------------------------------------------------------------------ busking
+
+    def hold(self, o: Override) -> None:
+        """Lay an override over the show (replacing one with the same key)."""
+        with self.lock:
+            self.overrides = [x for x in self.overrides if x.key != o.key] + [o]
+        self._changed()
+
+    def release(self, key: str, fade_s: float = 0.0) -> bool:
+        with self.lock:
+            found = False
+            for o in self.overrides:
+                if o.key == key and o.released_at is None:
+                    o.released_at, o.fade_s, found = self.clock(), fade_s, True
+            if fade_s <= 0:
+                self.overrides = [o for o in self.overrides if o.key != key]
+        self._changed()
+        return found
+
+    def release_all(self, fade_s: float = 0.0) -> None:
+        with self.lock:
+            now = self.clock()
+            for o in self.overrides:
+                if o.released_at is None:
+                    o.released_at, o.fade_s = now, fade_s
+            if fade_s <= 0:
+                self.overrides = []
+        self._changed()
+
+    def held(self) -> list[Override]:
+        with self.lock:
+            return [o for o in self.overrides if o.released_at is None]
+
     def set_master(self, on: bool) -> None:
         with self.lock:
             self.master = on
@@ -292,10 +441,11 @@ class Engine:
         length_ms: int = 100,
         min_level: float = 0.0,
     ) -> bool:
-        """Drum hit. Only with MASTER off (rule 2). Sends a frame immediately; the loop wakes to
-        cut back to black exactly when the flash ends. Returns False if ignored."""
+        """Drum hit. Only with MASTER off, and only if the rig's profile has drum flash (rule 2).
+        Sends a frame immediately; the loop wakes to cut back to black exactly when the flash
+        ends. Returns False if ignored."""
         with self.lock:
-            if self.master or self.blackout:
+            if not self.rig.profile.drum_flash or self.master or self.blackout:
                 return False
             if colour == "show":
                 col = self.look.show_colour
@@ -306,7 +456,7 @@ class Engine:
             level = max(min_level, min(1.0, velocity / 127))
             until = self.clock() + length_ms / 1000
             for fid in fixtures:
-                if fid in self.rig.present and self.rig.patch.fixtures[fid].kind != Kind.KICK:
+                if fid in self.rig.present and fid not in self.rig.exempt:  # rule 3
                     self.flashes[fid] = Flash(col, level, until)
         self._changed()
         return True
@@ -340,7 +490,11 @@ class Engine:
     def haze_boost(self, pressed: bool) -> bool:
         with self.lock:
             now = self.clock()
-            ok = self.haze.boost_press(now) if pressed else (self.haze.boost_release(now) or True)
+            if pressed:
+                ok = self.haze.boost_press(now)
+            else:
+                self.haze.boost_release(now)
+                ok = True
         self._changed()
         return ok
 

@@ -82,8 +82,10 @@ def test_enttec_sends_only_its_universe(two):
         def close(self):
             pass
 
-    e = Engine(rig, [EnttecProDriver("COM9", universe=1, serial_factory=lambda *a: Ser())], look)
+    drv = EnttecProDriver("COM9", universe=1, serial_factory=lambda *a: Ser())
+    e = Engine(rig, [drv], look)
     e.tick()
+    drv.flush()
     assert len(writes) == 1 and writes[0][5:9] == bytes([255, 0, 255, 0])  # universe 1's frame
 
 
@@ -126,7 +128,8 @@ def test_address_report_per_universe(two):
 def router(engine):
     m = parse_map({"mappings": [
         {"type": "note", "channel": 10, "number": 38, "action": "flash", "fixtures": ["bar_1"]},
-        {"type": "note", "channel": 10, "number": 38, "port": "H2MIDI", "action": "flash", "fixtures": ["wash"], "colour": "white"},
+        {"type": "note", "channel": 10, "number": 38, "port": "H2MIDI", "action": "flash", "fixtures": ["wash"],
+         "colour": "white"},
     ]})
     return MidiRouter(engine, m)
 

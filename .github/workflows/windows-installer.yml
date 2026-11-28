@@ -14,6 +14,11 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # Code signing: add these repository secrets once a certificate is bought; until then the
+      # installer is built unsigned (Windows SmartScreen will warn on first run).
+      SIGN_PFX: ${{ secrets.WINDOWS_SIGN_PFX_BASE64 }}
+      SIGN_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,6 +29,19 @@ jobs:
       - name: Build
         shell: pwsh
         run: ./installer/build.ps1
+      - name: Sign installer
+        if: env.SIGN_PFX != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "sign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object FullName -like "*\x64\*" | Sort-Object FullName | Select-Object -Last 1
+          foreach ($exe in Get-ChildItem dist\0.05-DMX-Suite-Setup-*.exe) {
+            & $signtool.FullName sign /f $pfx /p $env:SIGN_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $exe.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signing failed" }
+          }
+          Remove-Item $pfx
       - uses: actions/upload-artifact@v4
         with:
           name: dmx-suite-installer

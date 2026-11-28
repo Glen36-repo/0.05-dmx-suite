@@ -14,7 +14,7 @@ datas = [
     (str(ROOT / "shows"), "shows"),
 ]
 binaries = []
-hiddenimports = collect_submodules("dmx_suite") + collect_submodules("mido.backends")
+hiddenimports = collect_submodules("dmx_suite") + collect_submodules("mido.backends") + collect_submodules("ruamel.yaml")
 
 # optional extras: real MIDI ports, Claude Desktop tools, desktop window and tray
 for pkg in ("rtmidi", "mcp", "webview", "pystray"):

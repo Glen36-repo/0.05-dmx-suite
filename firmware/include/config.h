@@ -2,16 +2,22 @@
 #pragma once
 
 #define FW_MAJOR 0
-#define FW_MINOR 1
+#define FW_MINOR 2
 #define FW_PATCH 0
 
 // Band pairing key: every board in the rig must be built with the same one.
 //   PLATFORMIO_BUILD_FLAGS='-DPAIRING_KEY=\"your-band-key\"' pio run
 #ifndef PAIRING_KEY
 #define PAIRING_KEY "0.05-dev-key-change-me"
+#define PAIRING_KEY_DEV 1
+#warning "Built with the development pairing key: any other development build can join this rig. Set PAIRING_KEY for the gig (see firmware/README.md)."
+#else
+#define PAIRING_KEY_DEV 0
 #endif
 
-// ESP-NOW Wi-Fi channel; node and receivers must match.
+// ESP-NOW Wi-Fi channel at first boot; node and receivers must match. Changed later from the
+// laptop (SET_CHANNEL); the node tells its receivers, and a receiver that loses the node looks
+// for it on every channel.
 #ifndef RADIO_CHANNEL
 #define RADIO_CHANNEL 1
 #endif
@@ -52,3 +58,8 @@
 #define RECEIVER_ONLINE_MS 3500    // 3 missed heartbeats
 #define RECEIVER_SILENCE_MS 5000   // receiver outputs black after this long with no data
 #define MAX_RECEIVERS 16
+#define CHANNEL_MOVE_MS 400        // node keeps telling receivers about a channel change for this long
+#define SCAN_AFTER_MS 10000        // receiver with nothing heard for this long starts looking on every channel
+#define SCAN_DWELL_MS 300          // ...listening this long on each
+#define UNIVERSE_FORGET_MS 10000   // node stops keeping a universe alive this long after its last frame
+#define SCREEN_MS 500              // node screen refresh (only redrawn when something shown changed)

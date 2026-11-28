@@ -5,8 +5,9 @@ from __future__ import annotations
 import itertools
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Callable, Protocol
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Protocol
 
 from . import protocol as p
 from .health import HealthTracker
@@ -132,6 +133,10 @@ class NodeLink:
         self.health = health or HealthTracker()
         self.stats = LinkStats()
         self._tokens = itertools.count(1)
+        self._req_ids = itertools.cycle(range(1, 256))
+        self._poll_lock = threading.Lock()  # the simulated node can be polled from two threads
+        self.node_fw: tuple[int, int, int] | None = None  # the node's firmware, from its heartbeat
+        self.on_node_announce: list[Callable[[p.Heartbeat], None]] = []  # node (re)connected
         self._pongs: dict[int, float] = {}
         self._acks: list[p.Ack] = []
         self._cv = threading.Condition()
@@ -165,24 +170,59 @@ class NodeLink:
             return None
         return self._pongs.pop(token) - t0
 
-    def set_fallback(self, look: p.FallbackLook, timeout: float = 1.0) -> p.AckCode | None:
-        return self._request(p.MsgType.SET_FALLBACK, p.set_fallback(look), timeout)
+    @property
+    def v11(self) -> bool:
+        """The node speaks protocol v1.1 (firmware 0.2): request ids, per-universe fallbacks, channel."""
+        return p.supports_v11(self.node_fw)
+
+    def set_fallback(self, look: p.FallbackLook, universe: int | None = None, timeout: float = 1.0) -> p.AckCode | None:
+        """Store a fallback look: for one universe (firmware 0.2), else the node's own universe."""
+        if universe is not None and self.v11:
+            return self._request(p.MsgType.SET_FALLBACK_UNIVERSE, lambda r: p.set_fallback_universe(universe, look, r), timeout)
+        return self._request(p.MsgType.SET_FALLBACK, lambda r: p.set_fallback(look, r), timeout)
+
+    def set_channel(self, channel: int, timeout: float = 1.0) -> p.AckCode | None:
+        if not self.v11:
+            return p.AckCode.UNKNOWN_TYPE  # firmware 0.1 has a fixed channel
+        return self._request(p.MsgType.SET_CHANNEL, lambda r: p.set_channel(channel, r), timeout)
 
     def assign(self, mac: bytes, universe: int, name: str, timeout: float = 1.0) -> p.AckCode | None:
-        return self._request(p.MsgType.ASSIGN, p.assign(mac, universe, name), timeout)
+        return self._request(p.MsgType.ASSIGN, lambda r: p.assign(mac, universe, name, r), timeout)
+
+    def assign_confirmed(self, mac: bytes, universe: int, name: str, timeout: float = 1.0,
+                         confirm_s: float = 4.0) -> tuple[p.AckCode | None, bool]:
+        """ASSIGN, then wait for that node's own heartbeat to show the new name and universe (the
+        radio link to a receiver is one-way, so its heartbeat is the only proof it took it)."""
+        since = time.monotonic()
+        code = self.assign(mac, universe, name, timeout)
+        if code != p.AckCode.OK:
+            return code, False
+        want_uni = None if universe == p.UNIVERSE_NONE else universe
+        key = p.mac_str(mac)
+
+        def took() -> bool:
+            rec = self.health.nodes.get(key)
+            hb = rec.heartbeat if rec else None
+            return (rec is not None and hb is not None and rec.last_seen is not None and rec.last_seen >= since
+                    and hb.name == name and (hb.universe == want_uni or hb.node_type == p.NodeType.DMX_TX))
+
+        return code, self._wait(took, confirm_s)
 
     def identify(self, mac: bytes, seconds: int = 5, timeout: float = 1.0) -> p.AckCode | None:
-        return self._request(p.MsgType.IDENTIFY, p.identify(mac, seconds), timeout)
+        return self._request(p.MsgType.IDENTIFY, lambda r: p.identify(mac, seconds, r), timeout)
 
-    def _request(self, msg_type: int, data: bytes, timeout: float) -> p.AckCode | None:
+    def _request(self, msg_type: int, build: Callable[[int | None], bytes], timeout: float) -> p.AckCode | None:
+        """Send a request that gets an ACK. To firmware 0.2 it carries a request id, so an ACK for an
+        earlier request of the same type (one that timed out) can't be taken for this one's."""
+        req = next(self._req_ids) if self.v11 else None
         with self._cv:
             self._acks = [a for a in self._acks if a.acked_type != msg_type]
-        self._send(data)
+        self._send(build(req))
         found: list[p.Ack] = []
 
         def got() -> bool:
             for a in self._acks:
-                if a.acked_type == msg_type:
+                if a.acked_type == msg_type and (req is None or a.req is None or a.req == req):
                     found.append(a)
                     self._acks.remove(a)
                     return True
@@ -207,6 +247,10 @@ class NodeLink:
     # ------------------------------------------------------------------ receive
 
     def poll(self) -> list[p.Message]:
+        with self._poll_lock:
+            return self._poll()
+
+    def _poll(self) -> list[p.Message]:
         data = self.t.read()
         msgs: list[p.Message] = []
         if not data:
@@ -230,13 +274,20 @@ class NodeLink:
                     self.stats.last_status_at = time.monotonic()
                 elif isinstance(m, p.Heartbeat):
                     self.health.update(m)
+                    if m.node_type == p.NodeType.DMX_TX:
+                        self.node_fw = m.fw
                 elif isinstance(m, p.Announce):
                     self.health.update(m.heartbeat)
+                    if m.heartbeat.node_type == p.NodeType.DMX_TX:
+                        self.node_fw = m.heartbeat.fw
             self._cv.notify_all()
         self.health.tick()
         for m in msgs:
             for fn in self.on_message:
                 fn(m)
+            if isinstance(m, p.Announce) and m.heartbeat.node_type == p.NodeType.DMX_TX:
+                for hook in self.on_node_announce:  # node plugged in or restarted
+                    hook(m.heartbeat)
         return msgs
 
     def start(self) -> None:

@@ -20,22 +20,24 @@ TOKEN = "test-token-0123456789abcdef"
 
 
 def test_layout_parsed_and_defaults_filled(patch):
-    rig = parse_rig({"stage": {"width": 8, "depth": 5}, "layout": {"mh_a": {"x": 2, "y": 4.5, "rot": 370}}}, patch)
-    assert rig.stage == (8.0, 5.0)
-    assert rig.layout["mh_a"] == Placement(2.0, 4.5, 10.0)  # rotation wraps
+    rig = parse_rig({"layout": {"mh_a": {"x": 2.3, "y": 4, "rot": 370},
+                                "bar_1": {"x": 10, "y": 6, "shape": "ring"}}}, patch)
+    assert rig.layout["mh_a"] == Placement(2.5, 4.0, 10.0)  # half cells, rotation wraps
+    assert rig.layout["bar_1"].shape == "ring"
     full = full_layout(rig)
-    assert set(full) == set(rig.present)  # every fixture has a spot
-    assert full["mh_a"] == Placement(2.0, 4.5, 10.0)  # placed ones kept
-    for p in full.values():
-        assert 0 <= p.x <= 8 and 0 <= p.y <= 5
+    assert set(full) == set(rig.present)  # every light has a spot
+    assert full["mh_a"] == Placement(2.5, 4.0, 10.0)  # placed ones kept
+    spots = [(p.x, p.y) for p in full.values()]
+    assert len(set(spots)) == len(spots)  # defaults don't sit on top of each other
 
 
 @pytest.mark.parametrize("data, msg", [
     ({"layout": {"nope": {"x": 1, "y": 1}}}, "unknown fixture"),
     ({"layout": {"mh_a": {"x": 1}}}, "needs x and y"),
-    ({"layout": {"mh_a": {"x": 99, "y": 1}}}, "out of range"),
-    ({"stage": {"width": 0.5, "depth": 4}}, "1-50"),
-    ({"stage": {"width": 6}}, "width and depth"),
+    ({"layout": {"mh_a": {"x": 999, "y": 1}}}, "0-200 cells"),
+    ({"layout": {"mh_a": {"x": 1, "y": 1, "shape": "star"}}}, "shape must be"),
+    ({"layout": {"mh_a": {"x": 1, "y": 1, "shape": "grid", "cols": 99}}}, "cols must be"),
+    ({"layout": [1, 2]}, "fixture: {x, y}"),
 ])
 def test_layout_validation(patch, data, msg):
     with pytest.raises(ConfigError, match=msg):
@@ -45,12 +47,23 @@ def test_layout_validation(patch, data, msg):
 def test_default_layout_shape():
     rig = load_show(SHOWS).rig
     full = full_layout(rig)
-    w, d = rig.stage
     heads = [full[f.id].y for f in rig.fixtures if f.kind.value == "head"]
-    washes = [full[f.id] for f in rig.fixtures if f.kind.value == "wash"]
-    assert min(heads) > d / 2  # heads towards the back
-    assert all(p.y < d / 4 for p in washes)  # washes at the front
-    assert washes[0].x < w / 2 < washes[1].x  # one each side
+    bars = [full[f.id] for f in rig.fixtures if f.kind.value == "bar"]
+    washes = [full[f.id].y for f in rig.fixtures if f.kind.value == "wash"]
+    assert max(heads) < min(b.y for b in bars) < min(washes)  # heads at the back (top), washes at the front
+    xs = sorted(b.x for b in bars)
+    assert all(b - a >= 9 for a, b in zip(xs, xs[1:]))  # 8-pixel bars end to end, not overlapping
+
+
+def test_metre_stage_plan_upgrades_to_grid(tmp_path):
+    from dmx_suite.versions import upgrade
+
+    old = {"version": 2, "stage": {"width": 6, "depth": 4},
+           "layout": {"mh_a": {"x": 1.5, "y": 3.5, "rot": 90}, "kick": {"x": 3.0, "y": 0.0}}}
+    new = upgrade(old, "rig")
+    assert "stage" not in new
+    assert new["layout"]["mh_a"] == {"x": 7.0, "y": 3.0, "rot": 90}  # back of the stage near the top
+    assert new["layout"]["kick"] == {"x": 13.0, "y": 17.0, "rot": 0}  # front edge at the bottom
 
 
 @pytest.fixture
@@ -77,15 +90,15 @@ def put(url, body):
 
 def test_save_layout_writes_rig_file_and_applies_live(running):
     app, url, root = running
-    status, r = put(url, {"stage": {"width": 7, "depth": 4.5}, "layout": {"kick": {"x": 3.5, "y": 2.2, "rot": 0},
-                                                                           "wash_l": {"x": 1.0, "y": 0.4, "rot": 30}}})
+    status, r = put(url, {"layout": {"kick": {"x": 14, "y": 9.5, "rot": 0},
+                                     "bar_1": {"x": 4, "y": 3, "rot": 30, "shape": "ring"}}})
     assert status == 200 and r["backup"]
     data = yaml.safe_load((root / "rigs" / "full.yaml").read_text())
-    assert data["stage"] == {"width": 7.0, "depth": 4.5}
-    assert data["layout"]["wash_l"] == {"x": 1.0, "y": 0.4, "rot": 30}
-    assert app.engine.rig.stage == (7.0, 4.5)  # live, no restart
+    assert "stage" not in data
+    assert data["layout"]["bar_1"] == {"x": 4.0, "y": 3.0, "rot": 30.0, "shape": "ring"}
+    assert app.engine.rig.layout["kick"].x == 14.0  # live, no restart
     cat = app.catalogue()
-    assert cat["layout"]["kick"] == {"x": 3.5, "y": 2.2, "rot": 0.0}
+    assert cat["layout"]["kick"] == {"x": 14.0, "y": 9.5, "rot": 0.0, "shape": "row", "cols": 0}
     assert len(cat["layout"]) == 12  # the rest filled with defaults
     assert data["haze"]["level"] == 60  # the rest of the rig file kept
 

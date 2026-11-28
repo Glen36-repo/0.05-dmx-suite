@@ -3,150 +3,432 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="application-name" content="dmx-suite">
 <meta name="dmx-token" content="__TOKEN__">
 <meta name="theme-color" content="#08080b">
-<title>0.05 DMX Suite</title>
-<link rel="icon" href="/static/brand/logo.svg" type="image/svg+xml">
+<title>__APP_NAME__</title>
+<link rel="icon" href="/static/brand/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/themes/__THEME__/theme.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header class="top">
-  <img src="/static/brand/logo.svg" alt="0.05" class="logo">
-  <div class="now" id="now">connecting…</div>
-  <button class="lock" id="giglock" title="Gig lock: Claude can read but not change or preview anything">Gig lock</button>
+  <img src="/static/themes/__THEME__/logo.svg" alt="" class="logo">
+  <div class="now" id="now" data-i18n="status.connecting"></div>
+  <div class="tempo" id="tempo" data-i18n-title="top.tempo_tip"><span class="beat-dot"></span><span id="tempo-text"></span></div>
+  <button id="master" class="toggle master" data-i18n="top.master"></button>
+  <button id="blackout" class="toggle danger" data-i18n="top.blackout"></button>
+  <button class="lock" id="giglock" data-i18n="top.giglock" data-i18n-title="top.giglock_tip"></button>
 </header>
-<div class="health" id="health" title="Status: engine, DMX outputs, MIDI, nodes, Claude, screens"></div>
-<div class="banner hidden" id="banner"></div>
+<div class="health" id="health" data-i18n-title="top.health_tip"></div>
+<div class="banner hidden" id="banner" role="alert"></div>
 
-<nav class="tabs" id="tabs">
-  <button data-tab="live" class="on">Live</button>
-  <button data-tab="heads">Heads</button>
-  <button data-tab="midi">MIDI</button>
-  <button data-tab="setup">Setup</button>
-  <button data-tab="files">Files</button>
-</nav>
+<div class="shell">
+  <nav class="menu" id="menu" aria-label="Pages">
+    <button class="collapse" id="collapse" data-i18n-title="menu.collapse"><span class="ic">☰</span></button>
+    <button data-page="live" class="on"><span class="ic">◉</span><span class="lbl" data-i18n="menu.live"></span></button>
+    <button data-page="layout"><span class="ic">▦</span><span class="lbl" data-i18n="menu.layout"></span></button>
+    <button data-page="scenes"><span class="ic">◆</span><span class="lbl" data-i18n="menu.scenes"></span></button>
+    <button data-page="shows"><span class="ic">▶</span><span class="lbl" data-i18n="menu.shows"></span></button>
+    <button data-page="busk"><span class="ic">◍</span><span class="lbl" data-i18n="menu.busk"></span></button>
+    <button data-page="fixtures"><span class="ic">⊞</span><span class="lbl" data-i18n="menu.fixtures"></span></button>
+    <button data-page="heads"><span class="ic">✥</span><span class="lbl" data-i18n="menu.heads"></span></button>
+    <button data-page="midi"><span class="ic">♪</span><span class="lbl" data-i18n="menu.midi"></span></button>
+    <button data-page="setup"><span class="ic">⚙</span><span class="lbl" data-i18n="menu.setup"></span></button>
+    <button data-page="files"><span class="ic">▤</span><span class="lbl" data-i18n="menu.files"></span></button>
+  </nav>
 
-<main>
-  <!-- LIVE -->
-  <section id="tab-live" class="tab on">
-    <div class="row big">
-      <button id="master" class="toggle master">MASTER</button>
-      <button id="blackout" class="toggle danger">BLACKOUT</button>
-    </div>
-    <div class="stage" id="stage"></div>
-    <h2>Show</h2>
-    <div class="row wrap" id="shows"></div>
-    <div class="row wrap" id="sets"></div>
-    <div class="row">
-      <button data-cmd="next">Next step</button>
-      <button data-cmd="look">Static look</button>
-      <button id="tap">Tap</button>
-      <button data-cmd="tempo" data-bpm="off">Tempo off</button>
-      <span class="muted" id="preview"></span>
-    </div>
-    <h2>Setlist</h2>
-    <div class="row wrap">
-      <select id="setlist"></select>
-      <button id="setlist-go">Start</button>
-      <button data-cmd="song" data-song="prev">◀ Prev song</button>
-      <button data-cmd="song" data-song="next">Next song ▶</button>
-    </div>
-    <ol class="songs" id="songs"></ol>
-    <h2>Masters</h2>
-    <div class="faders" id="faders"></div>
-    <h2>Haze</h2>
-    <div class="row wrap">
-      <button data-haze="off">Off</button>
-      <button data-haze="manual">Manual</button>
-      <button data-haze="pulse">Pulse</button>
-      <button id="boost" class="hold">Boost (hold)</button>
-    </div>
-    <div class="muted" id="haze"></div>
-  </section>
+  <main>
+    <!-- LIVE -->
+    <section id="page-live" class="page on">
+      <div class="grid-host live" id="live-grid"></div>
+      <h2 data-i18n="live.show"></h2>
+      <div class="row wrap" id="shows"></div>
+      <div class="row wrap" id="sets"></div>
+      <ol class="steps" id="steps"></ol>
+      <div class="muted" id="step-info"></div>
+      <div class="row wrap">
+        <button data-cmd="next" data-i18n="live.next"></button>
+        <button data-cmd="look" data-i18n="live.static_look"></button>
+        <button id="tap" data-i18n="live.tap"></button>
+        <input id="bpm" type="number" min="40" max="240" step="1" class="narrow" data-i18n-placeholder="live.bpm_placeholder">
+        <button id="bpm-set" data-i18n="live.bpm_set"></button>
+        <button data-cmd="tempo" data-bpm="off" data-i18n="live.tempo_off"></button>
+        <span class="muted" id="preview"></span>
+      </div>
+      <h2 data-i18n="live.setlist"></h2>
+      <div class="row wrap">
+        <select id="setlist"></select>
+        <button id="setlist-go" data-i18n="live.start"></button>
+        <button data-cmd="song" data-song="prev" data-i18n="live.prev_song"></button>
+        <button data-cmd="song" data-song="next" data-i18n="live.next_song"></button>
+      </div>
+      <ol class="songs" id="songs"></ol>
+      <h2 data-i18n="live.masters"></h2>
+      <div class="faders" id="faders"></div>
+      <h2 data-i18n="live.haze"></h2>
+      <div class="row wrap">
+        <button data-haze="off" data-i18n="haze.off"></button>
+        <button data-haze="manual" data-i18n="haze.manual"></button>
+        <button data-haze="pulse" data-i18n="haze.pulse"></button>
+        <button id="boost" class="hold" data-i18n="haze.boost"></button>
+      </div>
+      <div class="muted" id="haze"></div>
+    </section>
 
-  <!-- HEADS -->
-  <section id="tab-heads" class="tab">
-    <p class="muted">Drag on a pad to hold that head at a spot (head limits still apply). Release hands it back to the show.</p>
-    <div class="heads" id="heads"></div>
-    <div class="row wrap">
-      <button data-cmd="release_positions">Release all</button>
-      <input id="posname" placeholder="palette name, e.g. drum_kit" maxlength="40">
-      <button id="savepos">Save as palette position</button>
-    </div>
-    <div class="row wrap" id="positions"></div>
-  </section>
+    <!-- LAYOUT -->
+    <section id="page-layout" class="page">
+      <div class="tabs" id="group-tabs" role="tablist"></div>
+      <div class="toolbar">
+        <div class="tools" role="group">
+          <button data-tool="select" class="sel" data-i18n-title="layout.tool_select_tip"><span data-i18n="layout.tool_select"></span></button>
+          <button data-tool="lasso" data-i18n-title="layout.tool_lasso_tip"><span data-i18n="layout.tool_lasso"></span></button>
+          <button data-tool="move" data-i18n-title="layout.tool_move_tip"><span data-i18n="layout.tool_move"></span></button>
+        </div>
+        <label class="zoom"><span data-i18n="layout.zoom"></span><input type="range" id="zoom" min="50" max="300" step="10" value="100"></label>
+        <label class="check"><input type="checkbox" id="show-names" checked><span data-i18n="layout.names"></span></label>
+        <label class="check"><input type="checkbox" id="show-beams"><span data-i18n="layout.beams"></span></label>
+      </div>
+      <div class="grid-host edit" id="layout-grid"></div>
+      <div class="muted" id="layout-sel"></div>
 
-  <!-- MIDI -->
-  <section id="tab-midi" class="tab">
-    <div class="row wrap">
-      <button id="midi-pause">Pause</button>
-      <button id="midi-clear">Clear</button>
-      <select id="midi-filter"><option value="">All channels</option></select>
-    </div>
-    <table class="monitor"><thead><tr><th>Time</th><th>Port</th><th>Ch</th><th>Type</th><th>#</th><th>Val</th><th>Triggered</th></tr></thead>
-      <tbody id="monitor"></tbody></table>
-    <h2>MIDI learn</h2>
-    <div class="row wrap">
-      <select id="learn-action"></select>
-      <input id="learn-params" placeholder='params, e.g. fixtures=bars length_ms=120'>
-      <button id="learn-go">Learn</button>
-      <button id="learn-cancel">Cancel</button>
-      <span id="learn-state" class="muted"></span>
-    </div>
-    <h2>Mapping</h2>
-    <table class="map"><thead><tr><th>Input</th><th>Ch</th><th>#</th><th>Action</th><th></th></tr></thead><tbody id="map"></tbody></table>
-    <button id="map-save">Save MIDI map</button>
-  </section>
+      <h2 data-i18n="layout.arrange"></h2>
+      <div class="row wrap" id="arrange-tools">
+        <button data-align="left" data-i18n="layout.align_left"></button>
+        <button data-align="hcentre" data-i18n="layout.align_hcentre"></button>
+        <button data-align="right" data-i18n="layout.align_right"></button>
+        <button data-align="top" data-i18n="layout.align_top"></button>
+        <button data-align="vcentre" data-i18n="layout.align_vcentre"></button>
+        <button data-align="bottom" data-i18n="layout.align_bottom"></button>
+        <button data-distribute="h" data-i18n="layout.distribute_h"></button>
+        <button data-distribute="v" data-i18n="layout.distribute_v"></button>
+      </div>
+      <div class="row wrap">
+        <button data-make="row" data-i18n="layout.make_row"></button>
+        <button data-make="ring" data-i18n="layout.make_ring"></button>
+        <button data-make="grid" data-i18n="layout.make_grid"></button>
+        <button data-rotate="-45" data-i18n="layout.rotate_l"></button>
+        <button data-rotate="45" data-i18n="layout.rotate_r"></button>
+        <span class="muted" data-i18n="layout.pixels"></span>
+        <button data-shape="row" data-i18n="layout.shape_row"></button>
+        <button data-shape="ring" data-i18n="layout.shape_ring"></button>
+        <button data-shape="grid" data-i18n="layout.shape_grid"></button>
+      </div>
+      <div class="row wrap">
+        <button id="layout-save" data-i18n="layout.save"></button>
+        <button id="layout-undo" data-i18n="layout.undo"></button>
+        <button id="layout-reset" data-i18n="layout.reset"></button>
+      </div>
 
-  <!-- SETUP -->
-  <section id="tab-setup" class="tab">
-    <h2>Stage plan</h2>
-    <p class="muted">Drag each light to where it really is. Select one to rotate it (the small arrow shows which way it faces). Saved in this rig's file.</p>
-    <div class="arrange" id="arrange"></div>
-    <div class="row wrap">
-      <button id="rot-l" title="Rotate selected anticlockwise">⟲ 15°</button>
-      <button id="rot-r" title="Rotate selected clockwise">⟳ 15°</button>
-      <span class="muted" id="arrange-sel">Tap a light to select it</span>
-    </div>
-    <div class="row wrap">
-      <label class="muted">Stage width (m)</label><input id="stage-w" type="number" min="1" max="50" step="0.5" class="narrow">
-      <label class="muted">depth (m)</label><input id="stage-d" type="number" min="1" max="50" step="0.5" class="narrow">
-      <button id="layout-save">Save stage plan</button>
-      <button id="layout-reset">Undo changes</button>
-    </div>
-    <h2>Find fixture</h2>
-    <div class="row wrap" id="find"></div>
-    <h2>Channel tester</h2>
-    <div class="row wrap">
-      <input id="chanuni" type="number" min="0" max="15" value="0" title="Universe" class="narrow">
-      <input id="chan" type="number" min="1" max="512" placeholder="ch" class="narrow">
-      <input id="chanval" type="range" min="0" max="255" value="0">
-      <span id="chanshow">0</span>
-      <button id="chan-off">Release</button>
-      <button data-cmd="setup_off">Clear all tests</button>
-    </div>
-    <h2>Drum flash test</h2>
-    <div class="row"><button data-cmd="flash_test">Flash all (MASTER off)</button></div>
-    <h2>Devices</h2>
-    <table class="devices"><thead><tr><th>Device</th><th>Type</th><th>State</th><th>Detail</th></tr></thead><tbody id="devices"></tbody></table>
-    <h2>Nodes</h2>
-    <table class="nodes"><thead><tr><th>Name</th><th>MAC</th><th>State</th><th>Signal</th><th>Loss</th><th>Last data</th><th></th></tr></thead><tbody id="nodes"></tbody></table>
-    <h2>Addresses</h2>
-    <table class="addr"><thead><tr><th>Fixture</th><th>Type</th><th>Uni</th><th>Start</th><th>End</th><th>In rig</th><th>Checked</th></tr></thead><tbody id="addr"></tbody></table>
-    <div class="muted" id="addrnotes"></div>
-  </section>
+      <h2 data-i18n="groups.title"></h2>
+      <div class="row wrap">
+        <input id="group-name" maxlength="40" data-i18n-placeholder="groups.name_placeholder">
+        <button id="group-new" data-i18n="groups.new"></button>
+        <button id="group-set" data-i18n="groups.set"></button>
+        <button id="group-rename" data-i18n="groups.rename"></button>
+        <button id="group-delete" class="danger-text" data-i18n="groups.delete"></button>
+      </div>
+      <p class="muted" data-i18n="groups.help"></p>
+    </section>
 
-  <!-- FILES -->
-  <section id="tab-files" class="tab">
-    <h2>Scenes</h2>
-    <div class="list" id="scenes"></div>
-    <h2>Backups</h2>
-    <p class="muted">Every change from here or from Claude keeps the previous file. Restore puts one file back.</p>
-    <div class="list" id="backups"></div>
-  </section>
-</main>
-<div class="toast hidden" id="toast"></div>
-<script src="/static/plan.js"></script>
-<script src="/static/app.js"></script>
+    <!-- SCENES -->
+    <section id="page-scenes" class="page">
+      <div class="row wrap scene-bar">
+        <select id="scene-pick" data-i18n-title="scenes.pick"></select>
+        <button id="scene-new" data-i18n="scenes.new"></button>
+        <button id="scene-dup" data-i18n="scenes.duplicate"></button>
+        <button id="scene-del" class="danger-text" data-i18n="scenes.delete"></button>
+        <input id="scene-name" maxlength="60" data-i18n-placeholder="scenes.name_placeholder">
+        <button id="scene-save" data-i18n="scenes.save"></button>
+        <span class="muted" id="scene-state"></span>
+      </div>
+      <div class="builder">
+        <div class="builder-left">
+          <div class="tabs" id="scene-group-tabs" role="tablist"></div>
+          <div class="grid-host" id="scene-grid"></div>
+          <div class="row wrap">
+            <span class="muted" id="scene-sel"></span>
+          </div>
+          <div class="row wrap">
+            <label class="check"><input type="checkbox" id="scene-preview"><span data-i18n="scenes.live_preview"></span></label>
+            <span class="muted" id="scene-preview-note"></span>
+          </div>
+        </div>
+        <div class="builder-right">
+          <h2 data-i18n="scenes.layers"></h2>
+          <ol class="layers" id="layers"></ol>
+          <div class="row wrap">
+            <button id="layer-add" data-i18n="scenes.add_layer"></button>
+            <button id="look-copy" data-i18n="scenes.copy" data-i18n-title="scenes.copy_tip"></button>
+            <button id="look-paste" data-i18n="scenes.paste" data-i18n-title="scenes.paste_tip"></button>
+          </div>
+          <div class="error hidden" id="scene-error" role="alert"></div>
+          <h2 id="layer-title" data-i18n="scenes.layer"></h2>
+          <div id="layer-form" class="form"></div>
+          <details class="scene-more">
+            <summary data-i18n="scenes.scene_settings"></summary>
+            <div class="form">
+              <label class="field"><span data-i18n="scenes.show_colour"></span><span id="scene-show-colour"></span></label>
+              <label class="field"><span data-i18n="scenes.length"></span><input id="scene-length" type="number" min="0" step="0.5" class="narrow"></label>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- SHOWS -->
+    <section id="page-shows" class="page">
+      <h2 data-i18n="shows.title"></h2>
+      <div class="row wrap">
+        <select id="show-pick"></select>
+        <button id="show-new" data-i18n="shows.new"></button>
+        <button id="show-del" class="danger-text" data-i18n="shows.delete"></button>
+        <input id="show-name" maxlength="60" data-i18n-placeholder="shows.name_placeholder">
+        <button id="show-save" data-i18n="shows.save"></button>
+        <span class="muted" id="show-state"></span>
+      </div>
+      <div class="tabs" id="set-tabs" role="tablist"></div>
+      <div class="row wrap">
+        <button id="set-add" data-i18n="shows.add_set"></button>
+        <button id="set-del" class="danger-text" data-i18n="shows.delete_set"></button>
+        <label class="check"><input type="radio" name="default-set" id="set-default"><span data-i18n="shows.default_set"></span></label>
+      </div>
+      <div id="set-form" class="form"></div>
+
+      <h2 data-i18n="setlists.title"></h2>
+      <div class="row wrap">
+        <select id="setlist-pick"></select>
+        <button id="setlist-new" data-i18n="setlists.new"></button>
+        <button id="setlist-del" class="danger-text" data-i18n="setlists.delete"></button>
+        <input id="setlist-name" maxlength="60" data-i18n-placeholder="setlists.name_placeholder">
+        <button id="setlist-save" data-i18n="setlists.save"></button>
+        <span class="muted" id="setlist-state"></span>
+      </div>
+      <ol class="songs-edit" id="songs-edit"></ol>
+      <button id="song-add" data-i18n="setlists.add_song"></button>
+    </section>
+
+    <!-- BUSK -->
+    <section id="page-busk" class="page">
+      <div class="row wrap">
+        <select id="panel-pick"></select>
+        <button id="busk-release" class="danger" data-i18n="busk.release_all"></button>
+        <label class="check"><input type="checkbox" id="busk-edit"><span data-i18n="busk.edit"></span></label>
+      </div>
+      <div class="busk" id="busk"></div>
+      <div id="busk-editor" class="hidden">
+        <div class="row wrap">
+          <input id="panel-key" maxlength="40" data-i18n-placeholder="busk.panel_key">
+          <input id="panel-name" maxlength="60" data-i18n-placeholder="busk.panel_name">
+          <label class="field-inline"><span data-i18n="busk.release_fade"></span><input id="panel-fade" type="number" min="0" max="30" step="0.1" class="narrow"></label>
+          <button id="panel-new" data-i18n="busk.new_panel"></button>
+          <button id="panel-del" class="danger-text" data-i18n="busk.delete_panel"></button>
+        </div>
+        <ol class="widgets-edit" id="widgets-edit"></ol>
+        <div class="row wrap">
+          <select id="widget-type"></select>
+          <button id="widget-add" data-i18n="busk.add_widget"></button>
+          <button id="panels-save" data-i18n="busk.save"></button>
+          <span class="muted" id="busk-state"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HEADS -->
+    <section id="page-heads" class="page">
+      <p class="muted" data-i18n="heads.help"></p>
+      <div class="heads" id="heads"></div>
+      <div class="row wrap">
+        <button data-cmd="release_positions" data-i18n="heads.release_all"></button>
+        <input id="posname" maxlength="40" data-i18n-placeholder="heads.position_placeholder">
+        <button id="savepos" data-i18n="heads.save_position"></button>
+      </div>
+      <div class="row wrap" id="positions"></div>
+    </section>
+
+    <!-- MIDI -->
+    <section id="page-midi" class="page">
+      <div class="row wrap">
+        <button id="midi-pause" data-i18n="midi.pause"></button>
+        <button id="midi-clear" data-i18n="midi.clear"></button>
+        <select id="midi-filter"></select>
+      </div>
+      <table class="monitor"><thead><tr>
+        <th data-i18n="midi.col_time"></th><th data-i18n="midi.col_port"></th><th data-i18n="midi.col_ch"></th>
+        <th data-i18n="midi.col_type"></th><th>#</th><th data-i18n="midi.col_value"></th><th data-i18n="midi.col_triggered"></th>
+      </tr></thead><tbody id="monitor"></tbody></table>
+      <h2 data-i18n="midi.learn"></h2>
+      <div class="row wrap">
+        <select id="learn-action"></select>
+        <input id="learn-params" data-i18n-placeholder="midi.params_placeholder">
+        <button id="learn-go" data-i18n="midi.learn_go"></button>
+        <button id="learn-cancel" data-i18n="midi.learn_cancel"></button>
+        <span id="learn-state" class="muted"></span>
+      </div>
+      <h2 data-i18n="midi.mapping"></h2>
+      <table class="map"><thead><tr>
+        <th data-i18n="midi.col_input"></th><th data-i18n="midi.col_ch"></th><th>#</th><th data-i18n="midi.col_action"></th><th></th>
+      </tr></thead><tbody id="map"></tbody></table>
+      <button id="map-save" data-i18n="midi.save"></button>
+    </section>
+
+    <!-- SETUP -->
+    <section id="page-setup" class="page">
+      <h2 data-i18n="setup.find"></h2>
+      <div class="row wrap" id="find"></div>
+      <h2 data-i18n="setup.channel_tester"></h2>
+      <div class="row wrap">
+        <input id="chanuni" type="number" min="0" max="15" value="0" class="narrow" data-i18n-title="setup.universe">
+        <input id="chan" type="number" min="1" max="512" class="narrow" data-i18n-placeholder="setup.channel">
+        <input id="chanval" type="range" min="0" max="255" value="0">
+        <span id="chanshow">0</span>
+        <button id="chan-off" data-i18n="setup.release"></button>
+        <button data-cmd="setup_off" data-i18n="setup.clear_tests"></button>
+      </div>
+      <h2 data-i18n="setup.flash_test"></h2>
+      <div class="row"><button data-cmd="flash_test" data-i18n="setup.flash_all"></button></div>
+      <h2 data-i18n="setup.devices"></h2>
+      <table class="devices"><thead><tr>
+        <th data-i18n="setup.col_device"></th><th data-i18n="setup.col_type"></th><th data-i18n="setup.col_state"></th><th data-i18n="setup.col_detail"></th>
+      </tr></thead><tbody id="devices"></tbody></table>
+      <h2 data-i18n="setup.nodes"></h2>
+      <table class="nodes"><thead><tr>
+        <th data-i18n="setup.col_name"></th><th>MAC</th><th data-i18n="setup.col_state"></th><th data-i18n="setup.col_signal"></th>
+        <th data-i18n="setup.col_loss"></th><th data-i18n="setup.col_last_data"></th><th></th>
+      </tr></thead><tbody id="nodes"></tbody></table>
+      <div class="row wrap">
+        <span class="muted" id="node-setup"></span>
+        <button id="node-resend" data-i18n="setup.node_resend" data-i18n-title="setup.node_resend_tip"></button>
+        <label class="field-inline"><span data-i18n="setup.radio_channel"></span>
+          <input type="number" id="radio-channel" min="1" max="13" class="num"></label>
+        <button id="radio-move" data-i18n="setup.radio_move"></button>
+      </div>
+      <h2 data-i18n="setup.addresses"></h2>
+      <table class="addr"><thead><tr>
+        <th data-i18n="setup.col_fixture"></th><th data-i18n="setup.col_type"></th><th data-i18n="setup.col_uni"></th>
+        <th data-i18n="setup.col_start"></th><th data-i18n="setup.col_end"></th><th data-i18n="setup.col_in_rig"></th><th data-i18n="setup.col_checked"></th>
+      </tr></thead><tbody id="addr"></tbody></table>
+      <div class="muted" id="addrnotes"></div>
+      <h2 data-i18n="wizard.title"></h2>
+      <div class="row wrap"><button id="wizard-open" data-i18n="wizard.open"></button><span class="muted" data-i18n="wizard.open_help"></span></div>
+      <h2 data-i18n="access.title"></h2>
+      <div class="access" id="access">
+        <p class="muted" id="access-state"></p>
+        <div class="row wrap">
+          <input type="password" id="pin-old" autocomplete="current-password" data-i18n-placeholder="access.pin_old">
+          <input type="password" id="pin-new" autocomplete="new-password" data-i18n-placeholder="access.pin_new">
+          <button id="pin-set" data-i18n="access.pin_set"></button>
+          <button id="pin-clear" class="danger-text" data-i18n="access.pin_clear"></button>
+        </div>
+        <div class="row wrap">
+          <label class="check"><input type="checkbox" id="access-lan"><span data-i18n="access.lan"></span></label>
+          <label class="check"><input type="checkbox" id="access-local"><span data-i18n="access.pin_local"></span></label>
+          <label class="field-inline"><span data-i18n="access.session_hours"></span>
+            <input type="number" id="access-hours" min="0.25" max="168" step="0.25" class="num"></label>
+        </div>
+        <div class="lan-info hidden" id="lan-info">
+          <div class="qr" id="lan-qr"></div>
+          <div><p data-i18n="access.lan_help"></p><ul class="urls" id="lan-urls"></ul></div>
+        </div>
+        <button id="logout" class="hidden" data-i18n="access.logout"></button>
+      </div>
+      <h2 data-i18n="setup.appearance"></h2>
+      <div class="row wrap">
+        <label class="muted" for="theme" data-i18n="setup.theme"></label>
+        <select id="theme"></select>
+      </div>
+      <h2 data-i18n="setup.updates"></h2>
+      <div class="row wrap">
+        <button id="update-check" data-i18n="setup.update_check"></button>
+        <span class="muted" id="update-result"></span>
+      </div>
+    </section>
+
+    <!-- FIXTURES -->
+    <section id="page-fixtures" class="page">
+      <div class="tabs" id="fx-tabs" role="tablist">
+        <button data-tab="patch" class="on" data-i18n="fixtures.tab_patch"></button>
+        <button data-tab="types" data-i18n="fixtures.tab_types"></button>
+        <button data-tab="rig" data-i18n="fixtures.tab_rig"></button>
+        <span class="muted" id="fx-state"></span>
+      </div>
+      <div id="fx-tab-patch">
+        <p class="muted" data-i18n="fixtures.patch_help"></p>
+        <table class="grid-table">
+          <thead><tr><th data-i18n="fixtures.col_id"></th><th data-i18n="fixtures.col_type"></th><th data-i18n="fixtures.col_universe"></th>
+            <th data-i18n="fixtures.col_address"></th><th data-i18n="fixtures.col_channels"></th><th data-i18n="fixtures.col_groups"></th>
+            <th data-i18n="fixtures.col_sub"></th><th></th></tr></thead>
+          <tbody id="fx-patch"></tbody>
+        </table>
+        <div class="error" id="fx-clash" role="alert"></div>
+        <div class="row wrap">
+          <select id="fx-add-type"></select>
+          <input id="fx-add-count" type="number" min="1" max="64" value="1" class="num" data-i18n-title="fixtures.add_count">
+          <input id="fx-add-id" class="narrow" data-i18n-placeholder="fixtures.add_id">
+          <button id="fx-add" data-i18n="fixtures.add"></button>
+          <button id="fx-auto" data-i18n="fixtures.auto_patch" data-i18n-title="fixtures.auto_patch_tip"></button>
+          <button id="fx-patch-save" data-i18n="fixtures.save_patch"></button>
+        </div>
+      </div>
+      <div id="fx-tab-types" class="hidden">
+        <div class="row wrap">
+          <select id="fx-type-pick"></select>
+          <button id="fx-type-new" data-i18n="fixtures.new_type"></button>
+          <label class="button"><span data-i18n="fixtures.import_ofl"></span><input type="file" id="fx-ofl" accept=".json" class="hidden"></label>
+          <button id="fx-ofl-export" data-i18n="fixtures.export_ofl"></button>
+          <button id="fx-type-del" class="danger-text" data-i18n="fixtures.delete_type"></button>
+          <button id="fx-type-save" data-i18n="fixtures.save_type"></button>
+        </div>
+        <div id="fx-type"></div>
+      </div>
+      <div id="fx-tab-rig" class="hidden">
+        <div class="row wrap">
+          <select id="fx-rig-pick"></select>
+          <button id="fx-rig-use" data-i18n="fixtures.use_rig"></button>
+          <button id="fx-rig-save" data-i18n="fixtures.save_rig"></button>
+          <span class="muted" id="fx-rig-state"></span>
+        </div>
+        <p class="muted" data-i18n="fixtures.rig_help"></p>
+        <div id="fx-rig"></div>
+      </div>
+    </section>
+
+    <!-- FILES -->
+    <section id="page-files" class="page">
+      <h2 data-i18n="project.title"></h2>
+      <p id="project-now"></p>
+      <div class="row wrap">
+        <button id="project-open" data-i18n="project.open"></button>
+        <button id="project-save-as" data-i18n="project.save_as"></button>
+        <button id="project-new" data-i18n="project.new"></button>
+        <a id="project-download" class="button" href="/api/project/download" data-i18n="project.download"></a>
+        <label class="button"><span data-i18n="project.upload"></span><input type="file" id="project-upload" accept=".dms" class="hidden"></label>
+      </div>
+      <div class="row wrap hidden" id="project-path-row">
+        <input id="project-path" class="wide" data-i18n-placeholder="project.path_placeholder">
+        <button id="project-path-go" data-i18n="project.go"></button>
+        <button id="project-path-cancel" data-i18n="project.cancel"></button>
+      </div>
+      <h3 data-i18n="project.recent"></h3>
+      <ul class="recent" id="project-recent"></ul>
+      <h2 data-i18n="files.scenes"></h2>
+      <div class="list" id="scenes"></div>
+      <h2 data-i18n="history.title"></h2>
+      <p class="muted" data-i18n="history.help"></p>
+      <div class="row wrap">
+        <button id="undo" data-i18n="history.undo"></button>
+        <button id="redo" data-i18n="history.redo"></button>
+      </div>
+      <ol class="history" id="history"></ol>
+      <h2 data-i18n="files.backups"></h2>
+      <p class="muted" data-i18n="files.backups_help"></p>
+      <div class="list" id="backups"></div>
+    </section>
+  </main>
+</div>
+<div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+<dialog id="wizard" class="wizard-dialog"></dialog>
+<div class="offline-box" id="offline" role="alert"><strong data-i18n="status.lost_title"></strong><span data-i18n="status.lost_help"></span></div>
+<script type="module" src="/static/js/main.js"></script>
 </body>
 </html>

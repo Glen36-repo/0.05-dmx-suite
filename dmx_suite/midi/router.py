@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from ..engine import Engine
 from .map import ACTIONS, Mapping, MidiMap, validate
@@ -18,15 +19,25 @@ SHOW_ACTIONS = {"select_show", "select_set", "select_scene", "next_step", "next_
 class Incoming:
     """A MIDI message, normalised. `pressed` is False for note-off / velocity 0 / CC < 64."""
 
-    type: str  # note / program_change / control_change / other
-    channel: int  # 1-16
+    type: str  # note / program_change / control_change / osc / other
+    channel: int  # 1-16 (0 for OSC)
     number: int
     value: int
     pressed: bool
     raw_type: str
+    address: str = ""  # OSC
+    level: float | None = None  # OSC fader value 0-1 (MIDI: value / 127)
 
     @classmethod
-    def from_mido(cls, msg: Any) -> "Incoming":
+    def from_osc(cls, address: str, args: list[Any]) -> Incoming:
+        from ..osc import level_of
+
+        lv = level_of(args)
+        pressed = True if lv is None else lv >= 0.5
+        return cls("osc", 0, 0, round((1.0 if lv is None else lv) * 127), pressed, "osc", address, lv)
+
+    @classmethod
+    def from_mido(cls, msg: Any) -> Incoming:
         t = msg.type
         ch = getattr(msg, "channel", 0) + 1
         if t == "note_on":
@@ -37,6 +48,8 @@ class Incoming:
             return cls("program_change", ch, msg.program, 0, True, t)
         if t == "control_change":
             return cls("control_change", ch, msg.control, msg.value, msg.value >= 64, t)
+        if t in ("clock", "start", "continue", "stop"):
+            return cls(t, 0, 0, 0, False, t)
         return cls("other", ch, 0, 0, False, t)
 
 
@@ -46,12 +59,15 @@ class MidiRouter:
         self.shows = shows  # ShowController
         self.map = midimap
         self.monitor = monitor or MidiMonitor()
-        self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None] | None = None
+        self.busk: Callable[[str, str, bool, float | None], str] | None = None  # App.busk
+        # (action, params, callback, port fragment the mapping is tied to)
+        self._learn: tuple[str, dict[str, Any], Callable[[Mapping], None] | None, str | None] | None = None
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ learn
 
-    def learn(self, action: str, params: dict[str, Any] | None = None, on_learned: Callable[[Mapping], None] | None = None) -> None:
+    def learn(self, action: str, params: dict[str, Any] | None = None,
+              on_learned: Callable[[Mapping], None] | None = None) -> None:
         """Arm learn: the next note-on / PC / CC becomes the input for `action`.
         params may include port: "this" (tie the mapping to whichever port the message comes from)
         or a port-name fragment such as "H2MIDI"."""
@@ -60,7 +76,7 @@ class MidiRouter:
         params = dict(params or {})
         port = params.pop("port", None)
         # validate params now with a dummy input so a bad learn fails before the pedal press
-        dummy_type = "control_change" if action in ("grand_master", "sub_master", "flash_level") else "note"
+        dummy_type = "control_change" if action in ("grand_master", "sub_master", "flash_level", "speed") else "note"
         validate(Mapping(dummy_type, 1, 0, action, dict(params or {})))
         with self._lock:
             self._learn = (action, params, on_learned, port)
@@ -78,26 +94,50 @@ class MidiRouter:
     def handle_mido(self, msg: Any, port: str = "") -> str:
         return self.handle(Incoming.from_mido(msg), port)
 
+    def handle_osc(self, address: str, args: list[Any], source: str = "") -> str:
+        return self.handle(Incoming.from_osc(address, args), f"OSC {source}".strip())
+
     def handle(self, m: Incoming, port: str = "") -> str:
+        if m.type in ("clock", "start", "continue", "stop"):  # 24 a beat: not worth a monitor row each
+            return self._clock(m)
         result = self._route(m, port)
+        kind = f"osc {m.address}" if m.type == "osc" else m.raw_type
         self.monitor.add(
-            MonitorEntry(time.time(), port, m.channel, m.raw_type, m.number, m.value, result)
+            MonitorEntry(time.time(), port, m.channel, kind, m.number, m.value, result)
         )
         return result
+
+    def _clock(self, m: Incoming) -> str:
+        tempo = self.shows.tempo if self.shows is not None else None
+        if tempo is None or tempo.source != "midi_clock":
+            return "ignored"
+        now = self.engine.clock()
+        if m.type == "clock":
+            tempo.clock_tick(now)
+        elif m.type in ("start", "continue"):
+            tempo.clock_start(now)
+        return m.type
 
     def _route(self, m: Incoming, port: str = "") -> str:
         if m.type == "other":
             return "ignored"
-        # learn takes any CC value (a pedal may start low), note-ons and program changes
-        learnable = m.pressed or m.type == "control_change"
+        tempo = self.shows.tempo if self.shows is not None else None
+        if (tempo is not None and tempo.source == "kick" and m.type == "note" and m.pressed
+                and m.number == tempo.config.kick_note):
+            tempo.kick(self.engine.clock())  # and on to whatever the kick is mapped to
+        # learn takes any CC or OSC value (a pedal or fader may start low), note-ons and program changes
+        learnable = m.pressed or m.type in ("control_change", "osc")
         with self._lock:
             learn = self._learn
             if learn and learnable:
                 action, params, cb, want_port = learn
-                if action in ("grand_master", "sub_master", "flash_level") and m.type != "control_change":
-                    return "learn: needs a CC (move a pedal or knob)"
-                bind = port if want_port == "this" else want_port
-                mapping = Mapping(m.type, m.channel, m.number, action, params, port=bind or None)
+                if action in ("grand_master", "sub_master", "flash_level", "speed") and m.type not in ("control_change", "osc"):
+                    return "learn: needs a CC or OSC fader (move a pedal, knob or fader)"
+                if m.type == "osc":
+                    mapping = Mapping("osc", 0, 0, action, params, address=m.address)
+                else:
+                    bind = port if want_port == "this" else want_port
+                    mapping = Mapping(m.type, m.channel, m.number, action, params, port=bind or None)
                 self.map.add(mapping)
                 self._learn = None
         if learn and learnable:
@@ -105,7 +145,7 @@ class MidiRouter:
                 cb(mapping)
             return f"learned: {mapping.describe()}"
 
-        mp = self.map.get(m.type, m.channel, m.number, port)
+        mp = self.map.get_osc(m.address) if m.type == "osc" else self.map.get(m.type, m.channel, m.number, port)
         if mp is None:
             return "unmapped"
         return self._act(mp, m)
@@ -117,8 +157,22 @@ class MidiRouter:
             if m.pressed and not ok:
                 return "haze boost refused (disabled or cooling down)"
             return "haze boost on" if m.pressed else "haze boost release"
+        if a == "busk":
+            if self.busk is None:
+                return "busk: not running"
+            level = m.level if m.level is not None else (m.value / 127 if m.type == "control_change" else None)
+            try:
+                return self.busk(p["panel"], p["widget"], m.pressed, level)
+            except Exception as err:  # a bad press must never stop the show
+                return f"busk failed: {err}"
+        if a == "speed":
+            level = m.level if m.level is not None else m.value / 127
+            speed = 4 ** (2 * level - 1)  # fader bottom = quarter speed, middle = as set, top = 4x
+            if self.shows is not None:
+                self.shows.set_speed(speed)
+            return f"speed x{speed:.2f}"
         if a in ("grand_master", "sub_master", "flash_level"):
-            level = m.value / 127
+            level = m.level if m.level is not None else m.value / 127
             if a == "grand_master":
                 e.set_grand(level)
             elif a == "sub_master":

@@ -34,6 +34,7 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         def wrapper(*args, **kwargs):
             t.call_label = fn.__name__
             try:
+                t.refresh()  # a .dms show file the app saved since the last call
                 return fn(*args, **kwargs)
             finally:
                 t.call_label = None
@@ -106,9 +107,12 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     @tool
     def save_fixture_type(key: str, yaml_text: str) -> str:
         """Add or change a fixture type (channel map), e.g. from a fixture manual. Channel roles: dimmer, red,
-        green, blue, white, amber, uv, pan, pan_fine, tilt, tilt_fine, pt_speed (invert: true if 0 = fastest),
-        colour_wheel, gobo, strobe (default = shutter open value), haze, fixed (default value). Set
-        verified: false until it's checked on the real fixture. Patch changes need an engine restart."""
+        green, blue, white, amber, uv, pan, tilt, pt_speed (invert: true if 0 = fastest), colour_wheel, gobo,
+        strobe (default = shutter open value), zoom, focus, frost, prism, haze, fixed (default value); add
+        `<role>_fine` after dimmer/pan/tilt/zoom/focus for 16-bit; `invert: true` on pan/tilt/zoom/focus/frost.
+        Optional: colour_mix: auto (mix colours for the fixture's emitters; the default for new types),
+        wheel: {name: {value, colour: "#rrggbb"}}, gobos: {name: value}, sub: head|bar|wash|kick.
+        Set verified: false until it's checked on the real fixture."""
         return t.save_entry("fixtures", "types", key, yaml_text)
 
     @tool
@@ -125,6 +129,12 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     def restore_backup(backup: str, file: str) -> str:
         """Put one file back as it was before a change (e.g. backup '2026-11-26_201500', file 'scenes/opera.yaml')."""
         return t.restore_backup(backup, file)
+
+    @tool
+    def undo_last_change() -> str:
+        """Undo your own last change to the show files (changes made at the laptop are never touched).
+        Refused if the files have changed since; then use restore_backup."""
+        return t.undo_last_change()
 
     @tool
     def now_playing() -> str:

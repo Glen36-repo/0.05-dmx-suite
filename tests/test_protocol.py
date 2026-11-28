@@ -21,7 +21,7 @@ def test_encode_layout():
 
 def test_record_sizes():
     assert p.HEARTBEAT_SIZE == 37
-    assert p.STATUS_SIZE == 18
+    assert p.STATUS_SIZE == 20  # v1.1 (firmware 0.2 adds flags + radio channel)
 
 
 def test_roundtrip_all_node_messages():

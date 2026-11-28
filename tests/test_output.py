@@ -48,6 +48,7 @@ def test_enttec_pro_sends_each_frame():
     d = EnttecProDriver("COM9", serial_factory=lambda *a: ser)
     d.send(0, bytes(512))
     d.send(1, bytes(512))  # other universe: ignored
+    assert d.flush()  # written by its own thread, not the caller's
     assert len(ser.writes) == 1 and d.packets == 1
     d.close()
     assert ser.closed
@@ -91,8 +92,9 @@ def test_node_driver_against_sim():
 
 def test_make_driver():
     assert isinstance(make_driver({"driver": "log"}), LogDriver)
-    with pytest.raises(ValueError, match="later"):
-        make_driver({"driver": "artnet"})
+    art = make_driver({"driver": "artnet"})  # built since v2 R4
+    assert art.name == "artnet"
+    art.close()
     with pytest.raises(ValueError, match="unknown"):
         make_driver({"driver": "nope"})
 
@@ -108,3 +110,80 @@ def test_engine_survives_driver_error(rig, look, clock):
     e = Engine(rig, [Broken(), ok], look, clock=clock)
     e.tick()
     assert e.driver_errors == 1 and ok.frames == 1
+
+
+# ------------------------------------------------------------------ outputs never hold up the engine (v2 R4)
+
+
+def test_slow_device_never_blocks_the_engine():
+    import threading
+    import time
+
+    from dmx_suite.output.base import SenderThread
+
+    release = threading.Event()
+    written = []
+
+    def slow_write(u, f):
+        release.wait(2)  # a USB write stuck for a while
+        written.append((u, f))
+
+    s = SenderThread(slow_write, "slow")
+    t0 = time.perf_counter()
+    for i in range(50):
+        s.put(0, bytes([i]) * 512)
+    assert time.perf_counter() - t0 < 0.05  # the caller (the engine) never waited
+    release.set()
+    assert s.flush()
+    assert written[-1][1][0] == 49  # the newest frame always gets out
+    assert len(written) <= 3 and s.dropped >= 47  # stale frames skipped, not queued up
+    s.close()
+
+
+def test_sender_survives_write_errors():
+    from dmx_suite.output.base import SenderThread
+
+    calls = []
+
+    def flaky(u, f):
+        calls.append(u)
+        if len(calls) == 1:
+            raise OSError("USB hiccup")
+
+    s = SenderThread(flaky, "flaky")
+    s.put(0, bytes(512))
+    s.flush()
+    s.put(0, bytes(512))
+    assert s.flush() and s.errors == 1 and len(calls) == 2
+    s.close()
+
+
+def test_engine_tick_doesnt_wait_for_a_stuck_enttec():
+    import threading
+    import time
+
+    gate = threading.Event()
+
+    class Stuck(FakeSerial):
+        def write(self, data):
+            gate.wait(2)
+            return super().write(data)
+
+    ser = Stuck()
+    d = EnttecProDriver("COM9", serial_factory=lambda *a: ser)
+    from dmx_suite.engine import Engine
+    from dmx_suite.fixtures import parse_patch
+    from dmx_suite.look import parse_look
+    from dmx_suite.rig import parse_rig
+
+    from conftest import LOOK, PATCH, RIG
+
+    patch = parse_patch(PATCH)
+    e = Engine(parse_rig(RIG, patch), [d], parse_look(LOOK, patch))
+    t0 = time.perf_counter()
+    for _ in range(20):
+        e.tick()
+    assert time.perf_counter() - t0 < 0.5  # 20 frames rendered while the device was stuck
+    gate.set()
+    assert d.flush() and ser.writes
+    d.close()

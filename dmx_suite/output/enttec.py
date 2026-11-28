@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from .base import OutputDriver
+from .base import OutputDriver, SenderThread
 
 DMX_BAUD = 250000
 BREAK_S = 0.000120  # >= 88 us
@@ -173,12 +174,15 @@ class EnttecProDriver(OutputDriver):
 
     name = "enttec_pro"
 
-    def __init__(self, port: str, universe: int = 0, serial_factory: Callable[..., Any] = _serial) -> None:
+    def __init__(self, port: str, universe: int = 0, serial_factory: Callable[..., Any] = _serial,
+                 threaded: bool = True) -> None:
         self.port = port
         self.universe = universe
-        self._p = _Port(port, serial_factory, 115200, 1)
         self._lock = threading.Lock()
         self.packets = 0
+        self._sender = SenderThread(self._write, self.name) if threaded else None
+        with self._lock:  # first open (and any later reopen) happens off the engine thread when threaded
+            self._p = _Port(port, serial_factory, 115200, 1)
 
     @property
     def errors(self) -> int:
@@ -187,6 +191,15 @@ class EnttecProDriver(OutputDriver):
     def send(self, universe: int, frame: bytes) -> None:
         if universe != self.universe:
             return
+        if self._sender is not None:
+            self._sender.put(universe, frame)
+        else:
+            self._write(universe, frame)
+
+    def flush(self, timeout: float = 2.0) -> bool:
+        return self._sender.flush(timeout) if self._sender else True
+
+    def _write(self, universe: int, frame: bytes) -> None:
         with self._lock:
             if not self._p.ensure():
                 return
@@ -198,10 +211,13 @@ class EnttecProDriver(OutputDriver):
                 self._p.failed(e)
 
     def close(self) -> None:
+        if self._sender is not None:
+            self._sender.close()
         self._p.close()
 
     def status(self) -> dict[str, Any]:
-        return {"driver": self.name, "port": self.port, "packets": self.packets, "errors": self.errors}
+        return {"driver": self.name, "port": self.port, "packets": self.packets, "errors": self.errors,
+                "dropped": self._sender.dropped if self._sender else 0}
 
     def state(self) -> dict[str, Any]:
         return self._p.state("Enttec DMX Pro", self.universe)

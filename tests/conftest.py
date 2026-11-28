@@ -82,6 +82,16 @@ class Clock:
         self.t += s
 
 
+@pytest.fixture(autouse=True)
+def _app_data(monkeypatch, tmp_path):
+    """Resume state and logs go to a scratch app-data folder, never the real one; cli.main doesn't
+    attach log handlers during tests (test_project tests the log file itself)."""
+    from dmx_suite import logs
+
+    monkeypatch.setenv("DMX_SUITE_DATA", str(tmp_path / "appdata"))
+    monkeypatch.setattr(logs, "_done", True)
+
+
 @pytest.fixture
 def patch():
     return parse_patch(PATCH)
