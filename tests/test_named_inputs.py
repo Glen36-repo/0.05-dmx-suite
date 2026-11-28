@@ -157,7 +157,7 @@ def test_velocity_curve():
 def test_mappings_by_name(engine, midi, view):
     assert midi.program(0) == "MASTER off"
     assert midi.note(38, 127).startswith("flash bars")  # snare head
-    assert view("bar_1", "blue", 0) == 255
+    assert view("bar_1", "green", 0) == 255  # v7: opens onto the look
     assert midi.note(40, 127).startswith("flash bars")  # snare rim: same input
     assert midi.cc(7, 64) == "grand_master 50%"
     assert midi.note(38, 100, channel=9) == "unmapped"
@@ -184,8 +184,10 @@ def test_changing_a_note_in_one_place_moves_every_use(engine, inputs, view):
 
 def test_calibrated_curve_sets_flash_level(engine, midi, view):
     engine.set_master(False)
-    midi.note(49, 20)  # crash: quiet hit -> 25 % (on the wash's dimmer)
-    assert abs(view("wash", "dimmer") - 0.25 * 255) <= 2
+    from dmx_suite.engine import flash_level
+
+    midi.note(49, 20)  # crash: quiet hit -> 25 % after the curve, then v7's min level (0.6) to full
+    assert abs(view("wash", "dimmer") - flash_level(round(0.25 * 127)) * 255) <= 2
     midi.note(49, 100)  # loud -> full
     assert view("wash", "dimmer") == 255
 

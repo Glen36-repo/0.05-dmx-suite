@@ -42,7 +42,8 @@ Profile rules: each rig file has a `profile:` ("0.05_band", or "generic"); now_p
 1. "0.05 band": MASTER owns on/off. Scenes never set dimmers or `intensity`; switch a light on/off
    with its colour (off = "off"). "generic": lights follow the scene; a layer may set
    `intensity: 0-1`. A scene is checked against every rig's profile.
-2. "0.05 band": MASTER off = the rig is dark and drum hits flash it. "generic": no drum flash.
+2. "0.05 band": MASTER off = the rig is dark and drum hits open the hit lights onto the playing look (v7: a
+   gate, no colour of its own; level from the pad's min_level, default 0.6, to full). "generic": no drum flash.
 3. "0.05 band": MASTER never affects the kick-drum light (`master_exempt`).
 Fixture definition:
 7. U'King heads (colour_only) are colour only: no position, sweep or random_move on them.
@@ -59,7 +60,7 @@ STEP SCENE (v3.2, `type: steps`): hand-programmed steps. Scene step_s / step_bea
   step with add_step / update_step / move_step / delete_step instead of rewriting the scene.
 SCENE (scenes/<name>.yaml): layers applied in order; later layers override earlier ones.
   name: Blue kit
-  show_colour: blue            # drum flashes use this
+  show_colour: blue            # Flash FX "show" colour (drum hits show the look itself, v7)
   layers:
     - {fixtures: [bars], effect: pixel_chase, colour: blue, background: off, width: 3, period_s: 2}
     - {fixtures: [washes], colour: deep_blue}
@@ -100,7 +101,7 @@ FAULT-FINDING (v4): "software running, rig dark": list_outputs, then monitor_dmx
 DRUM KIT (v6): the drummer's kit defined once in inputs.yaml `kits:` (one active): pieces (kick, snare,
   hi-hat, toms, cymbals, extra pads, tap pad) with zones (head / rim / x_stick, closed / pedal / open, bow /
   bell / edge), each a named input with notes, role (kick, snare, hat, tom, cymbal, tap, count_in,
-  trigger_only), tempo weight, velocity floor, tempo y/n, drum flash target (fixtures / colour / length_ms:
+  trigger_only), tempo weight, velocity floor, tempo y/n, drum flash target (fixtures / length_ms / min_level:
   the kit owns them, not the MIDI map) and an optional drummer trigger (scene / preset / flash_fx). Tempo,
   drum flash and autopilot energy all read it. list_kits / get_kit (with unmapped notes heard), set_kit_piece,
   set_active_kit, kit_learn_status (arm a zone, the next hit is its note). A show without kits shows

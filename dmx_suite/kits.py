@@ -44,7 +44,7 @@ DEFAULT_WEIGHTS = {"kick": 1.0, "snare": 1.0, "hat": 0.5, "tom": 0.6, "cymbal": 
 ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 ZONE_KEYS = {"input", "name", "notes", "role", "weight", "velocity_floor", "tempo", "flash", "trigger", "colour",
              "curve", "velocity"}
-FLASH_KEYS = {"fixtures", "colour", "length_ms", "min_level"}
+FLASH_KEYS = {"fixtures", "length_ms", "min_level"}  # v7: no colour
 TRIGGERS = ("scene", "preset", "flash_fx")
 ZONE_SUFFIXES = ("rim", "head", "pedal", "open", "closed", "bell", "edge", "bow", "x_stick", "xstick", "stick")
 
@@ -160,7 +160,10 @@ def parse_zone(pid: str, zid: str, d: Any, where: str) -> Zone:
     if d.get("flash"):
         f = d["flash"]
         if not isinstance(f, dict) or not f.get("fixtures") or set(f) - FLASH_KEYS:
-            raise ConfigError(f"{where} flash: {{fixtures: [...], colour, length_ms, min_level}}")
+            raise ConfigError(f"{where} flash: {{fixtures: [...], length_ms, min_level}}")
+        ml = f.get("min_level")
+        if ml is not None and (isinstance(ml, bool) or not isinstance(ml, (int, float)) or not 0 <= ml <= 1):
+            raise ConfigError(f"{where} flash min_level: 0-1 (how bright the softest hit is; default 0.6)")
         z.flash = dict(f)
     if d.get("trigger"):
         t = d["trigger"]

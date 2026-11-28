@@ -66,9 +66,9 @@ def test_drum_flash_on_second_universe_is_immediate(two):
     e = Engine(rig, [out], look)
     e.set_master(False)
     before = out.frames
-    e.flash(["b"], 127, "white")
+    e.flash(["b"], 127)
     assert out.frames == before + 2  # both universes sent in the same instant
-    assert out.last[1][0] == 255 and out.last[0][0] == 0
+    assert out.last[1][0] == 255 and out.last[1][2] == 255 and out.last[0][0] == 0  # b opens onto its green
 
 
 def test_enttec_sends_only_its_universe(two):
@@ -128,8 +128,7 @@ def test_address_report_per_universe(two):
 def router(engine):
     m = parse_map({"mappings": [
         {"type": "note", "channel": 10, "number": 38, "action": "flash", "fixtures": ["bar_1"]},
-        {"type": "note", "channel": 10, "number": 38, "port": "H2MIDI", "action": "flash", "fixtures": ["wash"],
-         "colour": "white"},
+        {"type": "note", "channel": 10, "number": 38, "port": "H2MIDI", "action": "flash", "fixtures": ["wash"]},
     ]})
     return MidiRouter(engine, m)
 

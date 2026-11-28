@@ -34,6 +34,16 @@ FRAME_HZ = 40
 WHITE: Colour = {"red": 1.0, "green": 1.0, "blue": 1.0, "white": 1.0}
 
 
+FLASH_MIN_LEVEL = 0.6  # v7: a soft drum hit still opens the light this far
+
+
+def flash_level(velocity: int, min_level: float = FLASH_MIN_LEVEL) -> float:
+    """v7 drum flash level: velocity 1 = the pad's min level, 127 = full, in a straight line between."""
+    lo = max(0.0, min(1.0, float(min_level)))
+    v = max(1, min(127, int(velocity)))
+    return lo + (1 - lo) * (v - 1) / 126
+
+
 class Engine:
     def __init__(
         self,
@@ -516,27 +526,23 @@ class Engine:
         self,
         fixtures: list[str],
         velocity: int = 127,
-        colour: str | Colour = "show",
         length_ms: int = 100,
-        min_level: float = 0.0,
+        min_level: float = FLASH_MIN_LEVEL,
     ) -> bool:
-        """Drum hit. Only with MASTER off, and only if the rig's profile has drum flash (rule 2).
-        Sends a frame immediately; the loop wakes to cut back to black exactly when the flash
-        ends. Returns False if ignored."""
+        """Drum hit (v7: a gate). Only with MASTER off, and only if the rig's profile has drum flash
+        (rule 2): the ticked lights open for the hit and show what the playing look has on them right
+        now (colour, pixels, wheel, gobo, shutter), at a level from the pad's min level (soft hit) to
+        full (hardest). Nothing is added: a light the look leaves dark stays dark. Sends a frame
+        immediately; the loop wakes to cut back to black exactly when the flash ends. Returns False if
+        ignored."""
         with self.lock:
             if not self.rig.profile.drum_flash or self.master or self.blackout:
                 return False
-            if colour == "show":
-                col = self.look.show_colour
-            elif colour == "white":
-                col = WHITE
-            else:
-                col = colour  # type: ignore[assignment]
-            level = max(min_level, min(1.0, velocity / 127))
+            level = flash_level(velocity, min_level)
             until = self.clock() + length_ms / 1000
             for fid in fixtures:
                 if fid in self.rig.present and fid not in self.rig.exempt:  # rule 3
-                    self.flashes[fid] = Flash(col, level, until)
+                    self.flashes[fid] = Flash(level, until)
         self._changed()
         return True
 

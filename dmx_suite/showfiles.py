@@ -123,6 +123,7 @@ def check_map_inputs(mp: MidiMap, inputs: Inputs) -> None:
 def add_kit_flashes(mp: MidiMap, inputs: Inputs) -> None:
     """The active kit's flash targets as MIDI map entries (in memory; the map file doesn't hold them).
     A pad the map file already maps keeps that mapping."""
+    from .engine import FLASH_MIN_LEVEL
     from .midi.map import Mapping
 
     kit = inputs.kits.get(inputs.active_kit or "")
@@ -130,7 +131,7 @@ def add_kit_flashes(mp: MidiMap, inputs: Inputs) -> None:
         return
     for _, z in kit.zones():
         if z.flash and z.input in inputs.inputs and mp.get_input(z.input) is None:
-            params = {"length_ms": 150, "colour": "show", **z.flash}
+            params = {"length_ms": 150, "min_level": FLASH_MIN_LEVEL, **z.flash}
             mp.add(Mapping("input", 0, 0, "flash", params=params, input=z.input, from_kit=True))
 
 

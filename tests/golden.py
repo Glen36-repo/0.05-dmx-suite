@@ -72,7 +72,7 @@ def capture(rig_transform=None, root: Path = SHOWS) -> dict[str, str]:
         e.set_source(lambda _n: sf.look)
         e.set_master(False)
         clock.t = base[0] + 1000.0
-        e.flash([f.id for f in rig.fixtures], velocity=90, colour="white", length_ms=200)
+        e.flash([f.id for f in rig.fixtures], velocity=90, length_ms=200)  # v7: a gate onto the look
         out[f"{rig_name}|flash"] = _hash(e.frames)
         e.set_master(True)
         e.set_blackout(True)

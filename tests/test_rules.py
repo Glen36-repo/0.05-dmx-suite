@@ -39,43 +39,54 @@ def test_rule1_on_off_inside_look_is_colour(engine, view, patch):
 def test_rule2_flash_sends_immediately_then_cuts_to_black(engine, view, out, clock):
     engine.set_master(False)
     before = out.frames
-    assert engine.flash(["bar_1"], velocity=127, colour="show", length_ms=100)
+    assert engine.flash(["bar_1"], velocity=127, length_ms=100)
     assert out.frames == before + 1  # sent inside the flash call, no tick needed
-    assert view("bar_1", "blue", 0) == 255  # show colour = blue
-    assert view("bar_2", "blue", 0) == 0  # only mapped fixtures flash
+    assert view("bar_1", "green", 0) == 255  # v7 gate: the look's own colour (bars are green)
+    assert view.emitters("bar_2") == [0] * 6  # only mapped fixtures open
     clock.advance(0.099)
     engine.tick()
-    assert view("bar_1", "blue", 0) == 255
+    assert view("bar_1", "green", 0) == 255
     clock.advance(0.002)
     engine.tick()
     assert view.emitters("bar_1") == [0] * 6  # straight back to black, no fade
 
 
 def test_rule2_no_flash_with_master_on(engine, view):
-    assert not engine.flash(["bar_1"], 127, "white")
-    assert view("bar_1", "red", 0) == 0  # look is green; no white flash
+    assert not engine.flash(["bar_1"], 127)
+    assert view("bar_1", "red", 0) == 0  # look is green; a hit changes nothing with MASTER on
     assert view("bar_1", "green", 0) == 255
 
 
 def test_rule2_velocity_sets_brightness(engine, view):
+    """v7: from the pad's min level (default 0.6, softest hit) to full (hardest), in a straight line."""
+    from dmx_suite.engine import flash_level
+
+    assert flash_level(1) == 0.6 and flash_level(127) == 1.0 and flash_level(64) == pytest.approx(0.8)
+    assert flash_level(1, 0.0) == 0.0 and flash_level(64, 0.0) == pytest.approx(0.5)
     engine.set_master(False)
-    engine.flash(["wash"], velocity=64, colour="white")
-    assert view("wash", "dimmer") == round(64 / 127 * 255)
-    engine.flash(["bar_1"], velocity=64, colour="white")
-    assert view("bar_1", "red", 0) == round(64 / 127 * 255)
+    engine.flash(["wash"], velocity=64)
+    assert view("wash", "dimmer") == round(0.8 * 255)
+    engine.flash(["bar_1"], velocity=1)
+    assert view("bar_1", "green", 0) == round(0.6 * 255)  # a soft hit still clearly lit
+    engine.flash(["bar_1"], velocity=64, min_level=0.0)
+    assert view("bar_1", "green", 0) == round(0.5 * 255)
 
 
-def test_rule2_flash_white_or_show_colour(engine, view, clock):
+def test_rule2_flash_opens_onto_the_live_look(engine, view, patch):
+    """v7 gate: a hit shows what the playing look has on each light right now, nothing added."""
     engine.set_master(False)
-    engine.flash(["bar_1"], colour="white")
-    assert [view("bar_1", r, 0) for r in ("red", "green", "blue")] == [255, 255, 255]
-    engine.flash(["bar_2"], colour="show")
-    assert [view("bar_2", r, 0) for r in ("red", "green", "blue")] == [0, 0, 255]
+    engine.flash(["bar_1", "wash"])
+    assert [view("bar_1", r, 0) for r in ("red", "green", "blue")] == [0, 255, 0]  # bars: green
+    assert [view("wash", r) for r in ("red", "green", "blue")] == [0, 0, 255]  # wash: blue
+    engine.set_look(parse_look({"fixtures": {"bar_1": {"colour": [1, 0, 0]}}}, patch))  # the look moves on
+    engine.flash(["bar_1", "wash"])
+    assert [view("bar_1", r, 0) for r in ("red", "green", "blue")] == [255, 0, 0]  # what's playing now
+    assert view.emitters("wash") == [0, 0, 0, 0]  # the look leaves the wash off: the hit shows nothing
 
 
 def test_rule2_master_on_clears_running_flash(engine, view):
     engine.set_master(False)
-    engine.flash(["bar_1"], colour="white", length_ms=5000)
+    engine.flash(["bar_1"], length_ms=5000)
     engine.set_master(True)
     engine.set_master(False)
     assert view.emitters("bar_1") == [0] * 6
@@ -86,7 +97,7 @@ def test_rule2_loop_cuts_flash_on_time(rig, look):
     seen = []
 
     def on_frame(_, frame):
-        seen.append((time.perf_counter(), frame[19]))  # bar_1 red pixel 0
+        seen.append((time.perf_counter(), frame[20]))  # bar_1 green pixel 0 (the look's colour)
 
     out = LogDriver(on_frame=on_frame)
     e = Engine(rig, [out], look)
@@ -95,7 +106,7 @@ def test_rule2_loop_cuts_flash_on_time(rig, look):
     try:
         time.sleep(0.05)
         t0 = time.perf_counter()
-        e.flash(["bar_1"], 127, "white", length_ms=60)
+        e.flash(["bar_1"], 127, length_ms=60)
         time.sleep(0.2)
     finally:
         e.stop()
@@ -128,7 +139,7 @@ def test_rule3_kick_follows_its_sub_master_and_blackout(engine, view):
 
 def test_rule3_kick_is_not_flashed(engine, view):
     engine.set_master(False)
-    engine.flash(["kick", "bar_1"], colour="white")
+    engine.flash(["kick", "bar_1"])
     assert view.emitters("kick") == [255, 128, 0]
 
 
@@ -229,7 +240,7 @@ def test_rule6_flash_follows_grand_master_and_flash_level(engine, view):
     engine.set_master(False)
     engine.set_grand(0.5, instant=True)
     engine.masters.flash.set(0.5, instant=True)
-    engine.flash(["wash"], 127, "white")
+    engine.flash(["wash"], 127)
     assert view("wash", "dimmer") == 64
 
 
@@ -273,7 +284,7 @@ def test_rule8_limits_clamp(engine, view):
 def test_rule8_limits_apply_when_dark_and_on_flash(engine, view):
     engine.set_master(False)
     engine.set_look(Look(fixtures={"mh_a": FixtureLook(tilt=1.0)}))
-    engine.flash(["mh_a"], colour="white")
+    engine.flash(["mh_a"])
     assert view("mh_a", "tilt") == round(0.75 * 65535) >> 8
 
 

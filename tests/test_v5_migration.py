@@ -52,7 +52,7 @@ def test_upgrade_moves_mappings_and_positions(tmp_path):
     drums = inputs["devices"]["drums"]["inputs"]
     assert drums["snare"] == {"name": "Snare", "type": "note", "notes": [38], "roles": ["snare", "activity"]}
     midi = yaml.safe_load((root / "midi" / "default.yaml").read_text())
-    assert {"input": "snare", "action": "flash", "fixtures": ["bars"], "length_ms": 120, "colour": "show"} in midi["mappings"]
+    assert {"input": "snare", "action": "flash", "fixtures": ["bars"], "length_ms": 120} in midi["mappings"]  # v7: no colour
     assert all("input" in m for m in midi["mappings"])
     assert "# FCB1010" in (root / "midi" / "default.yaml").read_text()  # comments kept
     pal = yaml.safe_load((root / "palettes.yaml").read_text())

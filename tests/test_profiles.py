@@ -223,15 +223,15 @@ def test_intensity_zero_is_dark_under_generic():
 def test_rule2_band_flashes_with_master_off():
     e, view, _ = build("0.05_band")
     e.set_master(False)
-    assert e.flash(["bar_1"], 127, "white")
-    assert view("bar_1", "red", 0) == 255
+    assert e.flash(["bar_1"], 127)
+    assert view("bar_1", "green", 0) == 255  # v7: the look's colour (bars are green), opened for the hit
 
 
 def test_rule2_generic_has_no_drum_flash():
     e, view, _ = build("generic")
     e.set_master(False)
     before = bytes(e.frames[0])
-    assert not e.flash(["bar_1"], 127, "white")
+    assert not e.flash(["bar_1"], 127)
     assert bytes(e.frames[0]) == before
     assert view("bar_1", "red", 0) == 0 and view("bar_1", "green", 0) == 255  # look, not a flash
 
@@ -243,9 +243,9 @@ def test_rule3_band_kick_ignores_master():
     e, view, _ = build("0.05_band")
     e.set_master(False)
     assert view.emitters("kick") == [255, 128, 0]  # rig kick_colour
-    assert e.flash(["kick", "bar_1"], 127, "white")
+    assert e.flash(["kick", "bar_1"], 127)
     assert view.emitters("kick") == [255, 128, 0]  # flashes never drive it
-    assert view("bar_1", "blue", 0) == 255
+    assert view("bar_1", "green", 0) == 255
 
 
 def test_rule3_generic_kick_is_an_ordinary_light():
@@ -261,8 +261,9 @@ def test_rule3_custom_exempt_list():
     e.set_master(False)
     assert view("wash", "dimmer") == 255 and view("wash", "blue") == 255
     assert view.emitters("kick") == [0, 0, 0]  # no longer exempt: MASTER off darkens it
-    assert e.flash(["wash", "bar_1"], 127, "white")
-    assert view("wash", "red") == 0  # exempt fixtures never flash
+    blue = view("wash", "blue")
+    assert e.flash(["wash", "bar_1"], 127)
+    assert view("wash", "blue") == blue  # exempt fixtures never flash: they keep their own look
 
 
 def test_find_darkens_exempt_fixtures():

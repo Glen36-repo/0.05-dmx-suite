@@ -232,11 +232,11 @@ def test_drum_flash_keeps_black_slots_black(tmp_path):
         base = e.clock()
         e.clock = lambda: base + 5
         e.set_master(False)
-        e.flash(["bar_1"], 127, {"red": 1.0, "green": 1.0, "blue": 1.0})
+        e.flash(["bar_1"], 127)  # v7: a gate onto the look, which darkness has partly blacked
         e.output()
         bar = e.rig.patch.fixtures["bar_1"]
         reds = [e.frames[0][bar.slot(c)] for c in bar.type.channels if c.role == "red"]
-        assert 0 < sum(1 for v in reds if v) < 8, reds  # only the lit pixels flash
+        assert 0 < sum(1 for v in reds if v) < 8, reds  # only the lit pixels open; black slots stay black
     finally:
         app.engine.stop()
 
