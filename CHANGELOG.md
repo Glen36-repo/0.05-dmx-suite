@@ -78,7 +78,7 @@ Brief and plan: `docs/v5-v6-brief.md`, `docs/v5-v6-plan.md`.
 
 ## Unreleased (v4: stage view, Layout / Patch, routing, Monitor, step editor)
 
-Scope and decisions: `docs/V4-SCOPE.md`. Show file format 6 (old files upgrade once, with backups).
+Scope and decisions: `docs/archive/V4-SCOPE.md`. Show file format 6 (old files upgrade once, with backups).
 
 ### Added
 - Layout / Patch page: full width, universe tabs, Stage and Addresses views (each light's channels and the value going out on every channel, from what the interface really sent), a fixture list with inline address / universe edits checked for clashes, the routing table and a status strip; Print and PNG patch sheet.

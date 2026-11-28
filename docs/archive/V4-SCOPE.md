@@ -1,6 +1,6 @@
 # 0.05 DMX Suite — v4 scope: stage view, Layout / Patch, routing, Monitor, step editor
 
-Brief 27/11/2026 (Glen); planned and built 26/11/2026 as one release. Builds on v3 (`docs/V3-SCOPE.md`).
+Brief 27/11/2026 (Glen); planned and built 26/11/2026 as one release. Builds on v3 (`docs/archive/V3-SCOPE.md`).
 
 ## Why
 

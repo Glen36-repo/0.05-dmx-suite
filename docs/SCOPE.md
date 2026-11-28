@@ -264,7 +264,7 @@ Planned 26/11/2026. One release per branch, hardening and features side by side;
 
 ## v3 (auto show "Ride")
 
-Planned 26/11/2026; full scope and release list in `docs/V3-SCOPE.md`. A light show from any rig with no programming: the engine picks looks from FX banks and changes them to the band's MIDI, and the user rides it with a few big controls. Stacked branches on top of v2 R8, each with tests including rule tests under both profiles.
+Planned 26/11/2026; full scope and release list in `docs/archive/V3-SCOPE.md`. A light show from any rig with no programming: the engine picks looks from FX banks and changes them to the band's MIDI, and the user rides it with a few big controls. Stacked branches on top of v2 R8, each with tests including rule tests under both profiles.
 
 1. **V3.1 Foundations:** named MIDI inputs and devices, head position points, colour wheel and palette editor, alerts and banners
 2. **V3.2 Step scenes:** hand-programmed steps with step/fade times, heads move dark or lit
@@ -274,7 +274,7 @@ Planned 26/11/2026; full scope and release list in `docs/V3-SCOPE.md`. A light s
 
 ## v4 (stage view, Layout / Patch, routing, Monitor, step editor)
 
-Brief 27/11/2026, built 26/11/2026 as one release on `v4-stage-layout`; full scope, decisions and open items in `docs/V4-SCOPE.md`. Zoom-to-fit stage view with outlined pixel bars, non-overlapping names and haze as an indicator; overlap warnings; a full-page Layout / Patch page with an address map of live values; explicit universe routing; devices by USB identity; a Monitor page; a real step editor with per-segment selection; haze settings; UI density; Ride -> Autopilot, Busk -> Override.
+Brief 27/11/2026, built 26/11/2026 as one release on `v4-stage-layout`; full scope, decisions and open items in `docs/archive/V4-SCOPE.md`. Zoom-to-fit stage view with outlined pixel bars, non-overlapping names and haze as an indicator; overlap warnings; a full-page Layout / Patch page with an address map of live values; explicit universe routing; devices by USB identity; a Monitor page; a real step editor with per-segment selection; haze settings; UI density; Ride -> Autopilot, Busk -> Override.
 
 ## Decisions and open questions
 
