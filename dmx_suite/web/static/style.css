@@ -413,8 +413,10 @@ button.big { min-height: var(--perform-h); padding: 0 18px; font-size: 16px; fon
 .grid-host.strip { height: 230px; max-height: none; overflow: hidden; padding: 4px; }
 .ride-banks { display: grid; grid-template-columns: 1fr 0.65fr 1.35fr 1fr; gap: 12px; } /* v7: + palette bank */
 @media (max-width: 1100px) { .ride-banks { grid-template-columns: 1fr 1fr; } }
-.ride-col { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 5px; }
-.ride-fx { min-height: 44px; padding: 6px 8px; font-size: 14px; line-height: 1.15; font-weight: 600; touch-action: manipulation; user-select: none; }
+/* v7: FX and palette tiles at 75 % of their v6 size (98 x 44 px, 14 px text); text stays at the 12 px floor */
+.ride-col { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 4px; }
+.ride-fx { min-height: 33px; padding: 4px 6px; font-size: 12px; line-height: 1.15; font-weight: 600; touch-action: manipulation; user-select: none; }
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1100px) { .ride-fx { min-height: 44px; } } /* touch minimum */
 .pair { display: flex; flex-wrap: wrap; gap: 0 28px; }
 .pair > * { min-width: 0; max-width: 100%; }
 .sep-v { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
@@ -748,9 +750,9 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 }
 
 /* v7 palette bank tiles: swatches + mood tags, same green / red states as the FX tiles */
-.ride-pal-tile { display: flex; flex-direction: column; align-items: stretch; gap: 3px; text-align: left; }
-.ride-pal-tile .sw { display: flex; height: 10px; border-radius: 3px; overflow: hidden; }
-.ride-pal-tile .sw i { flex: 1; }
+.ride-pal-tile { display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; }
+.ride-pal-tile .pal-sw { display: flex; height: 8px; border-radius: 3px; overflow: hidden; }
+.ride-pal-tile .pal-sw i { flex: 1; }
 .ride-pal-tile .tags { font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* v7 layer timing strip and Autopilot settings */

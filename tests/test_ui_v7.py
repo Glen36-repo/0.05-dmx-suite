@@ -112,7 +112,7 @@ def test_palette_tiles_play_and_exclude(ui):
     go(page, "autopilot")
     tile = "#ride-palettes [data-palette=fire]"
     page.wait_for_selector(tile)
-    assert page.eval_on_selector_all(f"{tile} .sw i", "s => s.length") == 4  # swatches
+    assert page.eval_on_selector_all(f"{tile} .pal-sw i", "s => s.length") == 4  # swatches
     assert page.inner_text(f"{tile} .tags") == "HIGH"  # mood tags
     page.click(tile)  # tap = play now
     page.wait_for_selector(f"{tile}.sel")
@@ -231,3 +231,54 @@ def test_darkness_auto_markers_and_back_to_manual(ui):
     page.wait_for_selector("#ride-darkness:not(.auto)")
     assert page.inner_text("#dk-note") == "Moved by hand: back to Manual"
     assert app.darkness.status()["mode"] == "manual"
+
+
+# ------------------------------------------------------------------ A5 smaller tiles
+
+
+def test_fx_tiles_at_three_quarters(ui):
+    page = ui[0]
+    go(page, "autopilot")
+    page.wait_for_selector("#ride-colour [data-fx=pulse]")
+    for sel in ("#ride-colour [data-fx=pulse]", "#ride-move [data-fx]", "#ride-palettes [data-palette=fire]"):
+        st = page.eval_on_selector(sel, "e => { const c = getComputedStyle(e); "
+                                        "return [parseFloat(c.minHeight), parseFloat(c.fontSize)]; }")
+        assert st[0] == 33 or "palette" in sel  # 75 % of the v6 44 px
+        assert st[1] >= 12  # the text floor
+    cols = page.eval_on_selector("#ride-colour", "e => getComputedStyle(e).gridTemplateColumns.split(' ').length")
+    assert cols >= 3
+
+
+def test_fx_tiles_keep_the_touch_minimum(browser):
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    from test_ui import go as go_
+
+    from dmx_suite import settings
+    from dmx_suite.app import App
+    from dmx_suite.output.base import LogDriver
+    from dmx_suite.showfiles import load_show
+    from dmx_suite.web.server import WebServer
+
+    root = Path(tempfile.mkdtemp()) / "shows"
+    shutil.copytree(SHOWS, root, ignore=shutil.ignore_patterns(".backups", ".state.json", ".giglock"))
+    app = App(load_show(root), [LogDriver()])
+    app.engine.start()
+    settings.save({"wizard": "skipped"})
+    web = WebServer(app, "127.0.0.1", 0, token=TOKEN)
+    web.start()
+    page = browser.new_page(viewport={"width": 390, "height": 800}, has_touch=True)
+    try:
+        page.goto(f"http://127.0.0.1:{web.port}/?t={TOKEN}")
+        page.wait_for_selector("body.ready")
+        go_(page, "autopilot")
+        page.wait_for_selector("#ride-colour [data-fx=pulse]")
+        for sel in ("#ride-colour [data-fx=pulse]", "#ride-palettes [data-palette=fire]", "#ap-layers [data-layer=move]"):
+            assert page.eval_on_selector(sel, "e => e.getBoundingClientRect().height") >= 44
+            assert page.eval_on_selector(sel, "e => parseFloat(getComputedStyle(e).fontSize)") >= 12
+    finally:
+        page.close()
+        web.stop()
+        app.engine.stop()

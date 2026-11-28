@@ -77,7 +77,7 @@ function palTitle(p) {
 function palTile(key, p) {
   const tags = p.tags.filter((x) => MOODS.includes(x)).map((x) => t("autopilot.mood_" + x)).join(" · ");
   const b = el("button", { class: "ride-fx ride-pal-tile" + (p.excluded ? " excluded" : ""), "data-palette": key, title: palTitle(p) },
-    el("span", { class: "sw" }, ...p.swatches.map((c) => el("i", { style: `background:${c}` }))),
+    el("span", { class: "pal-sw" }, ...p.swatches.map((c) => el("i", { style: `background:${c}` }))),
     el("span", { text: p.name }), el("span", { class: "tags", text: tags }));
   return fxButton(p, () => act("autopilot_palette", { palette: key }), b, (item, btn) => togglePalette(key, item, btn));
 }
