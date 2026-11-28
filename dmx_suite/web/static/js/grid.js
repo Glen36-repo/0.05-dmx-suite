@@ -39,7 +39,7 @@ function offsets(n, shape, cols) {
 
 // ---------------------------------------------------------------- labels
 
-const CH_W = 0.23, LABEL_H = 0.52; // label size in cells (9 px text and its halo on a 24 px cell)
+const CH_W = 0.268, LABEL_H = 0.607; // label size in cells (10.5 px text and its halo on a 24 px cell)
 
 // a short name for a crowded spot: "uking_l" -> "UK L", "bar_3" -> "BA 3", "mh_a" -> "MH A"
 export function shortName(id) {
@@ -268,7 +268,7 @@ export class LightGrid {
     // with "meet" the box may be wider/taller than the view box: find the visible top right
     const s = r.width && r.height ? Math.max(vw / r.width, vh / r.height) : 1;
     const right = vx + vw / 2 + (r.width * s) / 2, top = vy + vh / 2 - (r.height * s) / 2;
-    const w = 3.4 * C, h = 0.8 * C, pad = 0.25 * C;
+    const w = 4 * C, h = 0.9 * C, pad = 0.25 * C;
     const rect = this.gHaze.querySelector("rect"), txt = this.gHaze.querySelector("text");
     rect.setAttribute("x", right - w - pad); rect.setAttribute("y", top + pad);
     rect.setAttribute("width", w); rect.setAttribute("height", h);

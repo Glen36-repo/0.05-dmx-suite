@@ -1463,5 +1463,12 @@
  "live.stage_show": "Show stage",
  "override.empty_title": "No Override panels yet.",
  "override.empty_help": "A panel is your own set of pads and faders laid over the show: colour, flash, solo, an effect, a GO, a fader or haze.",
- "override.empty_go": "Make a panel"
+ "override.empty_go": "Make a panel",
+ "fixtures.addr_change": "Change",
+ "fixtures.addr_on_layout": "Addresses and universes are changed on the Layout page (address map, live values, clash checks)",
+ "fixtures.addr_change_aria": "Change {id}'s address on the Layout page",
+ "setup.motion": "Motion",
+ "setup.motion_auto": "Follow this device",
+ "setup.motion_reduce": "Reduce (no pulses or fades)",
+ "setup.motion_full": "Full"
 }

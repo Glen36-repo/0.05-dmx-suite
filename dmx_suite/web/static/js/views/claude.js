@@ -2,7 +2,7 @@
 // laptop (or takes them out), with a once-per-laptop checklist and each Claude app's state.
 // Nothing is written until Connect. Claude's edits are checked like yours and gig lock stops them.
 import { api, attempt, get, toast } from "../api.js";
-import { $, el } from "../dom.js";
+import { $, el, reducedMotion } from "../dom.js";
 import { t } from "../i18n.js";
 import { onShow } from "../nav.js";
 
@@ -95,7 +95,7 @@ export function openClaude() {
   document.querySelector("#menu [data-page=setup]")?.click();
   const section = $("#claude-section");
   if (section) section.open = true;
-  setTimeout(() => section?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  setTimeout(() => section?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" }), 50);
 }
 
 export function init() {

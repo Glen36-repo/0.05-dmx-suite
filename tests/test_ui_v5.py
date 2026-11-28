@@ -390,3 +390,50 @@ def test_override_empty_state_has_a_first_step(phone):
     p.click("#override-start")
     p.wait_for_selector("#override-editor:not(.hidden)")
     p.wait_for_function("document.activeElement.id === 'panel-name'")
+
+
+# ---------------------------------------------------------------- option 3: one place for addresses, text size, motion
+
+
+def test_fixtures_change_address_opens_layout_with_the_field(ui):
+    page, *_ = ui
+    go(page, "fixtures")
+    page.wait_for_selector("#fx-patch button[data-addr=bar_2]")
+    page.click("#fx-patch button[data-addr=bar_2]")
+    page.wait_for_selector("#page-layout.on")
+    page.wait_for_function("document.activeElement && document.activeElement.closest('#lp-fixtures tr[data-id=bar_2]') !== null")
+    assert page.evaluate("document.activeElement.value") == "51"
+
+
+SMALL_WORDS = """() => [...document.querySelectorAll('body *')]
+  .filter(e => e.offsetParent && !e.closest('section.page:not(.on), .hidden, svg, .dmx-grid, .addr-map, .mon-heat, .px-cell'))
+  .filter(e => [...e.childNodes].some(n => n.nodeType === 3 && /[A-Za-z]{2}/.test(n.textContent)))
+  .filter(e => parseFloat(getComputedStyle(e).fontSize) < 12)
+  .map(e => (e.id || e.className || e.tagName) + ' ' + getComputedStyle(e).fontSize)"""
+
+
+def test_words_are_at_least_12px(ui):
+    page, *_ = ui
+    for p in ("live", "autopilot", "scenes", "layout", "midi", "monitor", "setup"):
+        go(page, p)
+        page.wait_for_timeout(300)
+        assert page.evaluate(SMALL_WORDS) == [], p
+
+
+def test_reduced_motion_from_the_device_and_from_setup(browser, ui):
+    page, *_ = ui
+    ctx = browser.new_context(viewport={"width": 1280, "height": 900}, reduced_motion="reduce")
+    p = ctx.new_page()
+    p.goto(page.url)
+    p.wait_for_selector("body.ready")
+    dur = "e => parseFloat(getComputedStyle(e).transitionDuration) * 1000"
+    assert p.eval_on_selector(".lightgrid .cell", dur) < 1  # the device asked: no fades
+    ctx.close()
+    assert page.eval_on_selector(".lightgrid .cell", dur) > 1  # this screen didn't
+    go(page, "setup")
+    page.select_option("#motion", "reduce")
+    assert "reduce-motion" in page.get_attribute("body", "class")
+    page.reload()
+    page.wait_for_selector("body.ready")
+    assert "reduce-motion" in page.get_attribute("body", "class")  # remembered on this screen
+    assert page.eval_on_selector(".lightgrid .cell", dur) < 1

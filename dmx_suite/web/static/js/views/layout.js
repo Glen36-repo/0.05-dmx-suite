@@ -254,7 +254,26 @@ function carriers(u) {
   return (routing?.rows || []).filter((r) => r.universe === u).map((r) => r.interface);
 }
 
+// a rebuilt list keeps the field being typed in (and honours a pending "Change" from Fixtures)
+let pendingAddr = null;
+function focusRowField(id, idx, select) {
+  const tr = document.querySelector(`#lp-fixtures tr[data-id="${CSS.escape(id)}"]`);
+  const inp = tr?.querySelectorAll("input")[idx];
+  if (!inp) return false;
+  inp.focus();
+  if (select) { inp.scrollIntoView({ block: "center" }); inp.select(); }
+  return true;
+}
+
 function renderFixtures() {
+  const act = document.activeElement;
+  const keep = act?.closest?.("#lp-fixtures tr") ? [act.closest("tr").dataset.id, [...act.closest("tr").querySelectorAll("input")].indexOf(act)] : null;
+  renderFixtureRows();
+  if (pendingAddr && focusRowField(pendingAddr, 1, true)) { pickFixture(pendingAddr); pendingAddr = null; }
+  else if (keep) focusRowField(keep[0], keep[1], false);
+}
+
+function renderFixtureRows() {
   if (!doc) return;
   const bad = clashPatch(doc.fixtures, doc.types);
   const sel = grid ? grid.selected : new Set();
@@ -298,6 +317,14 @@ function patchChanged() {
   $("#lp-patch-save").disabled = !dirtyPatch || bad.size > 0;
   $("#lp-patch-revert").disabled = !dirtyPatch;
   renderAddresses();
+}
+
+// Fixtures › Patch sends address changes here (one place to edit addresses): open Layout with that
+// light picked and its address field ready to type in
+export function editAddress(id) {
+  if (uni !== "all" && !rowsInView().some((f) => f.id === id)) setUni("all");
+  pendingAddr = id;  // taken by the next render if the rows aren't there yet
+  if (focusRowField(id, 1, true)) { pickFixture(id); pendingAddr = null; }
 }
 
 function pickFixture(id, add) {

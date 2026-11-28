@@ -55,4 +55,6 @@ A group name can't be a light's name, a kind of light (head, bar, wash, kick, ha
 
 Setup page, **Appearance**: the theme (Neutral or 0.05) and **Button size**: Compact (the default) or Comfortable. Each laptop remembers its own choice. MASTER, BLACKOUT, haze boost, the mood buttons and pads stay big either way. Phones and touch tablets always get finger-sized controls (44 px, MASTER and BLACKOUT bigger still), whatever the laptop is set to.
 
+**Motion** (Setup, Appearance, per screen): *Follow this device* uses the computer's or phone's "reduce motion" setting; *Reduce* stops beat pulses, activity glows and fades on this screen; *Full* keeps them. The stage view still shows every light's state either way.
+
 On a phone the status strip is one chip (**All OK**, or how many need attention); tap it for every device. What's playing shows on its own line under MASTER. On the Live page **Hide stage / Show stage** folds the stage view away so shows, scenes and the setlist start at the top; each screen remembers it, and it starts folded on a phone.

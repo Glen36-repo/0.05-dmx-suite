@@ -4,6 +4,11 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 
 ## Unreleased (v6: Darkness, tempo from the drums, drum kit)
 
+### Changed (addresses, text size, motion)
+- Universes and addresses are changed in one place, the Layout page; Fixtures › Patch shows them with **Change**, which opens Layout with that light's address ready to type.
+- No text under 12 px apart from numbers in dense grids (DMX channels, the address map); stage-view names are larger.
+- **Motion** (Setup › Appearance, per screen) and the device's "reduce motion" setting stop beat pulses, activity glows and fades.
+
 ### Changed (phones and live use)
 - Phones and touch tablets always get finger-sized controls (44 px; MASTER and BLACKOUT 52 px), whatever the laptop's button size.
 - Phone status strip: one chip (**All OK** or how many need attention) that opens every device; what's playing shows under MASTER.
