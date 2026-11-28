@@ -357,7 +357,14 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
     if project is not None:
         app.attach_project(project)
     ctl, router = app.ctl, app.router
-    resumed = False if args.fresh else ctl.restore()  # laptop restarted mid-gig: carry on
+    for note in getattr(args, "launch_notes", []):
+        out(note)
+    app.launch_notes = list(getattr(args, "launch_notes", []))
+    from . import settings
+
+    startup = str(settings.load().get("startup") or "autopilot_low")  # v7: Autopilot LOW, or v4 resume
+    picked = bool(args.setlist or args.show or args.scene)
+    resumed = False if (args.fresh or startup != "resume" or picked) else ctl.restore()  # laptop restarted mid-gig
     if resumed:
         out("resumed:", ctl.describe())
     elif args.setlist:
@@ -366,6 +373,9 @@ def start_session(args: argparse.Namespace, out=print) -> Session:
         ctl.select_show(args.show, args.set)
     elif args.scene:
         ctl.select_scene(args.scene)
+    elif startup == "autopilot_low":
+        app.start_up("autopilot_low")
+        out("start-up: Autopilot on, LOW, MASTER on" + (" (once a DMX output is connected)" if app.waiting_for_output else ""))
     session = Session(app, show, router, FakeMidiIn(router.handle_mido))
     app.on_restart = _restarter(session)
     try:
@@ -632,6 +642,16 @@ def resolve_shows(args: argparse.Namespace) -> argparse.Namespace:
     copy for one-off reads; the MCP server handles it itself."""
     from .package import DmsProject, is_dms, unpack_to_temp
 
+    args.launch_notes = []
+    if args.shows is None and args.cmd in ("run", "app"):  # v7: a launch opens the last show file used here
+        from . import settings
+
+        last = settings.last_file()
+        if last and Path(last).exists():
+            args.shows = Path(last)
+        elif last:
+            args.launch_notes.append(f"couldn't find the last show file {last} (not synced from OneDrive yet?): "
+                                     "opened the default show folder")
     args.shows = default_shows() if args.shows is None else prepare(args.shows)
     args.project = None
     args.dms_path = args.shows if is_dms(args.shows) else None
