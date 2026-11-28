@@ -522,6 +522,62 @@ class ShowStore:
             out.append(f"panels.yaml ({c})")
         return out
 
+    # ------------------------------------------------------------------ v7 head exclusion zones
+
+    def _zone_heads(self, data: dict[str, Any], head: str, scope: str) -> list[str]:
+        """The head, or (scope "type") every moving head in the rig of the same fixture type."""
+        from .fixtures import load_patch
+
+        if scope not in ("head", "type"):
+            raise StoreError("zone scope: head or type")
+        patch = load_patch(self.root / "fixtures.yaml")
+        if head not in patch.fixtures:
+            raise StoreError(f"no light {head!r}")
+        if scope == "head":
+            return [head]
+        present = data.get("fixtures") or ["all"]
+        ids = list(patch.fixtures) if "all" in present else [f for f in patch.fixtures if f in present
+                                                              or any(g in patch.fixtures[f].groups for g in present)]
+        return [f for f in ids if patch.fixtures[f].type.key == patch.fixtures[head].type.key]
+
+    def put_head_zone(self, rig: str, head: str, zone: dict[str, Any], scope: str = "head",
+                      old_name: str | None = None) -> str:
+        """Add or replace an exclusion zone (by name; old_name renames) on a head, or on every head of its
+        type. Checked by loading the rig (moving heads only, values in range)."""
+        from .zones import parse_zone
+
+        z = parse_zone(zone, f"zone on {head}")  # a readable error before the folder check
+        data = self.read("rig", rig)
+        zones = data.get("head_zones") or {}
+        data["head_zones"] = zones
+        for h in self._zone_heads(data, head, scope):
+            keep = [x for x in zones.get(h) or [] if isinstance(x, dict) and x.get("name") not in (z.name, old_name)]
+            zones[h] = [*keep, z.to_dict()]
+        p = self.path("rig", rig)
+        where = f"every {head}-type head" if scope == "type" else head
+        return self.apply({p: self.text_for(p, data)}, f"exclusion zone {z.name} on {where}, rig {rig}")
+
+    def delete_head_zone(self, rig: str, head: str, name: str, scope: str = "head") -> str:
+        data = self.read("rig", rig)
+        zones = data.get("head_zones") or {}
+        found = False
+        for h in self._zone_heads(data, head, scope):
+            before = zones.get(h) or []
+            after = [x for x in before if not (isinstance(x, dict) and x.get("name") == name)]
+            found |= len(after) != len(before)
+            if after:
+                zones[h] = after
+            else:
+                zones.pop(h, None)
+        if not found:
+            raise StoreError(f"no exclusion zone {name!r} on {head}")
+        if zones:
+            data["head_zones"] = zones
+        else:
+            data.pop("head_zones", None)
+        p = self.path("rig", rig)
+        return self.apply({p: self.text_for(p, data)}, f"delete exclusion zone {name} ({head}), rig {rig}")
+
     def put_point(self, rig: str, name: str, value: dict[str, Any], merge: bool = False) -> str:
         """Add or replace head point `name` in a rig. merge=True keeps heads not in `value` (store
         the heads just aimed). A head outside the rig's head limits is refused (rule 8)."""

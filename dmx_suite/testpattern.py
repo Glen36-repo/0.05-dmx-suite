@@ -149,7 +149,9 @@ def _head(rig: Rig, fx: Fixture, frame: bytearray, positions: dict[str, tuple[fl
     else:
         pan, tilt = positions.get(fx.id, (t.home["pan"], t.home["tilt"]))
         lim = rig.limit(fx.id)  # rule 8
-        pan, tilt = lim.clamp("pan", pan), lim.clamp("tilt", lim.clamp("tilt", tilt) + nod)
+        nodded = lim.clamp("tilt", lim.clamp("tilt", tilt) + nod)
+        zone_at = getattr(rig, "zone_at", None)
+        pan, tilt = lim.clamp("pan", pan), (tilt if zone_at and zone_at(fx.id, pan, nodded) else nodded)  # v7: no nod into a zone
     _put(fx, frame, "pan", pan)
     _put(fx, frame, "tilt", tilt)
     if t.has("pt_speed"):

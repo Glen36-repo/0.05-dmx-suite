@@ -2172,6 +2172,16 @@ class App:
                     "step": int(st.group(1)) - 1 if st else None, "target": st.group(2) if st else None}
         return {"ok": True, "length_s": sc.length, "layers": len(sc.layers), "problems": self._limit_problems(sc)}
 
+    def zones_view(self) -> dict[str, Any]:
+        """v7: exclusion zones per head of the running rig (in %), and which heads are held at one now."""
+        rig = self.engine.rig
+        return {"rig": self.names[0], "speed": round(rig.zone_speed * 100),
+                "zones": {fid: [z.to_dict() for z in zs] for fid, zs in rig.head_zones.items()},
+                "held": self.zones_held()}
+
+    def zones_held(self) -> dict[str, str]:
+        return {fid: f.holding for fid, f in self.engine.rules.zones.items() if f.holding}
+
     def _limit_problems(self, sc: Any) -> list[dict[str, Any]]:
         """Positions outside the running rig's head limits (rule 8 holds them at the limit, but the
         editor says so against the step)."""
@@ -2186,6 +2196,12 @@ class App:
                         out.append({"step": step, "fixture": fid,
                                     "message": f"{fid} pan {pan:.0%} tilt {tilt:.0%} is outside its head limits; "
                                                "it's held at the limit (rule 8)"})
+                    z = rig.zone_at(fid, pan, tilt)  # v7: exclusion zones, flagged the same way
+                    if z is not None:
+                        then = "its colour is off there" if z.black else "it's held at the zone's edge"
+                        out.append({"step": step, "fixture": fid, "zone": z.name,
+                                    "message": f"{fid} pan {pan:.0%} tilt {tilt:.0%} is inside exclusion zone {z.name}; "
+                                               f"{then} (rule 8)"})
         return out
 
     def step_view(self, data: Any, index: int) -> dict[str, Any]:
@@ -2327,6 +2343,7 @@ class App:
             "test": e.test_status(),
             "setup": {"find": e.find, "channels": [{"universe": u, "channel": c, "value": v}
                                                    for (u, c), v in e.channel_test.items()]},
+            "zones_held": self.zones_held(),  # v7: heads held at an exclusion zone's edge
             "fixtures": self.fixture_view(),
             "nodes": self.nodes(),
             "node_setup": self.node_setup,

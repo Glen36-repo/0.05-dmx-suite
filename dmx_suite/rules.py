@@ -7,7 +7,8 @@ Safety rules, always on:
    and dimmer. Non-light channels (gobo, wheel, strobe, mode) sit at their defaults.
 5. Haze channel comes only from the haze controller.
 6. Grand/sub-masters scale intensity only (dimmer, or RGB when there's no dimmer).
-8. Pan/tilt clamped to the rig's head limits.
+8. Pan/tilt clamped to the rig's head limits, then kept out of its exclusion zones (v7, zones.py):
+   held at a zone's edge on the side the head came from, or colour off inside a `black` zone.
 Profile rules, per the rig's profile:
 1. `master_gate`: MASTER owns on/off; dimmers are written here only and any `intensity` in the
    look is ignored. Without it, a fixture lights when its look does, at the look's intensity.
@@ -75,9 +76,18 @@ class RuleLayer:
         self.position: dict[str, tuple[float, float]] = {
             f.id: (f.type.home["pan"], f.type.home["tilt"]) for f in rig.fixtures
         }
+        # v7: exclusion zones, per head (rule 8, after the limits); black-zone heads this frame; who's held
+        from .zones import ZoneFollower
+
+        self.zones = {fid: ZoneFollower(zs, rig.zone_speed) for fid, zs in rig.head_zones.items()}
+        self.zone_black: set[str] = set()
+        self.out_position: dict[str, tuple[float, float]] = dict(self.position)  # where heads really point (zones)
+        self.now = 0.0
 
     def render(self, look: Look, state: ControlState, masters: Masters) -> dict[int, bytearray]:
         frames = {u: bytearray(DMX_CHANNELS) for u in self.rig.universes}
+        self.now = state.now
+        self.zone_black = set()
         for fx in self.rig.fixtures:
             self._fixture(fx, look.fixtures.get(fx.id), state, masters, frames[fx.universe])
         return frames
@@ -97,6 +107,8 @@ class RuleLayer:
             return
 
         self._position(fx, fl, frame)
+        if fx.id in self.zone_black:  # v7: pointed into a black exclusion zone: colour off there (rule 8)
+            return
 
         # decide what (if anything) lights this fixture
         prof = self.rig.profile
@@ -200,6 +212,12 @@ class RuleLayer:
             lim = self.rig.limit(fx.id)  # rule 8
             pan, tilt = lim.clamp("pan", pan), lim.clamp("tilt", tilt)
             self.position[fx.id] = (pan, tilt)
+            zf = self.zones.get(fx.id)
+            if zf is not None:  # v7, rule 8: exclusion zones (the held position stays the target, so the
+                if zf.black((pan, tilt)):  # head comes back out the way it went round)
+                    self.zone_black.add(fx.id)
+                pan, tilt = zf.step((pan, tilt), self.now)
+        self.out_position[fx.id] = (pan, tilt)
         speed = fl.speed if (fl is not None and fl.speed is not None and not t.colour_only) else 1.0
         _write(fx, frame, "pan", pan)
         _write(fx, frame, "tilt", tilt)

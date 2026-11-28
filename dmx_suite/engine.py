@@ -168,7 +168,7 @@ class Engine:
         if now >= tp.until():
             self._end_test("timed out")
             return None
-        return tp.universe, tp.output, testpattern.render(self.rig, tp, self.rules.position, now)
+        return tp.universe, tp.output, testpattern.render(self.rig, tp, self.rules.out_position, now)
 
     def _send(self, frames: dict[int, bytearray], test: tuple[int, int | None, bytearray] | None = None) -> None:
         for i, drv in enumerate(self.drivers):

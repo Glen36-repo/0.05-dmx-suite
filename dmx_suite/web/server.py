@@ -417,6 +417,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 devices = [{"id": d.id, "name": d.name, "port": d.port, "channel": d.channel, "inputs": d.inputs}
                            for d in ins.devices.values()]
                 return self._json(200, {"devices": devices, "inputs": input_rows, "profiles": device_profiles(app.files.root)})
+            if path == "/api/zones":  # v7: the running rig's exclusion zones and which heads are held at one
+                return self._json(200, app.zones_view())
             if path == "/api/points":  # head points of the running rig, plus what each is used by
                 rig = app.engine.rig
                 return self._json(200, {"rig": app.names[0], "points": [
@@ -1113,6 +1115,16 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     bid = s.import_palette(b.get("data") or {}, bool(b.get("overwrite")))
                 else:
                     raise ApiError(400, "palette action: rename or import")
+            elif parts == ["zone"] and method == "POST":  # v7 head exclusion zones
+                a = str(b.get("action", "put"))
+                rig = str(b.get("rig") or app.names[0])
+                scope = str(b.get("scope") or "head")
+                if a == "put":
+                    bid = s.put_head_zone(rig, str(b["head"]), b.get("zone") or {}, scope, b.get("old_name"))
+                elif a == "delete":
+                    bid = s.delete_head_zone(rig, str(b["head"]), str(b["name"]), scope)
+                else:
+                    raise ApiError(400, "zone action: put or delete")
             elif parts == ["point"] and method == "POST":  # head position points (v3)
                 a = str(b.get("action", "put"))
                 rig = str(b.get("rig") or app.names[0])
