@@ -2,7 +2,7 @@
 
 Repo: Glen36-repo/0.05-dmx-suite. Saved as `docs/v8-brief.md` on branch `v8` (from `v7`). Builds on v7 — start once v7 Parts A–E are merged (needs the v7 Palette bank, Darkness modes and layer timing).
 
-Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review), plus adjustable stage centrelines (item 12) and the Heads page rework (item 13). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
+Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review), plus adjustable stage centrelines (item 12), the Heads page rework (item 13) and per-FX settings on long-press (item 14). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
 
 Background (from the code, 28/11):
 - Colour FX that ignore the palette: `rainbow` (full hue wheel), `lightning` (hard-coded white), `fire` (fixed fire colours).
@@ -131,6 +131,19 @@ All respect head limits and v7 exclusion zones; positions from the rig's saved h
 - Layers on the pad, bottom to top: out-of-limits shading, v7 exclusion zones, point crosshairs, live head dot.
 - Disabled under gig lock (view only; clicking a crosshair still moves the head unless the show is running).
 - MCP: `save_point` / `list_points` unchanged; `set_head_limits {fixture, pan: [lo, hi], tilt: [lo, hi]}`.
+
+## 14. FX settings panel — long-press a tile
+- Today: long-press (600 ms) on an FX tile toggles Exclude; the only per-look controls are the global Ride faders (speed, fade, fan, size, shift). No per-effect settings in the Autopilot bank.
+- Change: **long-press (or right-click) a tile → settings panel for that FX** (Move, Colour, Flash, Drum, Palette tiles). Exclude moves into the panel as a switch; the **Exclude mode** button stays for quick tap-to-exclude.
+- Panel contents:
+  - **Darkness**: Follow (default) / Exempt (this FX always plays fully lit, Darkness ignored) / Reduced (slider: how much of the Darkness value applies, 0–100 %). For effects that look wrong with black added, or ones that should stay bright (e.g. Static palette, Candle).
+  - **The effect's own parameters**, generated from its `Param` list (same as the scene editor), e.g. Colour FX: period, spread, density, tail, direction, groups; Move FX: **phase / spread between heads**, size, speed, centre point, mirror on / off. Fan in / out: phase offset between heads, fan width, in/out timing.
+  - **Autopilot**: moods it can run in (LOW / MID / HIGH ticks), weight (how often it's picked: less / normal / more), min / max time on screen.
+  - **Preview** button (plays it now on the rig, 10 s, like the Ride page preview) and **Reset to defaults**.
+- Values saved per rig as overrides on the bank item (only changed values stored); a tile with overrides shows a small dot. Autopilot looks, presets and the Ride page use the overridden values. Ride faders still scale on top (speed × item speed etc.).
+- Under gig lock: panel opens read-only (Preview disabled while a show is running).
+- MCP / API: `get_item` / `save_item` take `overrides: {darkness: follow|exempt|<0-1>, params: {...}, moods, weight, min_s, max_s}`.
+- Rig file: `autopilot: fx: {<id>: {...overrides}}`; missing = defaults.
 
 ---
 
