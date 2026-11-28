@@ -145,6 +145,7 @@ export function init() {
       grid.future = [];
       updateSelection(); // Save greys out straight away
       await refreshCatalogue();
+      window.dispatchEvent(new CustomEvent("dmx:save-file")); // v7 Manual save: Ctrl+S saves the file too
     }
   }
   document.addEventListener("keydown", (ev) => {

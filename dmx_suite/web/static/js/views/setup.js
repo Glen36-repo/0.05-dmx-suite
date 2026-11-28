@@ -143,6 +143,7 @@ async function loadThemes() {
   $("#theme").replaceChildren(...Object.entries(s.themes).map(([k, v]) =>
     el("option", { value: k, selected: k === s.settings.theme }, v.name)));
   $("#density").value = s.settings.density || "compact";
+  $("#startup").value = s.settings.startup || "autopilot_low";
   $("#motion").value = remember.get("motion", "auto");
 }
 
@@ -153,6 +154,7 @@ export function init() {
     if (chan.value) cmd("chan", { channel: +chan.value, value: +val.value, universe: +$("#chanuni").value });
   });
   $("#chan-off").onclick = () => chan.value && cmd("chan", { channel: +chan.value, value: null, universe: +$("#chanuni").value });
+  $("#startup").onchange = (e) => attempt(() => api("POST", "/api/settings", { startup: e.target.value }), t("setup.startup_set"));
   $("#theme").onchange = async (e) => {
     if (await attempt(() => api("POST", "/api/settings", { theme: e.target.value }))) location.reload();
   };

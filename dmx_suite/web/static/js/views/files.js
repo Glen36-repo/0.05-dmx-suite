@@ -3,7 +3,7 @@ import { api, attempt, cmd, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
 import { onShow } from "../nav.js";
-import { live, refreshCatalogue } from "../state.js";
+import { live, onState, refreshCatalogue } from "../state.js";
 
 async function load() {
   $("#scenes").replaceChildren(...Object.entries(live.cat.scenes).map(([k, n]) => el("div", { class: "item" },
@@ -32,6 +32,7 @@ async function loadProject() {
     " ", el("code", { class: "muted", text: p ? p.path : info.folder }));
   if (p?.read_only) now.append(" ", el("span", { class: "chip warn", text: t("project.read_only") }));
   for (const id of ["#project-open", "#project-save-as", "#project-new"]) $(id).disabled = !info.local;
+  drawSaveState(p);
   $("#project-recent").replaceChildren(...info.recent.map((r) => el("li", {},
     el("button", { class: "link", disabled: !info.local || r === p?.path, onclick: () => openFile(r) }, r))));
 }
@@ -50,9 +51,50 @@ function askPath(action) {
 }
 
 async function openFile(path) {
-  if (!confirm(t("project.confirm_switch", { name: path.split(/[\\/]/).pop() }))) return;
-  const r = await attempt(() => api("POST", "/api/project/open", { path }));
+  const unsaved = await askUnsaved();
+  if (unsaved === null) return;
+  if (!unsaved.save && !unsaved.discard && !confirm(t("project.confirm_switch", { name: path.split(/[\\/]/).pop() }))) return;
+  const r = await attempt(() => api("POST", "/api/project/open", { path, ...unsaved }));
   if (r?.restarting) restarting();
+}
+
+// ---------------------------------------------------------------- v7 Save, Auto-save / Manual save, "●"
+
+const baseTitle = document.title;
+let project = null; // the live state's project info
+
+function drawSaveState(p) {
+  project = p || null;
+  const dirty = !!p?.dirty;
+  const manual = p?.save_mode === "manual";
+  $("#project-save").disabled = !p || !info?.local || (!dirty && !manual);
+  $("#project-save").classList.toggle("primary", dirty);
+  $("#save-state").textContent = !p ? t("project.folder_saves") : dirty ? t("project.unsaved") : manual ? t("project.all_saved") : "";
+  const title = (dirty ? "● " : "") + (p ? `${p.name} - ` : "") + baseTitle;
+  if (document.title !== title) {
+    document.title = title;
+    window.pywebview?.api?.set_title?.(title); // the desktop window's own title
+  }
+}
+
+export async function saveFile() {
+  if (!project) return toast(t("project.folder_saves"));
+  const r = await attempt(() => api("POST", "/api/project/save", {}), t("project.saved_now", { name: project.name }));
+  if (r) drawSaveState(r.project);
+}
+
+// before opening another file or starting a new one with unsaved changes: Save / Don't save / Cancel.
+// Resolves {} (nothing unsaved), {save: true}, {discard: true} or null (cancel).
+function askUnsaved() {
+  if (!project?.dirty) return Promise.resolve({});
+  const d = $("#unsaved-dialog");
+  $("#unsaved-text").textContent = t("project.unsaved_ask", { name: project.name });
+  return new Promise((done) => {
+    const pick = (v) => { d.close(); done(v === "save" ? { save: true } : v === "discard" ? { discard: true } : null); };
+    d.querySelectorAll("button").forEach((b) => (b.onclick = () => pick(b.value)));
+    d.oncancel = () => pick("");
+    d.showModal();
+  });
 }
 
 function restarting() {
@@ -64,7 +106,9 @@ function restarting() {
 async function run(action, path) {
   if (action === "open") return openFile(path);
   if (action === "new") {
-    const r = await attempt(() => api("POST", "/api/project/new", { path }));
+    const unsaved = await askUnsaved();
+    if (unsaved === null) return;
+    const r = await attempt(() => api("POST", "/api/project/new", { path, ...unsaved }));
     if (r?.restarting) restarting();
     return;
   }
@@ -121,6 +165,21 @@ export async function undoRedo(redo = false) {
 }
 
 export function init() {
+  $("#project-save").onclick = saveFile;
+  onState((s) => drawSaveState(s.project));
+  document.addEventListener("keydown", (ev) => { // Ctrl+S anywhere (Layout saves the layout first, then the file)
+    if (!(ev.ctrlKey || ev.metaKey) || ev.key.toLowerCase() !== "s" || ev.shiftKey || ev.altKey) return;
+    if ($("#page-layout")?.classList.contains("on")) return; // layout.js: its own Ctrl+S, then "dmx:save-file"
+    ev.preventDefault();
+    saveFile();
+  });
+  window.addEventListener("dmx:save-file", () => { if (project?.dirty) saveFile(); });
+  window.addEventListener("beforeunload", (ev) => { if (project?.dirty) ev.preventDefault(); });
+  get("/api/settings").then((s) => { $("#save-mode").value = s.settings.save_mode || "auto"; }).catch(() => null);
+  $("#save-mode").onchange = async (e) => {
+    const r = await attempt(() => api("POST", "/api/settings", { save_mode: e.target.value }), t("project.save_mode_set"));
+    if (r && e.target.value === "auto" && project?.dirty) saveFile(); // back to auto-save: write what's waiting
+  };
   $("#project-open").onclick = () => choose("open");
   $("#project-save-as").onclick = () => choose("save_as");
   $("#project-new").onclick = () => choose("new");
