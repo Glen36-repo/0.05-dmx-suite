@@ -446,9 +446,23 @@
       <div class="row wrap">
         <button id="fine" data-i18n="heads.fine" data-i18n-title="heads.fine_tip"></button>
         <button data-cmd="release_positions" data-i18n="heads.release_all"></button>
+        <span class="sep-v"></span>
+        <button id="zones-mode" class="toggle" data-i18n="zones.mode" data-i18n-title="zones.mode_tip"></button>
+        <select id="zone-shape" data-i18n-title="zones.shape"><option value="rect" data-i18n="zones.rect"></option><option value="ellipse" data-i18n="zones.ellipse"></option></select>
+        <button type="button" class="info" data-info="heads.zones" aria-expanded="false">ⓘ</button>
       </div>
       <div class="focus-bar row wrap hidden" id="focus"></div>
       <div class="heads" id="heads"></div>
+      <div class="zone-editor row wrap hidden" id="zone-editor">
+        <b id="zone-head"></b>
+        <label class="ap-field"><span data-i18n="zones.name"></span><input id="zone-name" maxlength="40"></label>
+        <label class="chip"><input type="checkbox" id="zone-black"><span data-i18n="zones.black"></span></label>
+        <select id="zone-scope" data-i18n-title="zones.scope"><option value="head" data-i18n="zones.scope_head"></option><option value="type" data-i18n="zones.scope_type"></option></select>
+        <span class="muted" id="zone-size"></span>
+        <button id="zone-save" class="primary" data-i18n="common.save"></button>
+        <button id="zone-delete" class="danger-text" data-i18n="zones.delete"></button>
+        <button id="zone-cancel" data-i18n="zones.cancel"></button>
+      </div>
       <h2><span data-i18n="heads.store_title"></span> <button type="button" class="info" data-info="heads.store" aria-expanded="false">ⓘ</button></h2>
       <div class="cols c150">
         <input id="point-name" maxlength="40" data-i18n-placeholder="heads.position_placeholder">

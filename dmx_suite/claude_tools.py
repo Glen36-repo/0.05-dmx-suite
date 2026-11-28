@@ -702,6 +702,20 @@ class DmxTools:
         return self._write("POST", "/api/store/input", {"action": "rename", "name": name, "new_name": new_name},
                            lambda: self.local.rename_input(name, new_name))
 
+    def list_head_zones(self) -> str:
+        out = {r: z for r in self.local.names("rig") if (z := self.local.read("rig", r).get("head_zones"))}
+        return _dump(out) if out else "no exclusion zones yet (Heads page: Zones, then draw on a head's pad)"
+
+    def save_head_zone(self, rig: str, head: str, zone_yaml: str, scope: str = "head", old_name: str = "") -> str:
+        zone = _yaml(zone_yaml, "zone")
+        body = {"action": "put", "rig": rig, "head": head, "zone": zone, "scope": scope, "old_name": old_name or None}
+        return self._write("POST", "/api/store/zone", body,
+                           lambda: self.local.put_head_zone(rig, head, zone, scope, old_name or None))
+
+    def delete_head_zone(self, rig: str, head: str, name: str, scope: str = "head") -> str:
+        body = {"action": "delete", "rig": rig, "head": head, "name": name, "scope": scope}
+        return self._write("POST", "/api/store/zone", body, lambda: self.local.delete_head_zone(rig, head, name, scope))
+
     def save_point(self, rig: str, name: str, value_yaml: str) -> str:
         value = _yaml(value_yaml, "point")
         return self._write("POST", "/api/store/point", {"action": "put", "rig": rig, "name": name, "value": value},

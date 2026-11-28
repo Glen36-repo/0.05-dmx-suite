@@ -379,6 +379,25 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.delete_step(scene, step)
 
     @tool
+    def list_head_zones() -> str:
+        """Head exclusion zones per rig (v7, rule 8): rectangles / ellipses in % of a head's pan / tilt range it
+        must never point into; `black: true` = colour off inside instead of being held at the edge."""
+        return t.list_head_zones()
+
+    @tool
+    def save_head_zone(rig: str, head: str, zone_yaml: str, scope: str = "head", old_name: str = "") -> str:
+        """Add or replace an exclusion zone on a moving head (by name; old_name renames). zone_yaml e.g.
+        '{name: Mirror, shape: rect, pan: [40, 55], tilt: [10, 30]}' or
+        '{name: Front row, shape: ellipse, centre: [50, 80], radius: [20, 8], black: true}' (all %).
+        scope: head (this one) or type (every head of the same type in the rig). Not under gig lock."""
+        return t.save_head_zone(rig, head, zone_yaml, scope, old_name)
+
+    @tool
+    def delete_head_zone(rig: str, head: str, name: str, scope: str = "head") -> str:
+        """Delete an exclusion zone from a head (scope type: from every head of its type)."""
+        return t.delete_head_zone(rig, head, name, scope)
+
+    @tool
     def set_haze(action: str, settings_yaml: str = "") -> str:
         """Haze mode: off, manual or pulse (or '' to leave the mode). With settings_yaml, also tune the haze
         controller and save it to the running rig: '{level: 41, pulse_level: 30, pulse_on_s: 1, pulse_every_s: 61,

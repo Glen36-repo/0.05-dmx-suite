@@ -150,9 +150,12 @@ class Rig:
     points: dict[str, Point] = field(default_factory=dict)  # head position points (v3)
     auto: Any = None  # classify.AutoConfig: class overrides and lights left out of the auto show (v3.3)
     autopilot: dict[str, Any] = field(default_factory=dict)  # autopilot settings over the defaults (v3.4)
+    head_zones: dict[str, Any] = field(default_factory=dict)  # v7: head id -> [zones.Zone] (rule 8)
+    zone_speed: float = 1.0  # v7: range a second a head moves at while going round a zone
 
     def point_problems(self) -> list[str]:
-        """Points with a head outside this rig's head limits (they still clamp at output, rule 8)."""
+        """Points with a head outside this rig's head limits or inside an exclusion zone (v7); they're
+        still held at the limit / the zone's edge at output (rule 8)."""
         out = []
         for pt in self.points.values():
             for fid, (pan, tilt) in pt.heads.items():
@@ -160,7 +163,16 @@ class Rig:
                 if not (lim.pan[0] <= pan <= lim.pan[1] and lim.tilt[0] <= tilt <= lim.tilt[1]):
                     out.append(f"point {pt.name}: {fid} is outside its head limits (pan {pan:.0%}, tilt {tilt:.0%}); "
                                f"it's held at the limit (rule 8): re-aim it")
+                z = self.zone_at(fid, pan, tilt)
+                if z is not None:
+                    then = "its colour is off there" if z.black else "it's held at the zone's edge"
+                    out.append(f"point {pt.name}: {fid} is inside exclusion zone {z.name} (pan {pan:.0%}, tilt {tilt:.0%}); "
+                               f"{then} (rule 8): re-aim it")
         return out
+
+    def zone_at(self, fid: str, pan: float, tilt: float) -> Any:
+        """v7: the exclusion zone (if any) a head pointed at pan / tilt (0-1) would be inside."""
+        return next((z for z in self.head_zones.get(fid, []) if z.inside((pan, tilt))), None)
 
     @property
     def fixtures(self):
@@ -260,7 +272,23 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         points=parse_points(data.get("positions"), patch),
         auto=_auto(data.get("auto"), patch),
         autopilot=_autopilot(data.get("autopilot")),
+        head_zones=_zones(data.get("head_zones"), patch, present),
+        zone_speed=_zone_speed(data.get("zone_speed", 100)),
     )
+
+
+def _zones(d: Any, patch: Patch, present: list[str]) -> dict[str, Any]:
+    from .zones import parse_zones
+
+    heads = {f: patch.fixtures[f] for f in present
+             if patch.fixtures[f].type.has("pan") and not patch.fixtures[f].type.colour_only}
+    return parse_zones(d, heads)
+
+
+def _zone_speed(v: Any) -> float:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not 5 <= v <= 1000:
+        raise ConfigError("zone_speed: 5-1000 (% of the range a second)")
+    return float(v) / 100
 
 
 def _autopilot(d: Any) -> dict[str, Any]:
