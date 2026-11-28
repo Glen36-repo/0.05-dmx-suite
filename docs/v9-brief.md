@@ -8,20 +8,20 @@ Background (from the code, 28/11):
 - Head points are stored per head as pan / tilt 0–1 (`rig.Point.heads`), so every point must be aimed separately on every head, and again at every venue.
 - Mounting isn't known per fixture: only `invert: true` on a fixture **type's** pan / tilt channel (`fixtures.py`, `INVERTIBLE`), which flips every head of that type. A hung head and a floor head of the same type can't both be right.
 - Generated Move FX (circle, sweeps, Pendulum, Tilt nod, Sky scan, Crossfire, Mirror …) work in head angles, so "up", "left" and size differ per head and per mount.
-- Fixture types can carry `pan_range` / `tilt_range` in degrees (optional, used for the Heads page labels; the MHL36 type has none set yet).
+- Fixture types carry `pan_range` / `tilt_range` in degrees (`fixtures.py`, default 540 / 270 when not set — the MHL36 type doesn't set them, so it's using the defaults).
 
 ---
 
 ## 1. Calibration model
 - Per rig (venue), per moving head, solve a **head pose**: position (x, y, z in metres, stage frame) and orientation (yaw, pitch, roll) — which covers upright, hung, side-mounted and any twist — plus optional refinement of the head's real pan / tilt degree range and zero offsets.
 - **Stage frame**: origin = front-centre of the stage at floor level; x = stage left → right (audience view), y = downstage → upstage, z = up. Shown on the Layout page with the v8 centrelines.
-- **Solve**: each head aimed at N ≥ 3 known marks (4 recommended) gives N pan / tilt pairs → least-squares fit of the pose (+ range / offset with ≥ 4 marks). Report a per-head **error** (cm at the marks) and flag any mark whose residual is far above the rest (probably mis-aimed or mis-measured).
+- **Solve**: each head aimed at N known marks gives N pan / tilt pairs → least-squares fit of the pose (6 unknowns) + tilt zero (1). 4 marks = minimum with an error check (8 equations, 7 unknowns); 5+ marks also refine the pan / tilt degree ranges (9 unknowns). Report a per-head **error** (cm at the marks) and flag any mark whose residual is far above the rest (probably mis-aimed or mis-measured).
 - 16-bit pan / tilt used where the fixture has fine channels; warn if not (lower accuracy).
 - Stored in the rig file: `calibration: {marks: {...}, heads: {<fid>: {pos, rot, pan_range, tilt_range, pan_zero, tilt_zero, error_cm, date}}}`. No calibration = everything works exactly as today (head angles).
 
 ## 2. Calibration wizard (Heads page)
 1. **Stage**: stage size (w × d, m) and the origin (front-centre, floor). Picture shows the frame.
-2. **Marks**: place 4 tape marks; enter each one's x / y (z = 0, or a height for a mark on a riser / wall) — or pick the **standard square** (e.g. 2 m × 2 m centred on the origin, 1 m downstage) and just tape it. Marks are named (M1–M4) and shown on the Layout stage view.
+2. **Marks**: place 4 tape marks (5 to also measure the heads' real pan / tilt ranges); enter each one's x / y (z = 0, or a height for a mark on a riser / wall) — or pick the **standard square** (e.g. 2 m × 2 m centred on the origin, 1 m downstage) and just tape it. Marks are named (M1–M4) and shown on the Layout stage view.
 3. **Aim**: one head at a time, one mark at a time. Big pad (v8 item 13), fine mode, arrow-key nudge (Shift = finer). That head goes to a narrow, bright white spot (zoom / focus / gobo open where the fixture has them); all other lights off. **Next** stores the pan / tilt for that mark. Skip a mark a head can't reach (limits / obstructions) — it needs at least 3.
 4. **Solve**: shows each head's position (top and side view), mount (Upright / Hung / Side-L / Side-R + angles), error per head and per mark; bad marks highlighted with **Re-aim**.
 5. **Check**: all calibrated heads go to a chosen mark (or the stage centre) together; the beams should land on one spot. **Save** or **Back**.
@@ -79,5 +79,5 @@ Background (from the code, 28/11):
 
 ## Open items
 1. Default mark layout for the wizard: 2 m × 2 m square 1 m downstage (assumed) or the four corners of the stage.
-2. Whether to refine pan / tilt ranges in the solve (assumed yes with ≥ 4 marks) or trust the fixture type's figures.
-3. MHL36: the fixture type already has 16-bit pan / tilt (`pan_fine`, `tilt_fine`) but no `pan_range` / `tilt_range` in degrees — confirm the real ranges from the manual / on the fixture (or let the solve estimate them, open item 2).
+2. Whether to refine pan / tilt ranges in the solve (assumed yes when a head has 5+ marks; with 4, trust the fixture type's figures) — see `docs/v9-plan.md` decision 2.
+3. MHL36: the fixture type already has 16-bit pan / tilt (`pan_fine`, `tilt_fine`) but no `pan_range` / `tilt_range` set (defaults 540° / 270° used) — confirm the real ranges from the manual / on the fixture, or use 5 marks so the solve estimates them.
