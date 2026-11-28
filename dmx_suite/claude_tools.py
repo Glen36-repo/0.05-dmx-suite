@@ -157,7 +157,8 @@ AUTOPILOT (v3.4): changes looks on a timer per mood (rig `autopilot:` moods {low
   look} for between songs (v7; look and walk_on / walk_off take a generated look or {scene: id}), palettes). Energy comes
   from named input roles. autopilot_status shows what it's doing and the decision log (why each look
   was chosen); save_autopilot_settings tunes it, e.g. "less movement, more blue in the verses" ->
-  palettes: [cool, ice], and quality busy scores for the move items.
+  palettes: [cool, ice], and quality busy scores for the move items. Palette bank (v7): play_palette plays one
+  now; exclude_palette leaves one out of the autopilot's picks (rig auto: exclude_palettes), like FX types.
 AUTO SHOW (v3.3): list_fx shows the FX banks for this rig (Move, Colour, Flash, drum-reactive), how the
   lights are classified, and the palettes. preview_look tries a pick {move, colour, drum, palette, feel:
   {speed, fade, fan, size, shift}, mood} and says what the look quality rules think (get_quality_rules,
@@ -452,6 +453,15 @@ class DmxTools:
     def set_set_darkness(self, set: str, value: float | None) -> str:
         r = self._live("POST", "/api/darkness/set", {"set": set, "value": value})
         return f"saved (backup {r['backup']}): {set} darkness {'cleared' if value is None else f'{value:g} %'}"
+
+    def play_palette(self, palette: str) -> str:
+        r = self._live("POST", "/api/autopilot/palette", {"palette": palette, "play": True})
+        return r.get("message", "ok")
+
+    def exclude_palette(self, palette: str, excluded: bool = True) -> str:
+        r = self._live("POST", "/api/autopilot/palette", {"palette": palette, "excluded": excluded})
+        return (f"palette {palette} {'left out of' if excluded else 'back in'} the autopilot's picks "
+                f"(backup {r['backup']}); excluded now: {', '.join(r['excluded']) or 'none'}")
 
     def save_autopilot_settings(self, rig: str, yaml_text: str) -> str:
         data = _yaml(yaml_text, "autopilot settings")

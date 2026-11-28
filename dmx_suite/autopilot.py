@@ -439,11 +439,13 @@ class Autopilot:
 
     def _palettes_for(self, mood: str) -> list[str]:
         pals = self.palettes()
-        allowed = [p for p in self.cfg.get("palettes") or [] if p in pals]
+        out = set(getattr(self.rig_auto(), "excluded_palettes", ()) or ())  # v7: palette bank exclusions
+        usable = {k: v for k, v in pals.items() if k not in out} or pals  # all excluded: exclusions ignored
+        allowed = [p for p in self.cfg.get("palettes") or [] if p in usable]
         if allowed:
             return allowed
-        tagged = [k for k, v in pals.items() if mood in (v.get("tags") or [])]
-        return tagged or list(pals)
+        tagged = [k for k, v in usable.items() if mood in (v.get("tags") or [])]
+        return tagged or list(usable)
 
     def choose(self, now: float, trigger: str) -> tuple[Any, int, int, float]:
         """(pick, candidates looked at, rejected by the rules, score)."""

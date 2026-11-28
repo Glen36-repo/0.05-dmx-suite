@@ -73,6 +73,7 @@ ACTIONS: dict[str, set[str]] = {
     "walk_off": set(),
     "autopilot_fx": {"bank", "item"},
     "autopilot_palette": {"palette"},
+    "exclude_palette": {"palette", "excluded"},  # v7 palette bank
     "palette_lock": set(),
     "feel_speed": set(),
     "feel_fade": set(),
@@ -85,7 +86,8 @@ ACTIONS: dict[str, set[str]] = {
 CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade",
               "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift", "darkness"}  # need a CC or OSC
 AUTOPILOT_ACTIONS = {"autopilot", "hold", "look_next", "look_prev", "mood", "walk_on", "walk_off", "autopilot_fx",
-                     "autopilot_palette", "palette_lock", "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift",
+                     "autopilot_palette", "exclude_palette", "palette_lock", "feel_speed", "feel_fade", "feel_fan", "feel_size",
+                     "feel_shift",
                      "darkness", "preset"}
 RIDE_ACTIONS = AUTOPILOT_ACTIONS  # v3 name
 # v3 action names (Ride page, busking) still load; v4 writes the new ones (show file format 6)
@@ -221,8 +223,8 @@ def validate(m: Mapping, input_type: str | None = None) -> None:
         raise ConfigError(f"{where}: haze_preset needs preset (a haze preset's name)")
     if m.action == "preset" and not m.params.get("preset"):
         raise ConfigError(f"{where}: preset needs preset (a preset's name)")
-    if m.action == "autopilot_palette" and not m.params.get("palette"):
-        raise ConfigError(f"{where}: autopilot_palette needs palette")
+    if m.action in ("autopilot_palette", "exclude_palette") and not m.params.get("palette"):
+        raise ConfigError(f"{where}: {m.action} needs palette")
     if m.action == "override" and (not m.params.get("panel") or not m.params.get("widget")):
         raise ConfigError(f"{where}: override needs panel and widget")
     if m.action == "sub_master":

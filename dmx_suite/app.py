@@ -1088,12 +1088,15 @@ class App:
         """The FX banks for this rig: every item, whether this rig can run it (rig size scaling),
         how the lights are classified, the palettes and the quality rules."""
         from .classify import auto_rig
+        from .colourtheory import hex_of
         from .fxbanks import FLASH_ITEMS, ITEMS, can_run
 
         ar = auto_rig(self.engine.rig)
         return {"rig": ar.summary(), "items": [{**i.to_json(), "available": can_run(i, ar), "excluded": i.id in ar.excluded_fx}
                                                for i in [*ITEMS, *FLASH_ITEMS]],
-                "palettes": {k: {"name": v["name"], "tags": v["tags"]} for k, v in self.files.palettes.sets.items()},
+                "palettes": {k: {"name": v["name"], "tags": v["tags"], "excluded": k in ar.excluded_palettes,
+                                 "swatches": [hex_of(c) for c in v["resolved"]][:6]}
+                             for k, v in self.files.palettes.sets.items()},
                 "pick": self.ride_pick.to_dict(), "quality": self.quality().r}
 
     def compose(self, pick: Any, name: str = "Autopilot") -> Any:
@@ -1345,23 +1348,33 @@ class App:
         it = BY_ID.get(item)
         if it is None or it.bank == "flash":
             raise ValueError(f"no autopilot FX type {item!r}")
+        return self._auto_exclude("exclude_fx", item, it.label, excluded)
+
+    def exclude_palette(self, palette: str, excluded: bool) -> dict[str, Any]:
+        """v7 palette bank: leave a palette out of the autopilot's picks (or put it back). A tap still plays it."""
+        sets = self.files.palettes.sets
+        if palette not in sets:
+            raise ValueError(f"no palette {palette!r}")
+        return self._auto_exclude("exclude_palettes", palette, f"palette {sets[palette]['name']}", excluded)
+
+    def _auto_exclude(self, key: str, item: str, label: str, excluded: bool) -> dict[str, Any]:
         rig_name = self.names[0]
         data = self.store.read("rig", rig_name)
         auto = dict(data.get("auto") or {})
-        now = [x for x in auto.get("exclude_fx") or [] if x != item]
+        now = [x for x in auto.get(key) or [] if x != item]
         if excluded:
             now.append(item)
         if now:
-            auto["exclude_fx"] = now
+            auto[key] = now
         else:
-            auto.pop("exclude_fx", None)
+            auto.pop(key, None)
         if auto:
             data["auto"] = auto
         else:
             data.pop("auto", None)
         verb = "leave out" if excluded else "put back"
         with self.store.recovery():  # mid-gig: like "Use this instead", allowed under gig lock
-            bid = self.store.put("rig", rig_name, data, f"autopilot: {verb} {it.label} on rig {rig_name}")
+            bid = self.store.put("rig", rig_name, data, f"autopilot: {verb} {label} on rig {rig_name}")
         self.reload()
         return {"ok": True, "backup": bid, "excluded": now}
 
@@ -1680,6 +1693,15 @@ class App:
             if p.get("palette") not in self.files.palettes.sets:
                 raise ValueError(f"no palette {p.get('palette')!r}")
             pick.palette = p["palette"]
+        elif action == "exclude_palette":  # v7 palette bank (MIDI / API / Claude): saved, no look change
+            on = p.get("excluded")
+            pal = str(p.get("palette") or "")
+            if on is None:  # a pedal press toggles
+                from .classify import auto_rig
+
+                on = pal not in auto_rig(self.engine.rig).excluded_palettes
+            self.exclude_palette(pal, bool(on))
+            return f"palette {pal} {'left out' if on else 'put back'}"
         elif action == "palette_lock":
             self.palette_lock = not self.palette_lock if p.get("on") is None else bool(p["on"])
             return f"palette lock {'on' if self.palette_lock else 'off'}"

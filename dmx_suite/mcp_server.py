@@ -180,6 +180,18 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.set_set_darkness(set, value)
 
     @tool
+    def play_palette(palette: str) -> str:
+        """Play a palette on the Autopilot now (palette bank tile tap): the running look keeps its FX and takes
+        this palette. Works on an excluded palette too. Allowed under gig lock (a live control)."""
+        return t.play_palette(palette)
+
+    @tool
+    def exclude_palette(palette: str, excluded: bool = True) -> str:
+        """Leave a palette out of the Autopilot's picks (excluded=True) or put it back (False). Saved in the rig
+        (auto: exclude_palettes); it stays on the page and can still be played by hand. Allowed under gig lock."""
+        return t.exclude_palette(palette, excluded)
+
+    @tool
     def save_autopilot_settings(rig: str, yaml_text: str) -> str:
         """Tune the autopilot for a rig (merged into its `autopilot:` block), e.g.
         '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6, between: {gap_s: 5}}'."""
