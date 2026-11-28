@@ -60,7 +60,7 @@ Rig, Part A, additive (no step; defaults when missing):
 ```yaml
 autopilot:
   darkness_mode: manual        # manual | auto
-  darkness_auto: {min: 0, max: 60, time_at_max: 30}            # %
+  darkness_auto: {min: 0, max: 60, time_at_max: 30, hold_s: null}   # %, hold_s null = layer interval
   set_darkness: {mid: {mode: auto, value: 20, min: 10, max: 70, time_at_max: 25}}
   timing: together             # together | staggered
   layers:
@@ -103,9 +103,9 @@ Built in this order (format bump and picker first, as later items need them).
    - Files: `autopilot.py` (layer clocks, `choose(layer=…)`), `app.py`, `midi/map.py`, `views/autopilot.js` (countdown + lock per layer), MCP `save_autopilot_settings` gains `timing` and `layers` args (YAML text still accepted)
    - Tests: Together bit-identical to v6 decisions for a seeded run; Staggered changes one layer per decision; spread keeps layers apart over 10 min; locked layer never changes; song/set triggers; quality rules applied per single-layer change; palette-only change doesn't move heads or restart the move phase
 
-5. **A3 Darkness Manual / Auto.** Manual = v6. Auto: Min / Max markers on the slider; at each Darkness-layer change the target is Max while the time at Max so far is below `time_at_max`, else Min (a deficit counter, so the share is exact over time); eases with the look's fade. Slider, pedal CC or Claude `set_autopilot {darkness}` in Auto → Manual (shown). Per set: mode, value, min, max, time_at_max.
+5. **A3 Darkness Manual / Auto.** Manual = v6. Auto: Min / Max markers on the slider; at each Darkness-layer change the target is Max while the time at Max so far is below `time_at_max`, else Min (a deficit counter, so the share is exact over time); eases with the look's fade. **Minimum hold** at each marker (`hold_s`, default = the Darkness layer interval; in Together, one look) so it can't flip Max/Min on consecutive ticks. Slider, pedal CC or Claude `set_autopilot {darkness}` in Auto → Manual (shown). Per set: mode, value, min, max, time_at_max.
    - Files: `darkness.py`, `autopilot.py`, `app.py`, `views/autopilot.js` (marker drag, mode switch), `mcp_server.py` / `claude_tools.py` new `set_darkness {mode, min, max, time_at_max}`, `autopilot_status` adds mode and markers
-   - Tests: share at Max within 2 % over a simulated hour (Together and Staggered); stays within Min..Max; pedal move → Manual; set change loads that set's values; kick exempt; rulecheck both profiles
+   - Tests: never leaves a marker before `hold_s`, even with a large deficit; share at Max within 2 % over a simulated hour (Together and Staggered); stays within Min..Max; pedal move → Manual; set change loads that set's values; kick exempt; rulecheck both profiles
 
 6. **A5 Smaller tiles.** Move / Flash / Colour / Palette tiles at 75 %. 12 px text floor and 44 px touch minimum kept (touch tokens win).
    - Files: `style.css`
@@ -130,9 +130,9 @@ Built in this order (format bump and picker first, as later items need them).
 4. **Docs.** Manual, CHANGELOG, SCOPE row rewrite. MCP: `list_fixtures` gains range and clashes (no new tools).
 
 ## Part C: Heads (`v7-c-heads`)
-1. **Zone model and rule.** Rig `head_zones` (rect / ellipse in %, name, `black`), scope one head or copy to every head of that type. Rule layer `_position`: after limits, a target inside a zone moves to the nearest edge; `black` zones turn the head's colour off instead. A move path that crosses a zone slides round its edge (per-frame nearest-edge of the interpolated target, so it follows the edge).
+1. **Zone model and rule.** Rig `head_zones` (rect / ellipse in %, name, `black`), scope one head or copy to every head of that type. Rule layer `_position`, after limits: a target entering a zone is held on the edge **on the side the head entered from**, and stays on that side until the target leaves the zone (hysteresis, kept per head per zone in the rule layer). Never nearest-edge per frame: a target crossing the zone centre would flip edges and snap the head across. While held, the head slides along that edge (projection onto the entry side's boundary) at no more than the normal max speed per frame. `black` zones turn the head's colour off instead of deflecting.
    - Files: `rig.py` (parse + validate), `rules.py`, `CLAUDE.md` rule 8 text
-   - Tests: `test_head_zones.py`: inside → edge; ellipse edge maths; sweep never enters; black zone = colour 0, dimmer as rule 1; U'King unaffected (rule 7); rulecheck both profiles
+   - Tests: `test_head_zones.py`: inside → entry-side edge; ellipse edge maths; **pan sweep straight through a circle zone: output never inside or across the zone, and never steps more than the normal max speed per frame**; target leaving on the far side releases cleanly; black zone = colour 0, dimmer as rule 1; U'King unaffected (rule 7); rulecheck both profiles
 2. **Flags.** Points and scene positions inside a zone flagged like out-of-limit points (`rig.point_warnings`, validate_scene).
 3. **Heads page.** Draw / move / resize / rename / delete zones on the pad; red hatch; "held at zone edge" indicator from the live feed.
    - Files: `views/heads.js`, `web/server.py`, `web/feed.py`, `style.css`, `en.json`
@@ -140,13 +140,13 @@ Built in this order (format bump and picker first, as later items need them).
 4. **MCP.** `save_head_zone`, `delete_head_zone`, `list_head_zones`. Docs: `heads.md`, CHANGELOG, SCOPE.
 
 ## Part D: Drum flash (`v7-d-drum-flash`)
-1. **Gate.** `engine.flash(fixtures, velocity, length_ms, min_level)` (no colour). Rule 2 branch: a flashed light renders its live look (colour, pixels, wheel, gobo, position) at the hit level; heads with a strobe/shutter channel get it open for the hit; lights the scene leaves off stay dark. `_flash_lit` removed (darkness black slots stay black by rendering the look). Exempt kick and MASTER on unchanged (no visible effect).
+1. **Gate.** `engine.flash(fixtures, velocity, length_ms, min_level)` (no colour). Hit level = `min_level + (1 − min_level) × velocity / 127` (velocity scales between the pad's min level and full, so soft hits still flash clearly). Rule 2 branch: a flashed light renders its live look (colour, pixels, wheel, gobo, position) at the hit level; heads with a strobe/shutter channel get it open for the hit; lights the scene leaves off stay dark. `_flash_lit` removed (darkness black slots stay black by rendering the look). Exempt kick and MASTER on unchanged (no visible effect).
    - Files: `engine.py`, `rules.py`, `look.py` (drop `show_colour` use for flashes), `midi/router.py`, `midi/map.py`, `kits.py`
-   - Tests: MASTER off + chase → hit shows the chase colour at that moment per fixture; scene off on a light → hit shows nothing; head shutter open during hit, closed after; unticked lights dark; MASTER on → frames identical with and without hits; kick never flashed; rulecheck both profiles
+   - Tests: velocity 1 → min level, 127 → full, linear between; default min level 0.6; MASTER off + chase → hit shows the chase colour at that moment per fixture; scene off on a light → hit shows nothing; head shutter open during hit, closed after; unticked lights dark; MASTER on → frames identical with and without hits; kick never flashed; rulecheck both profiles
 2. **Format step.** Flash `colour` removed from MIDI maps and kit zones (6 → 7 step), with tests.
-3. **Pickers.** Drum Kit flash target and MIDI page `fixtures` field → tick-box picker.
-   - Files: `views/kit.js`, `views/midi.js`
-   - Tests: `test_ui.py`
+3. **Pickers and min level.** Drum Kit flash target and MIDI page `fixtures` field → tick-box picker. Kit zone `flash: {fixtures, length_ms, min_level}` (0-1, default 0.6, the existing `min_level` param) with a Min level field on the Drum Kit page; MIDI-map flash actions keep their own `min_level` (default 0.6 from v7).
+   - Files: `views/kit.js`, `views/midi.js`, `kits.py`, `midi/map.py`
+   - Tests: `test_ui.py`; kit zone min_level parse / range / default; round trip through the Drum Kit page
 4. **Docs.** `midi-osc.md`, CHANGELOG, SCOPE "Flash colour" row, `get_kit` / `set_kit_piece` take fixtures only. Flash FX bank unchanged (own colour path in `app.flash_fx`).
 
 ## Part E: Files and start-up (`v7-e-files`)
@@ -161,10 +161,16 @@ Built in this order (format bump and picker first, as later items need them).
    - Tests: fresh launch state; waits for output; resume mode unchanged from v6 tests; haze off after restart in both modes
 4. **Docs.** `getting-started.md`, CHANGELOG, SCOPE rows (Show file, Startup state, Resume after restart).
 
+## Changes on review (28/11/2026)
+1. C1: entry-side edge with hysteresis, not nearest-edge per frame; sweep-through-circle test with a max-speed check.
+2. D1: velocity scales from a per-pad min level (default 0.6) to full; in the kit zone and on the Drum Kit page.
+3. A3: minimum hold at each marker (default the Darkness layer interval).
+4. Part A is based on `main` once #16 merges (`v7` rebased onto `main`).
+
 ## Delivery
 - `v7`: brief, archive tidy-up, this plan.
 - Stacked branches, one per part: `v7-a-autopilot` (from `v7`) → `v7-b-fixtures` → `v7-c-heads` → `v7-d-drum-flash` → `v7-e-files`.
-- One PR per part. Part A's PR targets `v5-v6`, so it also carries the `v7` doc commits; retarget it to `main` once #16 merges. Each later PR targets the part before it.
+- One PR per part. `v7` is rebased onto `main` once #16 merges; Part A's PR targets `main` and carries the `v7` doc commits. Each later PR targets the part before it.
 - Before each PR: `ruff check dmx_suite tests installer`, `mypy dmx_suite`, full `pytest` green. No firmware changes planned.
 - Each part: small commits with tests, CHANGELOG, `docs/manual/`, MCP tools, `en.json` (no hard-coded strings).
 
