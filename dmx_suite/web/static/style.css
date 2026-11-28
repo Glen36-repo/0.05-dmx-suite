@@ -411,7 +411,8 @@ button.big { min-height: var(--perform-h); padding: 0 18px; font-size: 16px; fon
 .energy-l { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .energy i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--warn), var(--bad)); transition: width .3s; }
 .grid-host.strip { height: 230px; max-height: none; overflow: hidden; padding: 4px; }
-.ride-banks { display: grid; grid-template-columns: 1fr 0.65fr 1.35fr; gap: 12px; }
+.ride-banks { display: grid; grid-template-columns: 1fr 0.65fr 1.35fr 1fr; gap: 12px; } /* v7: + palette bank */
+@media (max-width: 1100px) { .ride-banks { grid-template-columns: 1fr 1fr; } }
 .ride-col { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 5px; }
 .ride-fx { min-height: 44px; padding: 6px 8px; font-size: 14px; line-height: 1.15; font-weight: 600; touch-action: manipulation; user-select: none; }
 .pair { display: flex; flex-wrap: wrap; gap: 0 28px; }
@@ -745,3 +746,9 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   .picker-summary, .picker-head, .picker-item { min-height: 44px; }
   .picker-body { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; max-height: 70vh; }
 }
+
+/* v7 palette bank tiles: swatches + mood tags, same green / red states as the FX tiles */
+.ride-pal-tile { display: flex; flex-direction: column; align-items: stretch; gap: 3px; text-align: left; }
+.ride-pal-tile .sw { display: flex; height: 10px; border-radius: 3px; overflow: hidden; }
+.ride-pal-tile .sw i { flex: 1; }
+.ride-pal-tile .tags { font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -88,3 +88,57 @@ def test_picker_touch_targets_on_a_phone(browser):
         page.close()
         web.stop()
         app.engine.stop()
+
+
+# ------------------------------------------------------------------ A2 palette bank
+
+
+def rig_auto_key(app, key, want=None, page=None):
+    """The rig file's auto: <key>; with `want`, waits for the save (tiles turn red at once)."""
+    import yaml
+
+    got = []
+    for _ in range(80):
+        data = yaml.safe_load((app.files.root / "rigs" / f"{app.names[0]}.yaml").read_text(encoding="utf-8"))
+        got = (data.get("auto") or {}).get(key) or []
+        if want is None or got == want:
+            return got
+        page.wait_for_timeout(25)
+    return got
+
+
+def test_palette_tiles_play_and_exclude(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    tile = "#ride-palettes [data-palette=fire]"
+    page.wait_for_selector(tile)
+    assert page.eval_on_selector_all(f"{tile} .sw i", "s => s.length") == 4  # swatches
+    assert page.inner_text(f"{tile} .tags") == "HIGH"  # mood tags
+    page.click(tile)  # tap = play now
+    page.wait_for_selector(f"{tile}.sel")
+    assert app.ride_pick.palette == "fire"
+    page.click("#ride-exclude")
+    page.click("#ride-palettes [data-palette=ice]")  # Exclude mode: red, saved, not played
+    page.wait_for_selector("#ride-palettes [data-palette=ice].excluded")
+    assert rig_auto_key(app, "exclude_palettes", ["ice"], page) == ["ice"] and app.ride_pick.palette == "fire"
+    page.click("#ride-exclude")
+    page.click("#ride-palettes [data-palette=ice]")  # a tap still plays an excluded palette
+    page.wait_for_selector("#ride-palettes [data-palette=ice].excluded.sel")
+    go(page, "live")
+    go(page, "autopilot")  # stays red on the page
+    page.wait_for_selector("#ride-palettes [data-palette=ice].excluded")
+
+
+def test_palette_long_press_excludes(ui):
+    page, app, *_ = ui
+    go(page, "autopilot")
+    tile = "#ride-palettes [data-palette=neon]"
+    page.wait_for_selector(tile)
+    box = page.eval_on_selector(tile, "e => { const r = e.getBoundingClientRect(); "
+                                      "return [r.x + r.width / 2, r.y + r.height / 2]; }")
+    page.mouse.move(*box)
+    page.mouse.down()
+    page.wait_for_timeout(750)
+    page.mouse.up()
+    page.wait_for_selector(f"{tile}.excluded")
+    assert rig_auto_key(app, "exclude_palettes", ["neon"], page) == ["neon"]

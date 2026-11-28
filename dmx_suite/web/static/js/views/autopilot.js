@@ -1,5 +1,5 @@
-// Autopilot page (v3.4 "Ride page"): ride the auto show live. Autopilot, mood and hold along the top; Move FX on the
-// left, Flash FX in the middle, Colour FX on the right; drum FX, palettes and ride faders below; the
+// Autopilot page (v3.4 "Ride page"): ride the auto show live. Autopilot, mood and hold along the top; Move FX,
+// Flash FX, Colour FX and (v7) the palette bank across; drum FX and ride faders below; the
 // haze controls stay alongside (separate: the auto show never touches haze). Big touch targets.
 // "Learn" makes any control MIDI/OSC-learnable: tap it, then hit a pad or press a pedal.
 import { api, attempt, cmd, get, toast } from "../api.js";
@@ -33,21 +33,21 @@ function fxTitle(item) {
 }
 
 // a type button: tap plays it (or, in Exclude mode, leaves it out / puts it back); hold to exclude any time
-function fxButton(item, onClick) {
-  const b = el("button", { class: "ride-fx" + (item.excluded ? " excluded" : ""), "data-fx": item.id, title: fxTitle(item) }, item.label);
+function fxButton(item, onClick, b = null, toggle = toggleExcluded) {
+  b = b || el("button", { class: "ride-fx" + (item.excluded ? " excluded" : ""), "data-fx": item.id, title: fxTitle(item) }, item.label);
   let timer = null, held = false;
   const cancel = () => { clearTimeout(timer); timer = null; };
   b.addEventListener("pointerdown", (e) => {
     if (e.button > 0) return;
     held = false;
     cancel();
-    timer = setTimeout(() => { held = true; timer = null; navigator.vibrate?.(15); toggleExcluded(item, b); }, HOLD_MS);
+    timer = setTimeout(() => { held = true; timer = null; navigator.vibrate?.(15); toggle(item, b); }, HOLD_MS);
   });
   for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, cancel);
   b.addEventListener("contextmenu", (e) => e.preventDefault()); // a long touch mustn't open the browser's menu
   b.addEventListener("click", (e) => {
     if (held) { held = false; e.preventDefault(); return; } // the long-press already did its job
-    if (excluding && !learning) return toggleExcluded(item, b);
+    if (excluding && !learning) return toggle(item, b);
     onClick();
   });
   return b;
@@ -65,6 +65,34 @@ async function toggleExcluded(item, b) {
     item.excluded = !want;
     b.classList.toggle("excluded", !want);
     b.title = fxTitle(item);
+    toast(err.message, true);
+  }
+}
+
+// v7 palette bank: a tile per palette (swatches + mood tags); green = playing, red = left out of the autopilot
+const MOODS = ["low", "mid", "high"];
+function palTitle(p) {
+  return p.name + (p.excluded ? ` · ${t("autopilot.excluded_tip")}` : "");
+}
+function palTile(key, p) {
+  const tags = p.tags.filter((x) => MOODS.includes(x)).map((x) => t("autopilot.mood_" + x)).join(" · ");
+  const b = el("button", { class: "ride-fx ride-pal-tile" + (p.excluded ? " excluded" : ""), "data-palette": key, title: palTitle(p) },
+    el("span", { class: "sw" }, ...p.swatches.map((c) => el("i", { style: `background:${c}` }))),
+    el("span", { text: p.name }), el("span", { class: "tags", text: tags }));
+  return fxButton(p, () => act("autopilot_palette", { palette: key }), b, (item, btn) => togglePalette(key, item, btn));
+}
+async function togglePalette(key, p, b) {
+  const want = !p.excluded;
+  p.excluded = want;
+  b.classList.toggle("excluded", want);
+  b.title = palTitle(p);
+  try {
+    await api("POST", "/api/autopilot/palette", { palette: key, excluded: want });
+    toast(t(want ? "autopilot.excluded_toast" : "autopilot.included_toast", { name: p.name }));
+  } catch (err) {
+    p.excluded = !want;
+    b.classList.toggle("excluded", !want);
+    b.title = palTitle(p);
     toast(err.message, true);
   }
 }
@@ -123,8 +151,7 @@ function render() {
   $("#ride-drum").replaceChildren(
     el("button", { class: "ride-fx" + (!pick.drum ? " sel" : ""), "data-fx": "", onclick: () => act("autopilot_fx", { bank: "drum", item: "" }) }, t("autopilot.no_drum")),
     ...byBank("drum").map((i) => fxButton(i, () => act("autopilot_fx", { bank: "drum", item: i.id }))));
-  $("#ride-palettes").replaceChildren(...Object.entries(fx.palettes).map(([k, p]) => el("button", {
-    class: "ride-pal", "data-palette": k, onclick: () => act("autopilot_palette", { palette: k }) }, p.name)));
+  $("#ride-palettes").replaceChildren(...Object.entries(fx.palettes).map(([k, p]) => palTile(k, p)));
   $("#ride-tabs").replaceChildren(...["", "move", "colour", "drum"].map((b) => el("button", {
     class: b === bank ? "on" : "", onclick: () => { bank = b; render(); } }, b ? t("autopilot.bank_" + b) : t("autopilot.all_banks"))));
   $("#ride-faders").replaceChildren(...FADERS.map((k) => {
