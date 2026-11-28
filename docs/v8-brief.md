@@ -2,7 +2,7 @@
 
 Repo: Glen36-repo/0.05-dmx-suite. Saved as `docs/v8-brief.md` on branch `v8` (from `v7`). Builds on v7 — start once v7 Parts A–E are merged (needs the v7 Palette bank, Darkness modes and layer timing).
 
-Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review), plus adjustable stage centrelines (item 12), the Heads page rework (item 13) and per-FX settings, variants and priority on long-press (item 14). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
+Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review), plus adjustable stage centrelines (item 12), the Heads page rework (item 13) and per-FX settings, variants and priority on long-press (item 14) and point-based Move FX (item 15). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
 
 Background (from the code, 28/11):
 - Colour FX that ignore the palette: `rainbow` (full hue wheel), `lightning` (hard-coded white), `fire` (fixed fire colours).
@@ -150,10 +150,31 @@ All respect head limits and v7 exclusion zones; positions from the rig's saved h
 - MCP / API: `get_item` / `save_item` take `overrides: {darkness: follow|exempt|<0-1>, params: {...}, moods, priority: 0-5, min_s, max_s}`; `duplicate_item {id, name}` / `delete_item {id}` for variants (`duplicate_item` / `delete_item` already exist for scenes — extend or add `*_fx` versions).
 - Rig file: `autopilot: fx: {<id>: {...overrides}}` and `autopilot: variants: {<new_id>: {of: <id>, name, ...overrides}}`; missing = defaults.
 
+## 15. Move FX — Position and Point tour (saved points, any number of heads)
+- Today: `kit` (Centre / kit) is the only point-based tile (Move `point` pattern at one point); `random_points` jumps to random spots inside the limits, not to saved points.
+- Two new Move FX tiles, set up in the item 14 settings panel; use **Duplicate** (item 14) to keep several versions (e.g. "Position: singer", "Tour: audience sweep"). Both use the rig's saved head points (item 13 crosshairs) and respect head limits and v7 exclusion zones.
+- **Position** (hold on preset locations):
+  - Pick a point for the heads: **one point for all heads**, or **a point per head** (list of the rig's moving heads, a point dropdown each — "mh_a → singer, mh_b → kit").
+  - Optional **drift**: small slow movement around the point (size, speed; 0 = dead still).
+  - Use: static looks, e.g. ~30 s aimed at the drum kit.
+- **Point tour** (move between several locations):
+  - An ordered list of points (add / remove / drag to reorder, from the saved points); **order**: in order / ping-pong / random (no immediate repeat).
+  - **Hold** at each point (s, or beats with e-drum tempo) and **travel time** between points (s; ease in/out).
+  - **Dark while travelling** (on / off): head colour goes black for the move and comes back on arrival — heads travelling between positions with lights off.
+  - **Multiple heads** — mode:
+    - **Together**: all heads go to the same point at the same time.
+    - **Offset**: same list, each head N steps behind the previous one (so they're never on the same point).
+    - **Mirrored**: each point's left / right partner for the other side (uses the item 12 vertical centreline; points named `*_l` / `*_r` or flagged as a pair; falls back to Together if a point has no partner).
+    - **Per head**: each head has its own list.
+  - Head stagger (s) so heads don't all start moving on the same frame (default 0).
+- Both work for any number of moving heads in the rig (not just mh_a / mh_b), and on a group (e.g. "front heads" only — others keep the other Move FX or hold).
+- A point missing from the current rig (other venue) is skipped with a warning; if none are left, the tile can't run on this rig (greyed, like other needs).
+- MCP / API: params via `save_item` overrides (`points`, `mode`, `order`, `hold_s` / `hold_beats`, `travel_s`, `dark_travel`, `per_head`, `stagger_s`, `drift`).
+
 ---
 
 ## Bank / UI
-- New tiles: Rain, Random fill, Random fill (mixed), Directional sweep, Random flash (mixed), Bounce (mixed), Wave (mixed), Ripple, Stack, Sparkle dark, Theatre chase, Collide (vertical), Collide (horizontal), Collide blend (vertical), Collide blend (horizontal), Glitter, Aurora / Ocean, Candle, Alternate; Move: Fly-out, Converge / split, Beat stabs, Pendulum, Spiral, Square / triangle / star, Lissajous search, Tilt nod, Sky scan, Contrast. Renamed: Directional wave. Flash bank: Hit / Hold rows.
+- New tiles: Rain, Random fill, Random fill (mixed), Directional sweep, Random flash (mixed), Bounce (mixed), Wave (mixed), Ripple, Stack, Sparkle dark, Theatre chase, Collide (vertical), Collide (horizontal), Collide blend (vertical), Collide blend (horizontal), Glitter, Aurora / Ocean, Candle, Alternate; Move: Fly-out, Converge / split, Beat stabs, Pendulum, Spiral, Square / triangle / star, Lissajous search, Tilt nod, Sky scan, Contrast, Position, Point tour. Renamed: Directional wave. Flash bank: Hit / Hold rows.
 - Each new effect: busy score, speed class, moods, needs (`pixels` / `layout`) set like existing items; quality rules and contrast checks apply; manual page + ⓘ text.
 - MCP / API: new effects listed by `list_fx`, usable in `save_item` / `preview_look`.
 
