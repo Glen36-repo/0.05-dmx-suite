@@ -194,7 +194,11 @@ async function startTest() {
   }
   if ((p === "ramp" || p === "keep_alive") && $("#test-value").value !== "") body.value = +$("#test-value").value;
   if (p === "chase") body.dwell_s = +$("#test-dwell").value || 2;
-  if (await attempt(() => api("POST", "/api/test/run", body))) { myTest = true; pollTest(); }
+  // ours from the moment it's asked for: the live feed can show it running before the reply comes back, and
+  // leaving the page in that gap must still stop it
+  myTest = true;
+  if (await attempt(() => api("POST", "/api/test/run", body))) pollTest();
+  else myTest = false;
 }
 
 async function stopTest(why = "stopped") {
