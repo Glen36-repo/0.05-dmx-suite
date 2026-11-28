@@ -6,7 +6,7 @@ Rules unchanged unless stated below. Every hard rule keeps its tests under both 
 v9 (`docs/v9-brief.md`, calibration / stage space) is planned to run **in parallel**. It needs v8 items 11–15 and 12, so the parts are ordered by what v9 sits on: Part A (format, centrelines, FX settings panel) and Part B (Heads page, Move FX) first, with fixed interfaces (see "v9 interfaces"); the colour-only parts (C–E) after.
 
 ## Working on top of open v7 PRs
-- **First step (not done on GitHub yet — push blocked 28/11):** `git rebase origin/v7-e-files` on `v8`, then `git rebase --onto v8 <old v8 tip> v9`, push both with `--force-with-lease` (doc-only branches).
+- **Branch base (28/11):** `v8` is left as it is on GitHub (brief + plan on the old base; no force-push). `v8-a-foundation` is cut from `v7-e-files` with the v8 doc commits carried onto it, so Part A starts on v7's code. `v9` is not rebased: v9 work runs on `v9-a-solver`, already based on `v7-e-files`.
 - `v8` is rebased onto the tip of `v7-e-files`. When a v7 part changes on review, the v8 stack is rebased onto the new `v7-e-files` (`git rebase --onto`) and tests re-run. v7 never rebases onto v8.
 - v8 does not edit v7-only areas (Fixtures address editing, drum flash gate, save / start-up), so v7 review fixes rebase cleanly. Exception: Part B removes the head-limit number fields on Fixtures (item 13) — a small, separate commit so a conflict is easy to redo.
 - Part A's PR targets `v7-e-files` until v7 merges, then is retargeted to `main`.
@@ -134,8 +134,8 @@ MIDI maps and `inputs.yaml` kit zones: `flash_fx {fx: chase_hit | split_hit}` �
 - Merge order: #16 → v7 A–E → v8 A–E → v9.
 
 ## Delivery
-- `v8`: brief, this plan.
-- Stacked branches, one per part: `v8-a-foundation` (from `v8`) → `v8-b-heads-move` → `v8-c-palette-darkness` → `v8-d-colour-fx` → `v8-e-flash`.
+- `v8`: brief, this plan (old base, kept for reference; `v8-a-foundation` carries the same docs).
+- Stacked branches, one per part: `v8-a-foundation` (from `v7-e-files` + the v8 doc commits) → `v8-b-heads-move` → `v8-c-palette-darkness` → `v8-d-colour-fx` → `v8-e-flash`.
 - One PR per part. Part A targets `v7-e-files` (retargeted to `main` when v7 merges); each later PR targets the part before it.
 - Before each PR: `ruff check dmx_suite tests installer`, `mypy dmx_suite`, full `pytest` (incl. Playwright) green, `tests/rulecheck.py` both profiles, CI on ubuntu + windows.
 - Each part: small commits with tests, CHANGELOG, `docs/manual/`, SCOPE rows, `get_guide`, MCP tools, `en.json` (no hard-coded strings).
