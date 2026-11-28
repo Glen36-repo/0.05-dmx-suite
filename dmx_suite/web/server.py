@@ -571,11 +571,18 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             return {"project": app.project_info(), "folder": str(app.files.root),
                     "recent": settings.load().get("recent", []), "local": self._local()}
 
-        def _switch(self, target: Path) -> dict[str, Any]:
-            """Restart the app on another show file (the lights go dark for a moment)."""
+        def _switch(self, target: Path, b: dict | None = None) -> dict[str, Any]:
+            """Restart the app on another show file (the lights go dark for a moment). v7 Manual save:
+            unsaved changes are saved first (`save`) or left (`discard`), else refused with 409."""
             from ..package import read_manifest
 
             app.require_unlocked("opening another show file")
+            b = b or {}
+            if app.unsaved():
+                if b.get("save"):
+                    app.save_project()
+                elif not b.get("discard"):
+                    raise ApiError(409, f"unsaved changes in {app.project.name}: save them first or open without saving")
             read_manifest(target)  # refuse a bad or newer file before stopping anything
             settings.add_recent(str(target))
             if app.on_restart is None:
@@ -589,6 +596,12 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
 
             if not self._local():
                 raise PermissionError("open and save show files on the laptop (phones can download and upload)")
+            if action == "save":  # v7 Save / Ctrl+S
+                try:
+                    app.save_project()
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+                return {"ok": True, **self._project_info()}
             raw = str(b.get("path") or "").strip()
             if not raw:
                 raise ApiError(400, "no file picked")
@@ -600,11 +613,13 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if action == "open":
                 if not target.exists():
                     raise ApiError(404, f"no show file {target}")
-                return self._switch(target)
+                return self._switch(target, b)
             if action == "new":
                 app.require_unlocked("starting a new show file")
+                if app.unsaved() and not (b.get("save") or b.get("discard")):
+                    raise ApiError(409, f"unsaved changes in {app.project.name}: save them first or open without saving")
                 create(target, bundled_shows())
-                return self._switch(target)
+                return self._switch(target, b)
             if action == "save_as":
                 if target.exists() and not b.get("overwrite"):
                     raise ApiError(409, f"{target.name} already exists")

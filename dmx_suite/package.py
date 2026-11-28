@@ -282,6 +282,7 @@ class DmsProject:
         self.notes: list[str] = []
         self.recovered: Path | None = None
         self.save_error: str | None = None
+        self.dirty = False  # v7 Manual save: changes in the working copy not yet packed into the .dms
 
     @property
     def name(self) -> str:
@@ -319,13 +320,14 @@ class DmsProject:
         return self.notes
 
     def save(self) -> None:
-        """Pack the working copy into the .dms (called after every saved change)."""
+        """Pack the working copy into the .dms (after every saved change, or v7 Manual save: on Save)."""
         if self.read_only:
             raise DmsError(f"{self.name} is open read-only")
         try:
             pack(self.work, self.dms)
             self._remember()
             self.save_error = None
+            self.dirty = False
         except (OSError, DmsError) as e:
             self.save_error = f"couldn't save {self.name}: {e}"
             raise
@@ -356,7 +358,7 @@ class DmsProject:
         pack(self.work, new)
         if self.lock and new != self.dms and not self.read_only:
             drop_lock(self.dms)
-        self.dms, self.read_only, self.holder = new, False, None
+        self.dms, self.read_only, self.holder, self.dirty = new, False, None, False
         self._remember()
 
     def close(self) -> None:

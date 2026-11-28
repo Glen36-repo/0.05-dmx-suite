@@ -14,7 +14,11 @@ from .paths import data_dir
 log = logging.getLogger(__name__)
 
 THEMES = Path(__file__).parent / "web" / "static" / "themes"
-DEFAULTS: dict[str, Any] = {"theme": "neutral", "recent": [], "wizard": "", "density": "compact"}  # wizard: "", "done", "skipped"
+DEFAULTS: dict[str, Any] = {"theme": "neutral", "recent": [], "wizard": "", "density": "compact",  # wizard: "", "done", "skipped"
+            "save_mode": "auto",  # v7: auto (every change written to the .dms, as before) | manual (Save)
+            "startup": "autopilot_low"}  # v7: autopilot_low (Autopilot on, LOW, MASTER on) | resume (v4 behaviour)
+SAVE_MODES = ("auto", "manual")
+STARTUP_MODES = ("autopilot_low", "resume")
 RECENT = 8
 DENSITIES = ("compact", "comfortable")  # v4: button size, per laptop
 
@@ -39,6 +43,10 @@ def save(changes: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("wizard is done or skipped")
     if "density" in changes and changes["density"] not in DENSITIES:
         raise ValueError(f"density is {' or '.join(DENSITIES)}")
+    if "save_mode" in changes and changes["save_mode"] not in SAVE_MODES:
+        raise ValueError(f"save_mode is {' or '.join(SAVE_MODES)}")
+    if "startup" in changes and changes["startup"] not in STARTUP_MODES:
+        raise ValueError(f"startup is {' or '.join(STARTUP_MODES)}")
     if "theme" in changes and changes["theme"] not in themes():
         raise ValueError(f"no theme {changes['theme']!r}; have {', '.join(themes())}")
     data = {**load(), **changes}
@@ -82,3 +90,9 @@ def theme() -> tuple[str, dict[str, str]]:
     if key not in have:
         key = "neutral"
     return key, have[key]
+
+
+def last_file() -> str | None:
+    """v7: the show file (or folder) opened most recently on this laptop: what a launch opens."""
+    recent = [r for r in load().get("recent", []) if isinstance(r, str) and r.strip()]
+    return recent[0] if recent else None

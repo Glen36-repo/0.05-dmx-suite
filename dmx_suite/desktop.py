@@ -101,6 +101,17 @@ class Bridge:
             return False
         return bool(webbrowser.open(url))
 
+    def set_title(self, title: str) -> bool:
+        """v7: the window title follows the page's ("● " in front while there are unsaved changes)."""
+        w = self._desktop.window
+        if w is None or not isinstance(title, str):
+            return False
+        try:
+            w.set_title(title[:200])
+            return True
+        except Exception:  # noqa: BLE001 - an older pywebview without set_title
+            return False
+
     def pick(self, mode: str, suggested: str = "") -> str | None:
         import webview
 
@@ -166,15 +177,35 @@ class Desktop:
         return bool(self.session and self.session.engine.blackout)
 
     def quit(self) -> None:
+        if not self.unsaved_ok():
+            return
         self.quitting = True
         self.window.destroy()
+
+    def unsaved_ok(self) -> bool:
+        """v7 Manual save: unsaved changes on Quit. Save them, quit without (they come back next time as a
+        recovered file), or stay. True = go ahead."""
+        app = getattr(self.session, "app", None)
+        if app is None or not app.unsaved():
+            return True
+        name = app.project.name
+        if self.window.create_confirmation_dialog("Unsaved changes", f"Save the changes to {name} before quitting?"):
+            try:
+                app.save_project()
+                return True
+            except Exception as e:  # noqa: BLE001 - say so and stay open
+                self.window.create_confirmation_dialog("Couldn't save", f"{name} wasn't saved: {e}")
+                return False
+        return bool(self.window.create_confirmation_dialog(
+            "Quit without saving?", f"Quit without saving {name}? The changes come back as a recovered copy next time."))
 
     def on_closing(self) -> bool:
         """Close button: hide to the tray (lights keep running). Returns False to cancel the close."""
         if self.quitting or self.session is None:
             return True
         if self.tray is None:  # no tray: ask instead
-            return bool(self.window.create_confirmation_dialog("Quit", "Stop the lights and quit 0.05 DMX Suite?"))
+            ok = bool(self.window.create_confirmation_dialog("Quit", "Stop the lights and quit 0.05 DMX Suite?"))
+            return ok and self.unsaved_ok()
         self.window.hide()
         if not self.told_tray:
             self.told_tray = True
