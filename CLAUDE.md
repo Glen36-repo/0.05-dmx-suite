@@ -75,4 +75,6 @@ v3 (auto show "Ride"; details in `docs/archive/V3-SCOPE.md`):
 
 v4 (one release; details in `docs/archive/V4-SCOPE.md`): stage view fixes (fit, outlined pixel bars, names, haze indicator, overlap warnings), Layout / Patch page, universe routing, devices by USB identity, Monitor page, step editor + pixel selection, haze settings, UI density, Ride -> Autopilot (Feel), Busk -> Override. Show file format 6.
 
+v7 (brief `docs/v7-brief.md`, plan `docs/v7-plan.md`; one branch and PR per part, stacked): A Autopilot (palette bank, layer timing, Darkness Auto, between songs), B Layout + Fixtures, C head exclusion zones, D drum flash gate, E files and start-up. Show file format 7.
+
 Haze is never touched by the autopilot, presets, generator or Flash FX. Every v3 feature gets rule tests under both profiles (`tests/rulecheck.py`).
