@@ -421,13 +421,16 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     def get_layout(rig: str = "") -> str:
         """Where every light sits on the stage plan: {x, y, z, rot} per fixture (x, y in 25 cm cells from the
         top left, back of the stage at the top; rot degrees, 0 = facing the audience), the stage size, and
-        lights in the same place or touching. Spatial effects use these places. Default: the running rig."""
+        lights in the same place or touching. Spatial effects use these places. `centre` (v8) is where the stage
+        centrelines are ({x, y} cells; set: false = the middle of the lights). Default: the running rig."""
         return t.get_layout(rig)
 
     @tool
     def set_layout(positions_yaml: str, rig: str = "") -> str:
         """Place one or many lights: '{par_1: {x: 4, y: 2}, par_4: {x: 30, y: 2, rot: 90}, bar_2: {reverse: true}}'.
         Only the lights named change; a partial place (just rot) keeps the rest. z = height in metres.
+        v8: 'centre: {x: 12, y: 6}' moves the stage centrelines (centre-out effects, Split sides, left / right
+        looks); 'centre: null' puts them back in the middle of the lights.
         Validated and backed up; not during gig lock. Default: the running rig."""
         return t.set_layout(positions_yaml, rig)
 

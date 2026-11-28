@@ -801,7 +801,11 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 app.set_gig_lock(bool(body.get("on")))
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
             if path == "/api/layout" and method == "PUT":
-                bid = app.save_layout(body.get("layout") or {})
+                try:
+                    bid = (app.save_layout(body.get("layout") or {}, body["centre"]) if "centre" in body
+                           else app.save_layout(body.get("layout") or {}))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
                 return self._json(200, {"ok": True, "backup": bid})
             if path == "/api/monitor/send" and method == "POST":  # MIDI test send (gig-locked)
                 sent = app.midi_send(str(body.get("port", "")), str(body.get("type", "note_on")), int(body.get("channel", 1)),

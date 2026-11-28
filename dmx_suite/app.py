@@ -2218,13 +2218,24 @@ class App:
         self.ctl.select_show("starter", "calm")
         return {"backup": bid, "scenes": sorted(scenes), "notes": notes}
 
-    def save_layout(self, layout: dict[str, Any]) -> str:
-        """Write the light layout into this rig's file (validated + backed up like any edit)."""
+    def save_layout(self, layout: dict[str, Any], centre: Any = ...) -> str:
+        """Write the light layout into this rig's file (validated + backed up like any edit). v8 `centre`:
+        {x, y} sets the stage centrelines, None clears them (auto: the middle), left out keeps them."""
+        from .rig import CENTRE_KEY
+
         rig_name = self.names[0]
         data = self.store.read("rig", rig_name)
         if not isinstance(layout, dict):
             raise ValueError("layout must map fixture ids to {x, y, rot, shape}")
-        data["layout"] = {fid: parse_placement(fid, p).to_dict() for fid, p in layout.items()}
+        old: dict[str, Any] = data["layout"] if isinstance(data.get("layout"), dict) else {}
+        keep = old.get(CENTRE_KEY) if CENTRE_KEY not in self.engine.rig.patch.fixtures else None
+        data["layout"] = {fid: parse_placement(fid, p).to_dict() for fid, p in layout.items() if fid != CENTRE_KEY
+                          or fid in self.engine.rig.patch.fixtures}
+        c = keep if centre is ... else centre
+        if c is not None and CENTRE_KEY not in self.engine.rig.patch.fixtures:
+            if not isinstance(c, dict):
+                raise ValueError("centre: {x, y} in grid cells, or null for the middle of the lights")
+            data["layout"][CENTRE_KEY] = {"x": c.get("x"), "y": c.get("y")}
         data.pop("stage", None)
         bid = self.store.put("rig", rig_name, data, f"light layout for rig {rig_name}")
         self.reload()
@@ -2576,6 +2587,10 @@ class App:
                          for fx in self.engine.rig.fixtures],
             "layout": {fid: p.to_dict() | {"shape": p.shape, "cols": p.cols}
                        for fid, p in full_layout(self.engine.rig).items()},
+            "centre": ({"x": self.engine.rig.centre[0], "y": self.engine.rig.centre[1]}
+                       if self.engine.rig.centre is not None else None),  # v8: set on the Layout page, else null
+            "centre_auto": dict(zip(("x", "y"), self.engine.rig.layout_centre())) if self.engine.rig.centre is None
+            else None,
             "layout_problems": self.layout_problems(),
             "head_limits": {f.id: {"pan": list(self.engine.rig.limit(f.id).pan), "tilt": list(self.engine.rig.limit(f.id).tilt)}
                             for f in self.engine.rig.fixtures if f.type.has("pan") and not f.type.colour_only},

@@ -177,6 +177,8 @@ class Unit:
     x: float = 0.5  # where it is on the layout, scaled so the layer's lights span 0-1 on their
     y: float = 0.5  # longer side (same scale both ways, so angles stay true)
     u: float = 0.0  # 0-1 along the effect (after mapping, direction and groups)
+    cx: float | None = None  # v8: the rig's stage centrelines on the same scale (None: the layer's own middle)
+    cy: float | None = None
 
 
 def place_units(units: list[Unit], p: dict[str, Any], seed_text: str) -> None:
@@ -193,7 +195,10 @@ def place_units(units: list[Unit], p: dict[str, Any], seed_text: str) -> None:
     elif spatial:
         if direction in ("centre_out", "out_centre"):
             xs, ys = [un.x for un in units], [un.y for un in units]
-            cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+            if units[0].cx is not None and units[0].cy is not None:  # v8: the rig's centrelines
+                cx, cy = units[0].cx, units[0].cy
+            else:
+                cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
             d = [math.hypot(un.x - cx, un.y - cy) for un in units]
             top = max(d) or 1.0
             us = [v / top for v in d]

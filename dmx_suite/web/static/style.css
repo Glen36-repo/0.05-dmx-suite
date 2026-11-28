@@ -189,6 +189,13 @@ body.space-held .grid-host.edit .lightgrid { cursor: grab; }
 .grid-host.pick { padding: 4px; overflow: auto hidden; max-height: none; }
 .lightgrid { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
 .lightgrid .gridlines line { stroke: color-mix(in srgb, var(--line) 55%, transparent); stroke-width: 1; }
+/* v8 stage centrelines: dashed, accent when set on the Layout page, muted when automatic (middle of the lights) */
+.lightgrid .centrelines .cl { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 8 6; pointer-events: none; }
+.lightgrid .centrelines.auto .cl { stroke: var(--muted); }
+.lightgrid .centrelines .cl-hit { stroke: transparent; stroke-width: 18; cursor: ew-resize; }
+.lightgrid .centrelines .cl-hit[data-centre="y"] { cursor: ns-resize; }
+.centre-ctl { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.centre-ctl input { width: 5.5em; }
 .lightgrid .cell { fill: var(--cell-off); stroke: color-mix(in srgb, var(--line) 80%, #000); stroke-width: 1.5; transition: fill .05s; }
 .lightgrid .fx.haze.on .cell { fill: #cfd3d8; }
 .lightgrid .haze-ind .hz-box { fill: color-mix(in srgb, var(--panel) 85%, #000); stroke: var(--line); stroke-width: 1; }

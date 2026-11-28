@@ -140,6 +140,7 @@ class Rig:
     midi_aliases: dict[str, str] = field(default_factory=dict)  # v4: port-name fragment -> alias (Drums, Pedalboard)
     midi_outputs: list[dict[str, Any]] = field(default_factory=list)  # v4: [{device: midi-out:X, alias}]
     layout: dict[str, Placement] = field(default_factory=dict)  # fixture id -> where it is on the grid
+    centre: tuple[float, float] | None = None  # v8: stage centrelines (layout: centre: {x, y}); None = auto
     osc: OscConfig = field(default_factory=OscConfig)
     change_fade_s: float = 0.0  # crossfade when picking a scene, show or look (0 = cut, as v1)
     release_fade_s: float = 0.0  # v3.4: MASTER on / blackout off / Flash FX release fade back in (0 = cut, as v1)
@@ -152,6 +153,21 @@ class Rig:
     autopilot: dict[str, Any] = field(default_factory=dict)  # autopilot settings over the defaults (v3.4)
     head_zones: dict[str, Any] = field(default_factory=dict)  # v7: head id -> [zones.Zone] (rule 8)
     zone_speed: float = 1.0  # v7: range a second a head moves at while going round a zone
+
+    def layout_centre(self) -> tuple[float, float]:
+        """v8 stage centrelines in grid cells: (x of the vertical line, y of the horizontal line). Set on the
+        Layout page (`layout: centre: {x, y}`), else the middle of all the lights on the stage (not haze)."""
+        if self.centre is not None:
+            return self.centre
+        from .fixtures import Kind
+        from .layout import full_layout
+
+        lay = full_layout(self)
+        pts = [lay[f.id] for f in self.fixtures if f.id in lay and f.kind != Kind.HAZE]
+        if not pts:
+            return (0.0, 0.0)
+        xs, ys = [p.x for p in pts], [p.y for p in pts]
+        return ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
 
     def point_problems(self) -> list[str]:
         """Points with a head outside this rig's head limits or inside an exclusion zone (v7); they're
@@ -262,6 +278,7 @@ def parse_rig(data: dict, patch: Patch) -> Rig:
         midi_aliases=midi_alias,
         midi_outputs=_midi_outputs(data.get("midi_outputs")),
         layout=_layout(data.get("layout"), patch),
+        centre=_centre(data.get("layout"), patch),
         profile=profile,
         exempt=resolve_exempt(profile, patch, present),
         osc=_osc(data.get("osc")),
@@ -609,11 +626,37 @@ def _half(n: float) -> float:
     return round(n * 2) / 2
 
 
+CENTRE_KEY = "centre"  # v8: `layout: centre: {x, y}` (a light called "centre" keeps its place; auto centre then)
+
+
+def _centre(d: Any, patch: Patch) -> tuple[float, float] | None:
+    if not isinstance(d, dict) or CENTRE_KEY not in d or CENTRE_KEY in patch.fixtures:
+        return None
+    v = d[CENTRE_KEY]
+    if v is None:
+        return None
+    if not isinstance(v, dict) or set(v) - {"x", "y"} or not {"x", "y"} & set(v):
+        raise ConfigError("layout centre: {x, y} in grid cells (the stage centrelines)")
+    try:
+        x = float(v["x"]) if "x" in v else None
+        y = float(v["y"]) if "y" in v else None
+    except (TypeError, ValueError) as e:
+        raise ConfigError("layout centre: x and y are grid cells") from e
+    for n in (x, y):
+        if n is not None and not 0 <= n <= GRID_MAX:
+            raise ConfigError(f"layout centre: x/y must be 0-{GRID_MAX} cells")
+    if x is None or y is None:
+        raise ConfigError("layout centre: needs both x and y (Reset to middle clears it)")
+    return (_half(x), _half(y))
+
+
 def _layout(d: Any, patch: Patch) -> dict[str, Placement]:
     if d is not None and not isinstance(d, dict):
         raise ConfigError("layout: needs `fixture: {x, y}` lines")
     out = {}
     for fid, v in (d or {}).items():
+        if fid == CENTRE_KEY and fid not in patch.fixtures:
+            continue
         if fid not in patch.fixtures:
             raise ConfigError(f"layout: unknown fixture {fid!r}")
         out[fid] = parse_placement(fid, v)

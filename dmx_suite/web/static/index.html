@@ -57,7 +57,8 @@
   <main>
     <!-- LIVE -->
     <section id="page-live" class="page on">
-      <div class="live-stage-bar"><button type="button" class="mini" id="stage-fold" aria-controls="live-grid"></button></div>
+      <div class="live-stage-bar"><button type="button" class="mini" id="stage-fold" aria-controls="live-grid"></button>
+        <label class="check mini"><input type="checkbox" id="live-centre"><span data-i18n="live.centrelines"></span></label></div>
       <div class="grid-host live" id="live-grid"></div>
       <h2><span data-i18n="live.shows"></span> <button type="button" class="info" data-info="live.shows" aria-expanded="false">ⓘ</button></h2>
       <div class="btn-grid" id="shows" data-order="shows"></div>
@@ -259,6 +260,13 @@
         <button id="layout-fit" data-i18n="layout.fit" data-i18n-title="layout.fit_tip"></button>
         <label class="check"><input type="checkbox" id="show-names" checked><span data-i18n="layout.names"></span></label>
         <label class="check"><input type="checkbox" id="show-beams"><span data-i18n="layout.beams"></span></label>
+        <span class="centre-ctl" id="centre-ctl" data-i18n-title="layout.centre_tip">
+          <span data-i18n="layout.centre"></span>
+          <label>X <input type="number" id="centre-x" step="0.5" min="0" max="200" data-i18n-title="layout.centre_x"></label>
+          <label>Y <input type="number" id="centre-y" step="0.5" min="0" max="200" data-i18n-title="layout.centre_y"></label>
+          <button type="button" id="centre-reset" data-i18n="layout.centre_reset"></button>
+          <button type="button" class="info" data-info="layout.centre" aria-expanded="false">ⓘ</button>
+        </span>
       </div>
       <div class="stage-wrap">
       <div class="stage-over"><div class="grid-host edit" id="layout-grid"></div>

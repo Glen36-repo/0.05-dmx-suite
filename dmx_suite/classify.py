@@ -165,7 +165,7 @@ def auto_rig(rig: Any) -> AutoRig:
     layout = full_layout(rig)
     placed = [f for f in of if f in layout and of[f] != "kick"]
     xs = {f: layout[f].x for f in placed}
-    mid = (min(xs.values()) + max(xs.values())) / 2 if xs else 0.0
+    mid = rig.layout_centre()[0] if xs else 0.0  # v8: the stage's vertical centreline
     left = [f for f in placed if xs[f] < mid] or [f for i, f in enumerate(placed) if i % 2 == 0]
     right = [f for f in placed if f not in left]
     pixels = sum(rig.patch.fixtures[f].type.pixels for f in classes["pixel"])

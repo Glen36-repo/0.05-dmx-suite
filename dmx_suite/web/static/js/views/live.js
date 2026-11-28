@@ -19,8 +19,11 @@ function stageFold(folded) {
 }
 
 function buildCatalogue(cat) {
-  grid = grid || new LightGrid($("#live-grid"));
+  grid = grid || new LightGrid($("#live-grid"), { centre: remember.get("live.centrelines", false) });
   grid.build(cat);
+  const cl = $("#live-centre"); // v8: the stage centrelines on the live view (off by default)
+  cl.checked = grid.showCentre;
+  cl.onchange = () => { grid.setCentreLines(cl.checked); remember.set("live.centrelines", cl.checked); };
 
   // Shows, Scenes, then starter / generated ones (folded away): aligned grids in a saved order
   const gen = new Set(cat.generated || []);

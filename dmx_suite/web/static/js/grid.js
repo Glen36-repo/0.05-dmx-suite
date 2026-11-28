@@ -123,6 +123,11 @@ export class LightGrid {
     this.onView = opts.onView || (() => {});
     this.showBeams = false;
     this.showNames = true;
+    // v8 stage centrelines: {x, y} in cells, or null = the middle of the lights (set on the Layout page)
+    this.centre = null;
+    this.savedCentre = "null";
+    this.showCentre = !!opts.centre || this.edit;
+    this.onCentre = opts.onCentre || (() => {});
   }
 
   // ---------------------------------------------------------------- drawing
@@ -139,7 +144,12 @@ export class LightGrid {
     this.gLights = svg("g");
     this.gMarquee = svg("g");
     this.gArrow = svg("g", { class: "arrow" });
-    this.root.append(this.gGrid, this.gBeams, this.gLights, this.gArrow, this.gMarquee);
+    this.gCentre = svg("g", { class: "centrelines" });
+    this.root.append(this.gGrid, this.gCentre, this.gBeams, this.gLights, this.gArrow, this.gMarquee);
+    if (layout === null) {
+      this.centre = cat.centre ? { ...cat.centre } : null;
+      this.savedCentre = JSON.stringify(this.centre);
+    }
     this.patchKey = this.patchKey === undefined ? null : this.patchKey;
     const key = cat.fixtures.map((f) => f.id).join(",");
     if (key !== this.patchKey) this.view = null; // patch changed: fit again
@@ -257,7 +267,45 @@ export class LightGrid {
       for (let y = gy0; y <= gy1; y++) this.gGrid.append(svg("line", { x1: gx0 * C, y1: y * C, x2: gx1 * C, y2: y * C }));
     }
     if (this.layoutLabels) this.layoutLabels();
+    this.drawCentre();
     this.placeHaze();
+  }
+
+  // ---------------------------------------------------------------- v8 stage centrelines
+
+  // the middle of every light on the stage (haze isn't on it): what the rig uses until a centre is set
+  autoCentre() {
+    if (this.cat?.centre_auto) return { ...this.cat.centre_auto }; // the rig's (all lights, saved places)
+    const ps = Object.keys(this.items).map((id) => this.layout[id]).filter(Boolean);
+    if (!ps.length) return { x: 0, y: 0 };
+    const xs = ps.map((p) => p.x), ys = ps.map((p) => p.y);
+    return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+  }
+
+  centreNow() { return this.centre || this.autoCentre(); }
+
+  setCentre(c, notify = true) {
+    this.centre = c ? { x: clamp(half(+c.x)), y: clamp(half(+c.y)) } : null;
+    this.drawCentre();
+    if (notify) { this.onCentre(this.centreNow()); this.onChange("centre"); }
+  }
+
+  setCentreLines(on) { this.showCentre = !!on; this.drawCentre(); }
+
+  drawCentre() {
+    if (!this.gCentre) return;
+    this.gCentre.replaceChildren();
+    if (!this.showCentre) return;
+    const vb = (this.root.getAttribute("viewBox") || "0 0 0 0").split(" ").map(Number);
+    const ext = Math.max(vb[2], vb[3]);
+    const [x0, y0, x1, y1] = [vb[0] - ext, vb[1] - ext, vb[0] + vb[2] + ext, vb[1] + vb[3] + ext];
+    const c = this.centreNow();
+    this.gCentre.classList.toggle("auto", !this.centre);
+    for (const [axis, a] of [["x", { x1: c.x * C, y1: y0, x2: c.x * C, y2: y1 }], ["y", { x1: x0, y1: c.y * C, x2: x1, y2: c.y * C }]]) {
+      this.gCentre.append(svg("line", { class: "cl", "data-axis": axis, ...a }));
+      // a wide invisible line on top: easy to grab with a finger
+      if (this.edit) this.gCentre.append(svg("line", { class: "cl-hit", "data-centre": axis, ...a }));
+    }
   }
 
   // the haze indicator sits in the top right corner of what's on screen
@@ -544,10 +592,16 @@ export class LightGrid {
   }
 
   bindPointer() {
-    let drag = null, marquee = null, pxDrag = null, lastPx = null;
+    let drag = null, marquee = null, pxDrag = null, lastPx = null, cDrag = null;
     this.root.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0) return;
       ev.preventDefault();
+      const cl = this.edit && ev.target.closest?.("[data-centre]");
+      if (cl) { // v8: drag a centreline (snaps to half cells)
+        cDrag = cl.dataset.centre;
+        this.root.setPointerCapture(ev.pointerId);
+        return;
+      }
       const hit = ev.target.closest("[data-id]");
       const at = this.toCells(ev);
       this.root.setPointerCapture(ev.pointerId);
@@ -580,6 +634,13 @@ export class LightGrid {
       this.gMarquee.replaceChildren(marquee.shape);
     });
     this.root.addEventListener("pointermove", (ev) => {
+      if (cDrag) {
+        const [x, y] = this.toCells(ev), c = { ...this.centreNow() };
+        c[cDrag] = cDrag === "x" ? x : y;
+        this.setCentre(c, false);
+        this.onCentre(this.centreNow());
+        return;
+      }
       if (pxDrag) {
         const over = document.elementFromPoint(ev.clientX, ev.clientY);
         const c = over?.closest?.(`[data-id="${CSS.escape(pxDrag.id)}"] rect.cell[data-px]`);
@@ -616,6 +677,12 @@ export class LightGrid {
       }
     });
     const end = (ev) => {
+      if (cDrag) {
+        cDrag = null;
+        this.onChange("centre");
+        if (ev && this.root.hasPointerCapture?.(ev.pointerId)) this.root.releasePointerCapture(ev.pointerId);
+        return;
+      }
       pxDrag = null;
       if (drag) {
         if (drag.moved) {
@@ -788,6 +855,7 @@ export class LightGrid {
   revert() {
     this.history = [];
     this.future = [];
+    this.centre = JSON.parse(this.savedCentre || "null");
     return this.restore(this.saved);
   }
 
@@ -802,6 +870,6 @@ export class LightGrid {
   }
 
   get dirty() {
-    return JSON.stringify(this.layout) !== this.saved;
+    return JSON.stringify(this.layout) !== this.saved || JSON.stringify(this.centre) !== this.savedCentre;
   }
 }

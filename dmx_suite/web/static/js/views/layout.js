@@ -23,8 +23,18 @@ function showProblems() {
   $("#layout-problems-head").classList.toggle("hidden", !ps.length);
 }
 
+function showCentre(c = grid.centreNow()) {
+  for (const k of ["x", "y"]) {
+    const inp = $(`#centre-${k}`);
+    if (document.activeElement !== inp) inp.value = c[k];
+    inp.classList.toggle("auto", !grid.centre);
+  }
+  $("#centre-reset").disabled = !grid.centre;
+}
+
 function updateSelection() {
   showProblems();
+  showCentre();
   lpSelected = new Set();
   markListSelection();
   $("#layout-dirty").classList.toggle("hidden", !grid.dirty);
@@ -85,9 +95,12 @@ async function editGroup(body, message) {
 function buildGrid(cat, notify = false) {
   if (grid.layout && grid.dirty) {
     if (notify) toast(t("layout.kept_unsaved")); // someone else changed the files: keep this screen's edits
-    const mine = grid.layout;
+    const mine = grid.layout, centre = grid.centre;
     grid.build(filteredCat(cat), mine);
     grid.saved = JSON.stringify(cat.layout);
+    grid.centre = centre;
+    grid.savedCentre = JSON.stringify(cat.centre || null);
+    grid.drawCentre();
   } else grid.build(filteredCat(cat));
 }
 
@@ -104,7 +117,12 @@ export function init() {
     $("#zoom").value = Math.max(50, Math.min(400, grid.zoom));
     $("#layout-fit").classList.toggle("primary", !grid.fitted); // zoomed by hand: Fit brings it all back
   };
-  grid = new LightGrid($("#layout-grid"), { edit: true, onChange: updateSelection, onView: syncView });
+  grid = new LightGrid($("#layout-grid"), { edit: true, onChange: updateSelection, onView: syncView, onCentre: showCentre });
+  // v8 stage centrelines: drag on the grid, type a value, or back to the middle of the lights
+  const typed = () => grid.setCentre({ x: +$("#centre-x").value || 0, y: +$("#centre-y").value || 0 });
+  $("#centre-x").onchange = typed;
+  $("#centre-y").onchange = typed;
+  $("#centre-reset").onclick = () => { grid.setCentre(null); toast(t("layout.centre_saved_auto")); };
   $("#zoom").oninput = (e) => grid.setZoom(+e.target.value);
   $("#layout-fit").onclick = () => grid.fitView();
   // Space + drag pans the stage
@@ -138,9 +156,10 @@ export function init() {
   $("#layout-save").onclick = saveLayout;
   async function saveLayout() {
     if (!grid.dirty) return;
-    const r = await attempt(() => api("PUT", "/api/layout", { layout: grid.layout }), t("layout.saved"));
+    const r = await attempt(() => api("PUT", "/api/layout", { layout: grid.layout, centre: grid.centre }), t("layout.saved"));
     if (r) {
       grid.saved = JSON.stringify(grid.layout);
+      grid.savedCentre = JSON.stringify(grid.centre);
       grid.history = [];
       grid.future = [];
       updateSelection(); // Save greys out straight away

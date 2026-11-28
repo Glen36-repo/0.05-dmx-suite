@@ -120,7 +120,9 @@ def layout_view(rig: Rig) -> dict[str, object]:
     boxes = [footprint(lay[f.id], f.type.pixels) for f in rig.fixtures if f.id in out]
     w = max((b[2] for b in boxes), default=0.0)
     h = max((b[3] for b in boxes), default=0.0)
+    cx, cy = rig.layout_centre()
     return {"layout": out, "haze": hazes,
+            "centre": {"x": cx, "y": cy, "set": rig.centre is not None},  # v8 stage centrelines (cells)
             "stage": {"w_cells": round(w, 2), "h_cells": round(h, 2), "cells_per_m": 4,
                       "note": "x, y in cells (25 cm) from the top left; back of the stage at the top; "
                               "rot 0 = facing the audience"},
@@ -131,13 +133,23 @@ def merge_positions(rig: Rig, current: dict[str, object] | None, positions: dict
     """The rig file's `layout:` with `positions` ({fixture: {x, y, z, rot | rotation}}) set over it. A
     fixture not placed yet starts from its default spot, so a partial place (only rot, say) works."""
     from .fixtures import ConfigError
-    from .rig import parse_placement
+    from .rig import CENTRE_KEY, parse_placement
 
     if not isinstance(positions, dict) or not positions:
         raise ConfigError("positions: {fixture id: {x, y, z, rot}}")
     lay = full_layout(rig)
     out = dict(current or {})
     for fid, v in positions.items():
+        if fid == CENTRE_KEY and fid not in rig.patch.fixtures:  # v8: the stage centrelines, null = the middle
+            if v is None:
+                out.pop(CENTRE_KEY, None)
+            elif not isinstance(v, dict) or set(v) - {"x", "y"}:
+                raise ConfigError("layout centre: {x, y} in grid cells, or null for the middle of the lights")
+            else:
+                cur = out.get(CENTRE_KEY) if isinstance(out.get(CENTRE_KEY), dict) else {}
+                now = rig.layout_centre()
+                out[CENTRE_KEY] = {"x": v.get("x", cur.get("x", now[0])), "y": v.get("y", cur.get("y", now[1]))}
+            continue
         if fid not in rig.patch.fixtures:
             raise ConfigError(f"layout: unknown fixture {fid!r}")
         if not isinstance(v, dict):

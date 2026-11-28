@@ -1580,5 +1580,14 @@
  "setup.startup_resume": "Resume what was playing",
  "setup.startup_set": "Start-up setting stored on this laptop",
  "info.setup.startup.title": "Start-up",
- "info.setup.startup.text": "What the lights do when the app opens. Autopilot (default): MASTER on, haze off, the Autopilot on at LOW (with LOW's Darkness) as soon as a DMX output is connected. Resume: back to the show, set and song that were playing, as before. The app opens the last show file used on this laptop."
+ "info.setup.startup.text": "What the lights do when the app opens. Autopilot (default): MASTER on, haze off, the Autopilot on at LOW (with LOW's Darkness) as soon as a DMX output is connected. Resume: back to the show, set and song that were playing, as before. The app opens the last show file used on this laptop.",
+ "layout.centre": "Centre",
+ "layout.centre_x": "Vertical centreline (stage left / right), cells",
+ "layout.centre_y": "Horizontal centreline (top / bottom), cells",
+ "layout.centre_reset": "Reset to middle",
+ "layout.centre_tip": "Stage centrelines: drag the dashed lines on the grid or type where they go",
+ "layout.centre_saved_auto": "Centrelines back to the middle of the lights (save to keep)",
+ "live.centrelines": "Centrelines",
+ "info.layout.centre.title": "Stage centrelines",
+ "info.layout.centre.text": "Two dashed lines: the vertical one is stage centre (left / right), the horizontal one splits top from bottom. Effects that run from the centre out, Split's two sides and the Autopilot's left / right looks use them, whichever lights the effect is on. Drag a line, or type where it goes in cells; it snaps to half cells. Reset to middle puts them back in the middle of all the lights. Saved with the layout."
 }

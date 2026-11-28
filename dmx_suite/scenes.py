@@ -293,6 +293,7 @@ class ScenePlayer:
             self._layers.append((ly, fids))
         self._units: dict[tuple[int, bool], list[Unit]] = {}
         self._cells: dict[str, list[tuple[float, float]]] | None = None
+        self._centre: tuple[float, float] | None = None
         self.runner: Any = None
         if scene.steps is not None:
             from .steps import StepRunner
@@ -354,6 +355,12 @@ class ScenePlayer:
             self._cells = {fid: cell_positions(pl, self._pixels(fid)) for fid, pl in layout.items()}
         return self._cells
 
+    def _rig_centre(self) -> tuple[float, float]:
+        c = self._centre
+        if c is None:
+            c = self._centre = self.rig.layout_centre()
+        return c
+
     def _units_for(self, i: int, per_pixel: bool) -> list[Unit]:
         key = (i, per_pixel)
         if key not in self._units:
@@ -379,8 +386,11 @@ class ScenePlayer:
             if raw:  # one scale both ways so angles stay true
                 xs, ys = [x for x, _ in raw], [y for _, y in raw]
                 span = max(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
+                rcx, rcy = self._rig_centre()  # v8: centre_out / sides use the rig's stage centrelines
+                cx, cy = (rcx - min(xs)) / span, (rcy - min(ys)) / span
                 for un, (x, y) in zip(units, raw):
                     un.x, un.y = (x - min(xs)) / span, (y - min(ys)) / span
+                    un.cx, un.cy = cx, cy
             place_units(units, layer.params, f"{self.scene.name}|{i}")
             self._units[key] = units
         return self._units[key]

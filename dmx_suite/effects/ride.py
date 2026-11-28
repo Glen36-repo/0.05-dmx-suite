@@ -214,7 +214,8 @@ class Split(Effect):
         units = run.units(p["mode"] == "alternate")
         off = round(run.shift * len(units))
         for un in units:
-            first = (un.x < 0.5) if p["mode"] == "sides" else (un.index % 2 == 0)
+            # v8: sides split at the rig's vertical centreline (a light on the line goes right, as before)
+            first = (un.x < (0.5 if un.cx is None else un.cx)) if p["mode"] == "sides" else (un.index % 2 == 0)
             lit = run.lit_of(un.fid)
             on = lit >= 1.0 or static_on(un.index, lit, off)  # a regular black pattern across the lights
             run.put(un, (a if first != bool(swap) else b) if on else run.black(un.fid, un.pixel))
