@@ -8,7 +8,7 @@ Classes:
     pixel   several colour cells (LED bars)
     strobe  white-only or a strobe/blinder with no colour mixing
     effect  colour wheel or gobo but no colour mixing and no movement (effect lights, derbies)
-    kick    a light MASTER doesn't touch (rule 3, e.g. the kick-drum light): never in the auto show
+    kick    a light MASTER doesn't touch (rule 3, e.g. the kick-drum light): takes the look's colour (v7), never a move/drum/flash
 
 Haze machines are never part of the auto show (rule 5).
 

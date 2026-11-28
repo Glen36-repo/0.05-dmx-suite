@@ -166,7 +166,8 @@ def test_compose_targets_and_palette():
     assert ["bar_1", "bar_2", "bar_3", "bar_4"] in fixtures  # comet on the pixels
     assert any("mh_a" in f and "wash_l" in f and "uking_l" in f for f in fixtures)  # the rest hold the palette
     assert any(ly.get("effect") == "move" and ly["fixtures"] == ["mh_a", "mh_b"] for ly in data["layers"])
-    assert not any("kick" in f or "smoke" in f for f in fixtures)
+    assert not any("smoke" in f for f in fixtures)
+    assert ["kick"] in fixtures and not any("kick" in f and len(f) > 1 for f in fixtures)  # v7: own layer
     small = compose(Pick(move="circle", colour="comet", palette="fire"), auto_rig(ref_rig()), pal_colours("fire"))
     assert not any(ly.get("effect") == "comet" for ly in small["layers"])  # 4 pixels: not enough for a comet
 
@@ -512,6 +513,45 @@ def test_drum_bus_fed_from_named_inputs(app):
 def test_flash_items_listed():
     assert {i.id for i in FLASH_ITEMS} == {"blinder", "colour_hit", "strobe", "blackout", "freeze", "flash_decay",
                                            "chase_hit", "split_hit"}
+
+
+# ------------------------------------------------------------------ v7 A1: the kick light follows the look
+
+
+def _kick_colours(pick, times, darkness=None):
+    show = load_show(SHOWS)
+    r = show.rig
+    data = compose(pick, auto_rig(r), [show.palettes.colour(c, "t") for c in CURATED[pick.palette]["colours"]])
+    sc = parse_scene(data, r.patch, show.palettes, "ap")
+    play = ScenePlayer(sc, r, 0.0, darkness=darkness)
+    return [play(t).fixtures["kick"].colour for t in times]
+
+
+def test_kick_takes_the_palette_colour():
+    (c,) = _kick_colours(Pick(colour="static", palette="fire"), [1.0])
+    assert c["red"] > 0.5 and c.get("blue", 0) < 0.2  # fire: red / orange, not the rig's white kick_colour
+
+
+def test_kick_follows_a_colour_chase():
+    cols = _kick_colours(Pick(colour="colour_chase", palette="fire"), [i * 0.25 for i in range(40)])
+    assert len({tuple(sorted(c.items())) for c in cols}) > 1  # it changes colour with the chase
+
+
+def test_kick_holds_the_palette_under_a_pixel_item():
+    (c,) = _kick_colours(Pick(colour="comet", palette="fire"), [1.0])
+    assert c["red"] > 0.5
+
+
+def test_kick_stays_lit_at_full_darkness():
+    cols = _kick_colours(Pick(colour="colour_chase", palette="fire"), [i * 0.5 for i in range(10)], darkness=lambda now: 1.0)
+    assert all(any(v > 0 for v in c.values()) for c in cols)
+
+
+def test_kick_gets_no_move_drum_or_flash_layers():
+    ar = auto_rig(load_show(SHOWS).rig)
+    data = compose(Pick(move="circle", colour="colour_chase", drum="kick_pump", palette="fire"), ar, pal_colours("fire"))
+    kick_layers = [ly for ly in data["layers"] if "kick" in ly["fixtures"]]
+    assert len(kick_layers) == 1 and kick_layers[0]["effect"] == "colour_chase"
 
 
 if __name__ == "__main__":

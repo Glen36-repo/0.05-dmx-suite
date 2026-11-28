@@ -386,9 +386,11 @@ def test_autopilot_never_touches_haze_and_keeps_the_rules(app):
                     assert tilt / 255 <= lim.tilt[1] + 1 / 255  # rule 8
     from dmx_suite.fxbanks import Pick
 
-    for d in ap.decisions:  # the kick light keeps its own rules (rule 3): never in an autopilot look
+    for d in ap.decisions:  # v7: the kick light takes the look's colour on its own colour layer, nothing else
         _, scene = app.compose(Pick.from_dict(d.look))
-        assert all("kick" not in ly["fixtures"] and "smoke" not in ly["fixtures"] for ly in scene["layers"])
+        assert all("smoke" not in ly["fixtures"] for ly in scene["layers"])
+        kick = [ly for ly in scene["layers"] if "kick" in ly["fixtures"]]
+        assert len(kick) == 1 and kick[0]["fixtures"] == ["kick"] and kick[0].get("effect") not in ("move", "kick_pump")
 
 
 def test_ride_controls_over_the_api(app):
