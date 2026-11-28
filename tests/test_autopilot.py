@@ -59,7 +59,7 @@ def run(app, seconds, step=0.25, drums=None):
 
 def test_defaults_and_rig_settings():
     c = parse_config(None)
-    assert c["moods"] == {"low": 60.0, "mid": 40.0, "high": 20.0} and c["gap_s"] == 4.0
+    assert c["moods"] == {"low": 60.0, "mid": 40.0, "high": 20.0} and c["between"]["gap_s"] == 4.0
     c = parse_config({"moods": {"high": 15}, "no_repeat": 6})
     assert c["moods"]["high"] == 15 and c["moods"]["low"] == 60.0 and c["no_repeat"] == 6
 
@@ -70,6 +70,14 @@ def test_defaults_and_rig_settings():
     ({"variation": 2}, "0-0.9"),
     ({"count_in": 12}, "2-8"),
     ({"talking": {"move": "laser"}}, "unknown FX item"),
+    ({"between": {"gap_s": 0.5}}, "1 s or more"),
+    ({"between": {"start": "clap"}}, "first_hit or count_in"),
+    ({"between": {"min_song_s": -1}}, "0-600"),
+    ({"between": {"fade_in": 99}}, "0-30"),
+    ({"between": {"ignore": "pedal"}}, "list of input ids"),
+    ({"between": {"on": "yes"}}, "true or false"),
+    ({"between": {"look": {"scene": "x", "colour": "static"}}}, "on its own"),
+    ({"between": {"wait": 1}}, "between: settings are"),
 ])
 def test_bad_settings(bad, msg):
     with pytest.raises(ConfigError, match=msg):
@@ -217,6 +225,7 @@ def test_manual_mood_only_without_drums(app):
 
 def test_silence_then_count_in(app):
     ap = app.autopilot
+    ap.cfg["between"]["min_song_s"] = 0  # a 6 s "song" (v7 default: a gap in the first 20 s doesn't end one)
     ap.set_on(True, app.t.t)
     run(app, 6, drums=lambda t: app.bus.add("x", ["snare", "activity"], 0.8, t))
     t_last = app.t.t
@@ -378,9 +387,11 @@ def test_autopilot_never_touches_haze_and_keeps_the_rules(app):
                     assert tilt / 255 <= lim.tilt[1] + 1 / 255  # rule 8
     from dmx_suite.fxbanks import Pick
 
-    for d in ap.decisions:  # the kick light keeps its own rules (rule 3): never in an autopilot look
+    for d in ap.decisions:  # v7: the kick light takes the look's colour on its own colour layer, nothing else
         _, scene = app.compose(Pick.from_dict(d.look))
-        assert all("kick" not in ly["fixtures"] and "smoke" not in ly["fixtures"] for ly in scene["layers"])
+        assert all("smoke" not in ly["fixtures"] for ly in scene["layers"])
+        kick = [ly for ly in scene["layers"] if "kick" in ly["fixtures"]]
+        assert len(kick) == 1 and kick[0]["fixtures"] == ["kick"] and kick[0].get("effect") not in ("move", "kick_pump")
 
 
 def test_ride_controls_over_the_api(app):

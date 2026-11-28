@@ -2,6 +2,24 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v7 Part A: Autopilot)
+
+Show file format 7: older shows upgrade once when opened, with a backup. The rig's autopilot `gap_s`, `count_in` and `talking` move into `between:`; a comment on one of those three lines doesn't move with it.
+
+### Added
+- **Palette bank** on the Autopilot page, beside Move / Flash / Colour FX: a tile per palette with its colours and moods. Tap to play; **Exclude…** or a hold leaves it out of the autopilot's picks (red, saved per rig, works under gig lock). MIDI action `exclude_palette`; Claude `play_palette` and `exclude_palette`.
+- **Layer timing**: a look's four layers (Move FX, Colour FX with the drum FX, Palette, Darkness) change **Together** (as before) or **Staggered**, each on its own clock (seconds, looks, or only on a new song / set, with a random spread) so the show is always moving without hard cuts. Each layer's countdown is on the page; tap one to **lock** it. MIDI action `autopilot_lock`.
+- **Darkness Auto**: Min and Max markers on the Darkness slider; it moves between them on the Darkness layer, spending **Time at Max** of the time at Max, holding each marker at least one layer interval. Moving the slider or pedal goes back to Manual. Saved per rig and per LOW / MID / HIGH set. Claude `set_darkness`.
+- **Between songs** settings on the page (Autopilot settings): on/off, no-activity time, minimum song length, song start (first hit or count-in only), count-in hits, fade in / out, inputs to ignore. The between-songs, walk-on and walk-off looks can be **any of your scenes**, played as made (no Darkness, no layer timing). A badge shows the time since the last hit.
+- Tick-box picker for choosing lights, groups or inputs (used first for the inputs to ignore).
+- Claude: `save_autopilot_settings` takes `timing`, `layers` and `between`.
+
+### Changed
+- The **kick light** takes the look's colour under the Autopilot (the palette, or the colour FX running) instead of white. Still exempt from MASTER and Darkness.
+- FX and palette tiles are 75 % of their old size (text stays at 12 px; phones and touch screens keep 44 px).
+- **Lock palette** is replaced by the Palette layer's lock (the `palette_lock` action still works).
+- A gap in the first 20 s of a song no longer ends it (Min song length).
+
 ## Unreleased (v6: Darkness, tempo from the drums, drum kit)
 
 ### Fixed
@@ -78,7 +96,7 @@ Brief and plan: `docs/v5-v6-brief.md`, `docs/v5-v6-plan.md`.
 
 ## Unreleased (v4: stage view, Layout / Patch, routing, Monitor, step editor)
 
-Scope and decisions: `docs/V4-SCOPE.md`. Show file format 6 (old files upgrade once, with backups).
+Scope and decisions: `docs/archive/V4-SCOPE.md`. Show file format 6 (old files upgrade once, with backups).
 
 ### Added
 - Layout / Patch page: full width, universe tabs, Stage and Addresses views (each light's channels and the value going out on every channel, from what the interface really sent), a fixture list with inline address / universe edits checked for clashes, the routing table and a status strip; Print and PNG patch sheet.

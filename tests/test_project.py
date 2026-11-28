@@ -164,6 +164,12 @@ def test_every_ui_text_key_exists():
     used |= {f"haze.u_{u}" for u in ("pct", "s", "min")}
     used |= {f"haze.f_{k}" for k in ("level", "pulse_level", "pulse_on_s", "pulse_every_s", "boost_level", "boost_s",
                                      "boost_cooldown_s", "max_on_s", "rest_s", "auto_off_min", "default_mode")}
+    # v7
+    used |= {f"picker.{x}_{k}" for x in ("kind", "count") for k in ("head", "bar", "wash", "kick")}
+    used |= {f"layers.{k}" for k in ("move", "colour", "palette", "darkness")}
+    used |= {f"layers.on_{k}" for k in ("song", "set")} | {f"layers.timing_{k}" for k in ("together", "staggered")}
+    used |= {f"layers.sched_{k}" for k in ("every_s", "every_looks", "song", "set")}
+    used |= {f"between.start_{k}" for k in ("first_hit", "count_in")}
     assert sorted(used - set(strings)) == []
     assert sorted(set(strings) - used) == []  # nothing left over either
 

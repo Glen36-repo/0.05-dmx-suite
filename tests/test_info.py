@@ -333,7 +333,8 @@ def test_every_button_on_every_page(ui):
     for name in PAGES:
         go(page, name)
         page.wait_for_timeout(150)
-        page.eval_on_selector_all(f"#page-{name} details", "ds => ds.forEach((d) => { d.open = true; })")  # folded too
+        # folded sections too (not tick-box pickers: they're dropdowns that cover what's under them)
+        page.eval_on_selector_all(f"#page-{name} details:not(.picker)", "ds => ds.forEach((d) => { d.open = true; })")
         page.wait_for_timeout(150)
         seen |= check_visible_buttons(page, f"#page-{name}")
     page.click("#bell")

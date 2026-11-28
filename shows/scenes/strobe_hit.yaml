@@ -1,5 +1,5 @@
 # High-energy: white flash effect on bars, heads sweeping fast.
-version: 6
+version: 7
 name: Strobe hit
 show_colour: white
 layers:

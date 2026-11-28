@@ -54,7 +54,9 @@ CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/st
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
                  "/api/autopilot/check", "/api/generate",
                  "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness", "/api/tempo",
-                 "/api/kits")  # v5 / v6
+                 "/api/kits",  # v5 / v6
+                 "/api/autopilot/palette",  # v7 palette bank: play / leave out (a live control)
+                 "/api/autopilot/settings")  # v7: layer timing, between songs, darkness (a store edit)
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
@@ -439,8 +441,12 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                                                         int(q.get("offset", 0)), int(q.get("limit", 40))))
             if path == "/api/autopilot":  # status and the decision log (v3.4)
                 n = int(q.get("n", 50))
+                from ..autopilot import DEFAULTS as AP_DEFAULTS
+
                 return self._json(200, {"status": app.autopilot.status(app.engine.clock()), "log": app.autopilot.log_since(n),
                                         "priority": app.priority(), "config": app.autopilot.cfg,
+                                        "defaults": {k: AP_DEFAULTS[k] for k in ("walk_on", "walk_off")}
+                                        | {"look": AP_DEFAULTS["between"]["look"]},
                                         "darkness": app.darkness.status()})
             if path == "/api/kelvin":
                 from ..colourtheory import KELVIN_PRESETS, hex_of, kelvin
@@ -848,11 +854,25 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 raise ApiError(400, "tempo action: tap, source or params")
             if path == "/api/darkness" and method == "POST":  # v6 live Darkness (slider / Claude); gig lock allows it
                 src = "claude" if self._is_claude() else str(body.get("source") or "slider")
-                return self._json(200, {"ok": True, **app.set_darkness(float(body.get("value", 0)), src)})
+                try:
+                    if any(k in body for k in ("mode", "min", "max", "time_at_max", "hold_s")):  # v7 Auto
+                        app.set_darkness_auto(body.get("mode"), body.get("min"), body.get("max"), body.get("time_at_max"),
+                                              body.get("hold_s"), src)
+                    if "value" in body or not any(k in body for k in ("mode", "min", "max", "time_at_max", "hold_s")):
+                        return self._json(200, {"ok": True, **app.set_darkness(float(body.get("value", 0)), src)})
+                    return self._json(200, {"ok": True, **app.darkness.status()})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/darkness/set" and method == "POST":  # a set's stored darkness (saved to the rig)
                 v = body.get("value")
-                return self._json(200, {"ok": True, **app.set_set_darkness(str(body.get("set", "")),
-                                                                           None if v in (None, "") else float(v))})
+                if isinstance(v, dict):  # v7: {mode, value, min, max, time_at_max, hold_s}
+                    val: Any = v
+                else:
+                    val = None if v in (None, "") else float(v)
+                try:
+                    return self._json(200, {"ok": True, **app.set_set_darkness(str(body.get("set", "")), val)})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
             if path == "/api/faultfind" and method == "POST":  # v5 "Rig not responding" wizard
                 return self._json(200, app.fault_find(str(body.get("action", "status")), str(body.get("answer", "")),
                                                       body.get("fixture") or None, "claude" if self._is_claude() else "ui"))
@@ -912,6 +932,22 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/ride" and method == "POST":  # play a Ride look: FX + palette + ride settings (v3.3)
                 try:
                     return self._json(200, app.ride_play(body.get("pick") or {}, body.get("fade_s")))
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/ride/settings" and method == "POST":  # v7 Autopilot settings, saved to the rig
+                try:
+                    return self._json(200, {"ok": True, **app.save_autopilot(body.get("changes") or {})})
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/ride/palette" and method == "POST":  # v7 palette bank: play now and/or leave out
+                try:
+                    pal = str(body.get("palette", ""))
+                    out: dict[str, Any] = {"ok": True}
+                    if body.get("excluded") is not None:
+                        out.update(app.exclude_palette(pal, bool(body["excluded"])))
+                    if body.get("play"):
+                        out["message"] = app.ride_action("autopilot_palette", {"palette": pal})
+                    return self._json(200, out)
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
             if path == "/api/ride/exclude" and method == "POST":  # leave an FX type out of the autopilot (v4.1)

@@ -304,6 +304,14 @@ def compose(pick: Pick, ar: AutoRig, palette_colours: list[Any], name: str = "Au
             layers.append({"fixtures": colour_ids, **_apply_ride(lay, ci, ride)})
     elif colour_ids:
         layers.append({"fixtures": colour_ids, "effect": "palette", "colours": _fill("$palette", cols)})
+    kick = ar.classes.get("kick", [])
+    if kick:  # v7: the kick light takes the look's colour (its own layer, so the chase spread over the rest
+        # is unchanged); MASTER-exempt and Darkness-exempt as before (rule 3, scenes.py), so it stays lit
+        if ci is not None and ci.bank == "colour" and ci.targets != "pixel":
+            lay = {k: _fill(v, cols) for k, v in copy.deepcopy(ci.layer).items()}
+            layers.append({"fixtures": list(kick), **_apply_ride(lay, ci, combine(pick.ride, pick.bank_ride.get("colour")))})
+        else:  # nothing to run on one light (pixel items, static): it holds the palette
+            layers.append({"fixtures": list(kick), "effect": "palette", "colours": _fill("$palette", cols)})
     for c in ("strobe", "effect"):  # whites and effect lights: follow the first colour
         if ar.classes.get(c):
             layers.append({"fixtures": list(ar.classes[c]), "colour": cols[0] if c == "effect" else "white", "level": 0.6})

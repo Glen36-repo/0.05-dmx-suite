@@ -66,13 +66,15 @@ v2 (general release; details in `docs/SCOPE.md`):
 - R8 Node and firmware fixes
 - R9 Rehearsal sign-off on the real rig
 
-v3 (auto show "Ride"; details in `docs/V3-SCOPE.md`):
+v3 (auto show "Ride"; details in `docs/archive/V3-SCOPE.md`):
 - V3.1 Named MIDI inputs, head position points, colour wheel + palette editor, alerts/banners
 - V3.2 Step scenes (move dark/lit)
 - V3.3 Classification, FX banks, ride controls, look quality rules, rig scaling
 - V3.4 Autopilot, Ride page, between songs, control priority, decision log
 - V3.5 Generator, look review page, presets, Claude MCP tools
 
-v4 (one release; details in `docs/V4-SCOPE.md`): stage view fixes (fit, outlined pixel bars, names, haze indicator, overlap warnings), Layout / Patch page, universe routing, devices by USB identity, Monitor page, step editor + pixel selection, haze settings, UI density, Ride -> Autopilot (Feel), Busk -> Override. Show file format 6.
+v4 (one release; details in `docs/archive/V4-SCOPE.md`): stage view fixes (fit, outlined pixel bars, names, haze indicator, overlap warnings), Layout / Patch page, universe routing, devices by USB identity, Monitor page, step editor + pixel selection, haze settings, UI density, Ride -> Autopilot (Feel), Busk -> Override. Show file format 6.
+
+v7 (brief `docs/v7-brief.md`, plan `docs/v7-plan.md`; one branch and PR per part, stacked): A Autopilot (palette bank, layer timing, Darkness Auto, between songs), B Layout + Fixtures, C head exclusion zones, D drum flash gate, E files and start-up. Show file format 7.
 
 Haze is never touched by the autopilot, presets, generator or Flash FX. Every v3 feature gets rule tests under both profiles (`tests/rulecheck.py`).

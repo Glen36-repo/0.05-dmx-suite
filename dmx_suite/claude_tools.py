@@ -153,10 +153,15 @@ PRESETS AND GENERATOR (v3.5): presets.yaml {presets: {id: {name, tags, pick: {mo
   them like any scene. ratings.yaml holds look ratings from the review page (liked looks favoured).
 AUTOPILOT (v3.4): changes looks on a timer per mood (rig `autopilot:` moods {low, mid, high} seconds,
   variation, no_repeat, fade per mood, energy {window_s, full_rate}, fill {window_s, hits, crash_s},
-  gap_s and count_in for between songs, talking / walk_on / walk_off looks, palettes). Energy comes
+  between {on, gap_s, start first_hit|count_in, count_in, min_song_s, fade_in, fade_out, ignore [input ids],
+  look} for between songs (v7; look and walk_on / walk_off take a generated look or {scene: id}), palettes). Energy comes
   from named input roles. autopilot_status shows what it's doing and the decision log (why each look
   was chosen); save_autopilot_settings tunes it, e.g. "less movement, more blue in the verses" ->
-  palettes: [cool, ice], and quality busy scores for the move items.
+  palettes: [cool, ice], and quality busy scores for the move items. Darkness (v7): set_darkness mode manual | auto
+  (between Min and Max markers, time_at_max % at Max, a minimum hold; a slider / pedal move goes back to Manual).
+  Layer timing (v7): save_autopilot_settings timing together | staggered, layers {move, colour, palette,
+  darkness: {every_s | every_looks | on: song|set, spread, locked}}. Palette bank (v7): play_palette plays one
+  now; exclude_palette leaves one out of the autopilot's picks (rig auto: exclude_palettes), like FX types.
 AUTO SHOW (v3.3): list_fx shows the FX banks for this rig (Move, Colour, Flash, drum-reactive), how the
   lights are classified, and the palettes. preview_look tries a pick {move, colour, drum, palette, feel:
   {speed, fade, fan, size, shift}, mood} and says what the look quality rules think (get_quality_rules,
@@ -446,16 +451,53 @@ class DmxTools:
 
     def set_autopilot(self, darkness: float) -> str:
         r = self._live("POST", "/api/darkness", {"value": darkness})
-        return f"darkness {r['darkness']:g} % (eases in over the look's fade; holds until the next set change)"
+        back = " (Auto darkness is off: back to Manual)" if r.get("dropped") else ""
+        return f"darkness {r['darkness']:g} % (eases in over the look's fade; holds until the next set change){back}"
+
+    def set_darkness(self, mode: str | None = None, mn: float | None = None, mx: float | None = None,
+                     time_at_max: float | None = None, hold_s: float | None = None, value: float | None = None,
+                     set: str | None = None) -> str:
+        given = {k: v for k, v in (("mode", mode), ("min", mn), ("max", mx), ("time_at_max", time_at_max),
+                                   ("hold_s", hold_s), ("value", value)) if v is not None}
+        if not given:
+            raise StoreError("give a mode, markers or a value")
+        if set:
+            r = self._live("POST", "/api/darkness/set", {"set": set, "value": given})
+            return f"saved (backup {r['backup']}): {set} darkness {_dump(given).strip()}"
+        r = self._live("POST", "/api/darkness", given)
+        if r["mode"] == "auto":
+            return (f"darkness Auto: {r['min']:g}-{r['max']:g} %, {r['time_at_max']:g} % of the time at Max, "
+                    f"hold {r['hold_s']:g} s (now {r['now']:g} %)")
+        return f"darkness Manual {r['darkness']:g} % (eases in over the look's fade; holds until the next set change)"
 
     def set_set_darkness(self, set: str, value: float | None) -> str:
         r = self._live("POST", "/api/darkness/set", {"set": set, "value": value})
         return f"saved (backup {r['backup']}): {set} darkness {'cleared' if value is None else f'{value:g} %'}"
 
-    def save_autopilot_settings(self, rig: str, yaml_text: str) -> str:
-        data = _yaml(yaml_text, "autopilot settings")
+    def play_palette(self, palette: str) -> str:
+        r = self._live("POST", "/api/autopilot/palette", {"palette": palette, "play": True})
+        return r.get("message", "ok")
+
+    def exclude_palette(self, palette: str, excluded: bool = True) -> str:
+        r = self._live("POST", "/api/autopilot/palette", {"palette": palette, "excluded": excluded})
+        return (f"palette {palette} {'left out of' if excluded else 'back in'} the autopilot's picks "
+                f"(backup {r['backup']}); excluded now: {', '.join(r['excluded']) or 'none'}")
+
+    def save_autopilot_settings(self, rig: str, yaml_text: str = "{}", timing: str | None = None,
+                                layers: dict[str, Any] | None = None, between: dict[str, Any] | None = None) -> str:
+        from .autopilot import merge_settings
+
+        data = _yaml(yaml_text or "{}", "autopilot settings")
+        for k, v in (("timing", timing), ("layers", layers), ("between", between)):
+            if v is not None:
+                data[k] = v
+        if not data:
+            raise StoreError("no autopilot settings given")
         cur = self.local.read("rig", rig)
-        cur["autopilot"] = {**(cur.get("autopilot") or {}), **data}
+        try:
+            cur["autopilot"] = merge_settings(cur.get("autopilot"), data)
+        except ConfigError as e:
+            raise StoreError(str(e)) from e
         return self._write("PUT", f"/api/store/rig/{rig}", {"data": cur}, lambda: self.local.put("rig", rig, cur))
 
     def generate(self, kind: str, settings_yaml: str) -> str:

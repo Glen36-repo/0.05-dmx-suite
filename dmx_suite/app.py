@@ -55,22 +55,23 @@ class App:
 
         self.bus = BUS  # named input hits by role: drum-reactive effects, autopilot energy
         self.ride_pick = Pick()  # what the Ride page shows / last played (v3.3)
-        self.palette_lock = False
         from .autopilot import Autopilot
         from .classify import auto_rig
 
         self.autopilot = Autopilot(
-            play=lambda pick, fade: self.ride_play(self._locked_palette(pick).to_dict(), fade, by="autopilot"),
+            play=lambda pick, fade: self.ride_play(pick.to_dict(), fade, by="autopilot"),
             rig_auto=lambda: auto_rig(self.engine.rig),
             palettes=lambda: self.files.palettes.sets,
             quality=self.quality, bus=self.bus, cfg=files.rig.autopilot, log_dir=log_dir,
             master_off=lambda: self.engine.rig.profile.master_gate and not self.engine.master,
             flash=lambda kind: self.flash_fx(kind, True, "show", length_ms=500),
-            ratings=self.look_ratings, presets=self.preset_picks)
+            ratings=self.look_ratings, presets=self.preset_picks, playing=lambda: self.ride_pick,
+            darkness_step=lambda now, why: self.darkness.step(now, why), play_scene=self._autopilot_scene)
         self.router.ride = self.ride_action
         from .darkness import Darkness
 
-        self.darkness = Darkness(self.engine.clock, lambda: self.autopilot.st.mood)  # v6
+        self.darkness = Darkness(self.engine.clock, lambda: self.autopilot.st.mood,  # v6
+                                 interval=self.autopilot.darkness_interval)  # v7: Auto's hold default
         self.darkness.configure(files.rig.autopilot)
         self.ctl.on_manual = self._manual_pick
         self.ctl.on_setlist = self._setlist_walk
@@ -996,8 +997,11 @@ class App:
             if new.rig.midi_inputs != old_rig.midi_inputs and self.midi_inputs is not None:
                 self.midi_inputs.wanted = [w for w in new.rig.midi_inputs if w]  # its 2 s rescan opens them
             self.engine.swap_rig(new.rig, new.look)
+            old_ap = self.autopilot.cfg
             self.autopilot.cfg = new.rig.autopilot
             self.autopilot.energy.cfg = new.rig.autopilot
+            if (old_ap.get("timing"), old_ap.get("layers")) != (new.rig.autopilot.get("timing"), new.rig.autopilot.get("layers")):
+                self.autopilot.st.layer_next.clear()  # v7: new layer timing starts its clocks from now
             self.darkness.configure(new.rig.autopilot)
             self._loaded_sig = sig
             self.files = new
@@ -1088,12 +1092,15 @@ class App:
         """The FX banks for this rig: every item, whether this rig can run it (rig size scaling),
         how the lights are classified, the palettes and the quality rules."""
         from .classify import auto_rig
+        from .colourtheory import hex_of
         from .fxbanks import FLASH_ITEMS, ITEMS, can_run
 
         ar = auto_rig(self.engine.rig)
         return {"rig": ar.summary(), "items": [{**i.to_json(), "available": can_run(i, ar), "excluded": i.id in ar.excluded_fx}
                                                for i in [*ITEMS, *FLASH_ITEMS]],
-                "palettes": {k: {"name": v["name"], "tags": v["tags"]} for k, v in self.files.palettes.sets.items()},
+                "palettes": {k: {"name": v["name"], "tags": v["tags"], "excluded": k in ar.excluded_palettes,
+                                 "swatches": [hex_of(c) for c in v["resolved"]][:6]}
+                             for k, v in self.files.palettes.sets.items()},
                 "pick": self.ride_pick.to_dict(), "quality": self.quality().r}
 
     def compose(self, pick: Any, name: str = "Autopilot") -> Any:
@@ -1133,11 +1140,14 @@ class App:
 
     # ------------------------------------------------------------------ autopilot and Ride controls (v3.4)
 
-    def _locked_palette(self, pick: Any) -> Any:
-        """Palette lock: the autopilot keeps the palette the Ride page chose."""
-        if self.palette_lock:
-            pick.palette = self.ride_pick.palette
-        return pick
+    def _autopilot_scene(self, key: str, fade_s: float) -> None:
+        """v7: a pre-built scene as the between-songs / walk-on / walk-off look: played as authored (no
+        Darkness, no layer timing); the autopilot stays on and takes over again when the song starts."""
+        sc = self.files.scenes.get(key)
+        if sc is None:
+            raise ValueError(f"no scene {key!r}")
+        player = ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff)
+        self.ctl.select_ride(f"Autopilot: {sc.name}", player, sc, fade_s, manual=False)
 
     def _manual_pick(self) -> None:
         """The band picked a look, scene or show by hand: the autopilot steps aside."""
@@ -1345,23 +1355,33 @@ class App:
         it = BY_ID.get(item)
         if it is None or it.bank == "flash":
             raise ValueError(f"no autopilot FX type {item!r}")
+        return self._auto_exclude("exclude_fx", item, it.label, excluded)
+
+    def exclude_palette(self, palette: str, excluded: bool) -> dict[str, Any]:
+        """v7 palette bank: leave a palette out of the autopilot's picks (or put it back). A tap still plays it."""
+        sets = self.files.palettes.sets
+        if palette not in sets:
+            raise ValueError(f"no palette {palette!r}")
+        return self._auto_exclude("exclude_palettes", palette, f"palette {sets[palette]['name']}", excluded)
+
+    def _auto_exclude(self, key: str, item: str, label: str, excluded: bool) -> dict[str, Any]:
         rig_name = self.names[0]
         data = self.store.read("rig", rig_name)
         auto = dict(data.get("auto") or {})
-        now = [x for x in auto.get("exclude_fx") or [] if x != item]
+        now = [x for x in auto.get(key) or [] if x != item]
         if excluded:
             now.append(item)
         if now:
-            auto["exclude_fx"] = now
+            auto[key] = now
         else:
-            auto.pop("exclude_fx", None)
+            auto.pop(key, None)
         if auto:
             data["auto"] = auto
         else:
             data.pop("auto", None)
         verb = "leave out" if excluded else "put back"
         with self.store.recovery():  # mid-gig: like "Use this instead", allowed under gig lock
-            bid = self.store.put("rig", rig_name, data, f"autopilot: {verb} {it.label} on rig {rig_name}")
+            bid = self.store.put("rig", rig_name, data, f"autopilot: {verb} {label} on rig {rig_name}")
         self.reload()
         return {"ok": True, "backup": bid, "excluded": now}
 
@@ -1605,14 +1625,38 @@ class App:
         self.darkness.set(v / 100, source)
         return self.darkness.status()
 
-    def set_set_darkness(self, which: str, value: float | None) -> dict[str, Any]:
+    def set_darkness_auto(self, mode: str | None = None, mn: float | None = None, mx: float | None = None,
+                          time_at_max: float | None = None, hold_s: float | None = None,
+                          source: str = "slider") -> dict[str, Any]:
+        """v7 Auto darkness, live (% values): mode manual / auto, Min and Max markers, time at Max, hold."""
+        for k, v in (("min", mn), ("max", mx), ("time_at_max", time_at_max)):
+            if v is not None and not 0 <= float(v) <= 100:
+                raise ValueError(f"darkness {k}: 0-100 (%)")
+        if hold_s is not None and not 0 <= float(hold_s) <= 3600:
+            raise ValueError("darkness hold_s: 0-3600 s")
+        def pct(v: float | None) -> float | None:
+            return None if v is None else float(v) / 100
+
+        self.darkness.set_auto(mode, pct(mn), pct(mx), pct(time_at_max), None if hold_s is None else float(hold_s), source)
+        return self.darkness.status()
+
+    def set_set_darkness(self, which: str, value: float | dict[str, Any] | None) -> dict[str, Any]:
         """A set's stored darkness (LOW / MID / HIGH), loaded on that set; None clears it. Saved to the rig."""
         from .autopilot import MOODS
 
         which = str(which).lower()
         if which not in MOODS:
             raise ValueError("set is low, mid or high")
-        if value is not None and not 0 <= float(value) <= 100:
+        if isinstance(value, dict):  # v7: {mode, value, min, max, time_at_max, hold_s}
+            from .autopilot import _check_darkness_auto
+            from .fixtures import ConfigError
+
+            value = {k: v for k, v in value.items() if v is not None}
+            try:
+                _check_darkness_auto(value, f"{which} darkness", allow={"mode", "value"})
+            except ConfigError as e:
+                raise ValueError(str(e)) from e
+        elif value is not None and not 0 <= float(value) <= 100:
             raise ValueError("darkness 0-100 (%)")
         rig_name = self.names[0]
         data = self.store.read("rig", rig_name)
@@ -1620,13 +1664,35 @@ class App:
         sd = dict(ap.get("set_darkness") or {})
         if value is None:
             sd.pop(which, None)
-        else:
+        elif isinstance(value, dict):
+            old = sd.get(which)
+            base = dict(old) if isinstance(old, dict) else ({"value": old} if old is not None else {})
+            sd[which] = {**base, **value}
+        else:  # a plain number is that set's Manual value (v6 shape; any Auto markers for it go)
             sd[which] = round(float(value), 1)
         ap["set_darkness"] = sd
         data["autopilot"] = ap
         bid = self.store.put("rig", rig_name, data, f"autopilot: {which} darkness on rig {rig_name}")
         self.reload()
         return {"backup": bid, **self.darkness.status()}
+
+    def save_autopilot(self, changes: dict[str, Any]) -> dict[str, Any]:
+        """v7: Autopilot page settings (layer timing, between songs, darkness) merged into the running rig's
+        `autopilot:` block, checked, backed up (the store's gig lock applies)."""
+        from .autopilot import merge_settings
+        from .fixtures import ConfigError
+
+        if not isinstance(changes, dict) or not changes:
+            raise ValueError("no autopilot settings given")
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        try:
+            data["autopilot"] = merge_settings(data.get("autopilot"), changes)
+        except ConfigError as e:
+            raise ValueError(str(e)) from e
+        bid = self.store.put("rig", rig_name, data, f"autopilot settings ({', '.join(changes)}) on rig {rig_name}")
+        self.reload()
+        return {"backup": bid, "config": self.autopilot.cfg}
 
     def ride_action(self, action: str, p: dict[str, Any], level: float | None = None) -> str:
         """Autopilot page controls (v3 Ride page), from the page, MIDI or OSC."""
@@ -1680,9 +1746,19 @@ class App:
             if p.get("palette") not in self.files.palettes.sets:
                 raise ValueError(f"no palette {p.get('palette')!r}")
             pick.palette = p["palette"]
-        elif action == "palette_lock":
-            self.palette_lock = not self.palette_lock if p.get("on") is None else bool(p["on"])
-            return f"palette lock {'on' if self.palette_lock else 'off'}"
+        elif action == "exclude_palette":  # v7 palette bank (MIDI / API / Claude): saved, no look change
+            on = p.get("excluded")
+            pal = str(p.get("palette") or "")
+            if on is None:  # a pedal press toggles
+                from .classify import auto_rig
+
+                on = pal not in auto_rig(self.engine.rig).excluded_palettes
+            self.exclude_palette(pal, bool(on))
+            return f"palette {pal} {'left out' if on else 'put back'}"
+        elif action in ("autopilot_lock", "palette_lock"):  # v7 layer lock (palette_lock: the v3 palette one)
+            layer = "palette" if action == "palette_lock" else str(p.get("layer") or "")
+            on = self.autopilot.set_lock(layer, None if p.get("on") is None else bool(p["on"]))
+            return f"{layer} lock {'on' if on else 'off'}"
         elif action.startswith("feel_") and action[5:] in RANGES:
             key = action[5:]
             lo, hi = RANGES[key]
@@ -2257,7 +2333,7 @@ class App:
             "alerts": self.alerts[-5:],
             "alert_center": self.alerts_view(),
             "autopilot": {**self.autopilot.status(e.clock()), "darkness": self.darkness.status(e.clock())},
-            "ride": {"pick": self.ride_pick.to_dict(), "palette_lock": self.palette_lock},
+            "ride": {"pick": self.ride_pick.to_dict(), "palette_lock": self.autopilot.locked("palette")},
             "priority": self.priority(),
             "learning": self.router.learning,
             "rig": e.rig.name,

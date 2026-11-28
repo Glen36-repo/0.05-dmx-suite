@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import threading
 import time
+from typing import Any
 
 import yaml
 
@@ -174,16 +175,44 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.set_autopilot(darkness)
 
     @tool
+    def set_darkness(mode: str | None = None, min: float | None = None, max: float | None = None,
+                     time_at_max: float | None = None, hold_s: float | None = None, value: float | None = None,
+                     set: str | None = None) -> str:
+        """Autopilot Darkness, v7. mode manual (the value holds) | auto (moves between the Min and Max markers on
+        the Darkness layer's clock, spending time_at_max % of the time at Max, holding each marker at least
+        hold_s, default the layer's interval). min / max / value 0-100 %. Live (allowed under gig lock) unless
+        `set` (low, mid or high) is given: then it's saved to that set in the rig (not under gig lock)."""
+        return t.set_darkness(mode, min, max, time_at_max, hold_s, value, set)
+
+    @tool
     def set_set_darkness(set: str, value: float | None = None) -> str:
         """Store the darkness (0-100 %) a set loads: set = low, mid or high; value None clears it. Saved to the
         rig's autopilot block (set_darkness). Not under gig lock."""
         return t.set_set_darkness(set, value)
 
     @tool
-    def save_autopilot_settings(rig: str, yaml_text: str) -> str:
-        """Tune the autopilot for a rig (merged into its `autopilot:` block), e.g.
-        '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6, gap_s: 5}'."""
-        return t.save_autopilot_settings(rig, yaml_text)
+    def play_palette(palette: str) -> str:
+        """Play a palette on the Autopilot now (palette bank tile tap): the running look keeps its FX and takes
+        this palette. Works on an excluded palette too. Allowed under gig lock (a live control)."""
+        return t.play_palette(palette)
+
+    @tool
+    def exclude_palette(palette: str, excluded: bool = True) -> str:
+        """Leave a palette out of the Autopilot's picks (excluded=True) or put it back (False). Saved in the rig
+        (auto: exclude_palettes); it stays on the page and can still be played by hand. Allowed under gig lock."""
+        return t.exclude_palette(palette, excluded)
+
+    @tool
+    def save_autopilot_settings(rig: str, yaml_text: str = "{}", timing: str | None = None,
+                                layers: dict[str, Any] | None = None, between: dict[str, Any] | None = None) -> str:
+        """Tune the autopilot for a rig (merged into its `autopilot:` block), e.g. yaml_text
+        '{moods: {low: 75, mid: 45, high: 25}, palettes: [cool, ice], no_repeat: 6}'.
+        timing: together (every layer changes at each look change) | staggered (a clock per layer).
+        layers: {move|colour|palette|darkness: {every_s: 30 | every_looks: 1.5 | on: song|set, spread: 0-50 (%),
+        locked: bool}} (a layer's schedule replaces its old one).
+        between: {on, gap_s, start: first_hit|count_in, count_in, min_song_s, fade_in, fade_out, ignore: [input ids],
+        look: {colour, move, palette, feel} | {scene: id}}."""
+        return t.save_autopilot_settings(rig, yaml_text, timing, layers, between)
 
     @tool
     def generate(kind: str, settings_yaml: str = "{}") -> str:

@@ -411,9 +411,12 @@ button.big { min-height: var(--perform-h); padding: 0 18px; font-size: 16px; fon
 .energy-l { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .energy i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--warn), var(--bad)); transition: width .3s; }
 .grid-host.strip { height: 230px; max-height: none; overflow: hidden; padding: 4px; }
-.ride-banks { display: grid; grid-template-columns: 1fr 0.65fr 1.35fr; gap: 12px; }
-.ride-col { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 5px; }
-.ride-fx { min-height: 44px; padding: 6px 8px; font-size: 14px; line-height: 1.15; font-weight: 600; touch-action: manipulation; user-select: none; }
+.ride-banks { display: grid; grid-template-columns: 1fr 0.65fr 1.35fr 1fr; gap: 12px; } /* v7: + palette bank */
+@media (max-width: 1100px) { .ride-banks { grid-template-columns: 1fr 1fr; } }
+/* v7: FX and palette tiles at 75 % of their v6 size (98 x 44 px, 14 px text); text stays at the 12 px floor */
+.ride-col { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 4px; }
+.ride-fx { min-height: 33px; padding: 4px 6px; font-size: 12px; line-height: 1.15; font-weight: 600; touch-action: manipulation; user-select: none; }
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1100px) { .ride-fx { min-height: 44px; } } /* touch minimum */
 .pair { display: flex; flex-wrap: wrap; gap: 0 28px; }
 .pair > * { min-width: 0; max-width: 100%; }
 .sep-v { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
@@ -724,3 +727,53 @@ body.manual { max-width: 820px; margin: 0 auto; padding: 12px 16px 40px; line-he
 body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after {
   animation-duration: .001ms !important; animation-iteration-count: 1 !important;
   transition-duration: .001ms !important; scroll-behavior: auto !important; }
+
+/* v7: tick-box picker (Between songs ignore list, Fixtures groups, drum flash targets) */
+.picker { position: relative; display: inline-block; min-width: 180px; max-width: 100%; }
+.picker-summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px; min-height: max(var(--btn-h), 32px);
+  padding: 0 28px 0 var(--btn-px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); position: relative; }
+.picker-summary::-webkit-details-marker { display: none; }
+.picker-summary::after { content: "▾"; position: absolute; right: 10px; color: var(--muted); }
+.picker[open] > .picker-summary::after { content: "▴"; }
+.picker-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.picker-body { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 100%; max-height: 60vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); }
+.picker-quick { display: flex; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.picker-group + .picker-group { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
+.picker-head, .picker-item { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+.picker-head { font-weight: 600; }
+.picker-item { padding-left: 24px; }
+.picker-extra { margin-top: 6px; width: 100%; }
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1100px) {
+  .picker-summary, .picker-head, .picker-item { min-height: 44px; }
+  .picker-body { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; max-height: 70vh; }
+}
+
+/* v7 palette bank tiles: swatches + mood tags, same green / red states as the FX tiles */
+.ride-pal-tile { display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; }
+.ride-pal-tile .pal-sw { display: flex; height: 8px; border-radius: 3px; overflow: hidden; }
+.ride-pal-tile .pal-sw i { flex: 1; }
+.ride-pal-tile .tags { font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* v7 layer timing strip and Autopilot settings */
+.ap-layers { gap: 6px; }
+.layer-chip { display: inline-flex; gap: 6px; align-items: center; }
+.layer-chip .layer-next { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.layer-chip.locked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
+.layer-chip.locked .layer-next { color: inherit; }
+.ap-settings { display: grid; gap: 8px; padding: 6px 0; }
+.ap-settings h3 { margin: 8px 0 0; font-size: 15px; }
+.ap-layer-row > b { min-width: 90px; }
+.ap-field { display: inline-flex; gap: 6px; align-items: center; }
+#ap-timing button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+
+/* v7 Darkness Auto: Min / Max markers on the slider bar */
+.dk-track { position: relative; display: block; }
+.dk-mark { position: absolute; top: 2px; bottom: 2px; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px;
+  pointer-events: none; display: none; }
+#ride-darkness.auto .dk-mark { display: block; }
+#ride-darkness:not(.auto) .dk-auto .ap-field { display: none; }
+#dk-mode button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+.dk-auto input[type=range] { width: 140px; }
+.between-badge { padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 28%, var(--panel)); border: 1px solid var(--accent); white-space: nowrap; }

@@ -159,6 +159,11 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
         for key, table in (("show", shows), ("scene", scenes)):
             if key in m.params and m.params[key] not in table:
                 raise ConfigError(f"MIDI map {where_of(m)}: unknown {key} {m.params[key]!r}")
+    ap = r.autopilot or {}  # v7: between-songs / walk-on / walk-off looks may name a scene
+    for where, pick in (("between look", (ap.get("between") or {}).get("look")), ("walk_on", ap.get("walk_on")),
+                        ("walk_off", ap.get("walk_off"))):
+        if isinstance(pick, dict) and pick.get("scene") and pick["scene"] not in scenes:
+            raise ConfigError(f"rig {rig} autopilot {where}: unknown scene {pick['scene']!r}")
     bad = profile_problems(r, scenes, {look: lk})
     if bad:
         raise ConfigError(f"rig {rig} (profile {r.profile.name}): " + "; ".join(bad))

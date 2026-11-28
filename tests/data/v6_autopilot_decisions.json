@@ -1,0 +1,534 @@
+[
+ {
+  "t": 6.25,
+  "trigger": "build",
+  "mood": "mid",
+  "look": {
+   "move": "pan_sweep",
+   "colour": "static",
+   "drum": "kick_pump",
+   "palette": "band",
+   "feel": {
+    "speed": 1.5,
+    "fade": 0.5,
+    "fan": 0.7,
+    "size": 0.8,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 38.5,
+  "trigger": "timer",
+  "mood": "mid",
+  "look": {
+   "move": "pan_sweep",
+   "colour": "plasma",
+   "drum": null,
+   "palette": "warm",
+   "feel": {
+    "speed": 1.0,
+    "fade": 0.5,
+    "fan": 0.5,
+    "size": 0.5,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 81.5,
+  "trigger": "timer",
+  "mood": "mid",
+  "look": {
+   "move": "mirror",
+   "colour": "twinkle",
+   "drum": null,
+   "palette": "warm",
+   "feel": {
+    "speed": 1.0,
+    "fade": 0.5,
+    "fan": 0.5,
+    "size": 0.5,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 125.5,
+  "trigger": "timer",
+  "mood": "mid",
+  "look": {
+   "move": "mirror",
+   "colour": "static",
+   "drum": "snare_hit",
+   "palette": "warm",
+   "feel": {
+    "speed": 1.0,
+    "fade": 0.5,
+    "fan": 0.5,
+    "size": 0.5,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 158.75,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "fan",
+   "colour": "lightning",
+   "drum": null,
+   "palette": "neon",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 178.5,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "mirror",
+   "colour": "wave",
+   "drum": "velocity_colour",
+   "palette": "fire",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 202.5,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "pan_sweep",
+   "colour": "police",
+   "drum": null,
+   "palette": "band",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 223.25,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "audience",
+   "colour": "bounce",
+   "drum": null,
+   "palette": "band",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 240.75,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "tilt_sweep",
+   "colour": "wave",
+   "drum": "tom_roll",
+   "palette": "band",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 264.0,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "crossfire",
+   "colour": "split",
+   "drum": "velocity_colour",
+   "palette": "neon",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 283.25,
+  "trigger": "breakdown",
+  "mood": "mid",
+  "look": {
+   "move": "swim",
+   "colour": "fire",
+   "drum": null,
+   "palette": "cool",
+   "feel": {
+    "speed": 0.6,
+    "fade": 0.5,
+    "fan": 0.4,
+    "size": 0.3,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 283.75,
+  "trigger": "song_end",
+  "mood": "mid",
+  "look": {
+   "move": "kit",
+   "colour": "static",
+   "drum": null,
+   "palette": "white",
+   "feel": {
+    "speed": 0.5,
+    "fade": 1.0,
+    "fan": 0.5,
+    "size": 0.5,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 300.25,
+  "trigger": "song_start",
+  "mood": "low",
+  "look": {
+   "move": "float",
+   "colour": "colour_fade",
+   "drum": null,
+   "palette": "ice",
+   "feel": {
+    "speed": 0.8,
+    "fade": 0.8,
+    "fan": 0.5,
+    "size": 0.35,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 306.5,
+  "trigger": "build",
+  "mood": "mid",
+  "look": {
+   "move": "mirror",
+   "colour": "twinkle",
+   "drum": null,
+   "palette": "band",
+   "feel": {
+    "speed": 1.5,
+    "fade": 0.5,
+    "fan": 0.7,
+    "size": 0.8,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 353.75,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "pan_sweep",
+   "colour": "police",
+   "drum": null,
+   "palette": "neon",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 374.25,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "audience",
+   "colour": "bounce",
+   "drum": null,
+   "palette": "band",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 390.75,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "random_points",
+   "colour": "comet",
+   "drum": null,
+   "palette": "fire",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 409.25,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "tilt_sweep",
+   "colour": "fire",
+   "drum": "kick_pump",
+   "palette": "band",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 426.75,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "random_points",
+   "colour": "random_flash",
+   "drum": null,
+   "palette": "band",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 448.0,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "crossfire",
+   "colour": "split",
+   "drum": "velocity_colour",
+   "palette": "fire",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 471.5,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "figure8",
+   "colour": "split",
+   "drum": "cymbal_shimmer",
+   "palette": "neon",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 492.25,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "mirror",
+   "colour": "wave",
+   "drum": "velocity_colour",
+   "palette": "neon",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 511.0,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "circle",
+   "colour": "comet",
+   "drum": null,
+   "palette": "band",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 529.0,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "kit",
+   "colour": "sparkle",
+   "drum": "fill_build",
+   "palette": "fire",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 548.25,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "audience",
+   "colour": "split",
+   "drum": "velocity_colour",
+   "palette": "neon",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 566.0,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "random_points",
+   "colour": "chase_in",
+   "drum": null,
+   "palette": "fire",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 583.0,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "kit",
+   "colour": "sparkle",
+   "drum": "fill_build",
+   "palette": "neon",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ },
+ {
+  "t": 599.25,
+  "trigger": "timer",
+  "mood": "high",
+  "look": {
+   "move": "random_points",
+   "colour": "random_flash",
+   "drum": null,
+   "palette": "band",
+   "feel": {
+    "speed": 1.25,
+    "fade": 0.2,
+    "fan": 0.5,
+    "size": 0.7,
+    "shift": 0.0
+   },
+   "bank_feel": {}
+  }
+ }
+]

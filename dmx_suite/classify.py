@@ -8,7 +8,7 @@ Classes:
     pixel   several colour cells (LED bars)
     strobe  white-only or a strobe/blinder with no colour mixing
     effect  colour wheel or gobo but no colour mixing and no movement (effect lights, derbies)
-    kick    a light MASTER doesn't touch (rule 3, e.g. the kick-drum light): never in the auto show
+    kick    a light MASTER doesn't touch (rule 3, e.g. the kick-drum light): takes the look's colour (v7), never a move/drum/flash
 
 Haze machines are never part of the auto show (rule 5).
 
@@ -17,6 +17,7 @@ Override per rig config (`auto:` in the rig file):
       classes: {uk_a: head, wash_3: strobe}     # the class to treat a light as
       exclude: [smoke_2, wash_4]                # leave out of the auto show
       exclude_fx: [static, police]              # FX types the autopilot never picks (still playable by hand)
+      exclude_palettes: [ice]                   # v7: palettes it never picks (a tap still plays one)
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ class AutoConfig:
     classes: dict[str, str] = field(default_factory=dict)  # fixture id -> class (override)
     exclude: list[str] = field(default_factory=list)
     exclude_fx: list[str] = field(default_factory=list)  # FX bank item ids the autopilot leaves out
+    exclude_palettes: list[str] = field(default_factory=list)  # v7: palettes the autopilot never picks
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {}
@@ -61,14 +63,17 @@ class AutoConfig:
             d["exclude"] = list(self.exclude)
         if self.exclude_fx:
             d["exclude_fx"] = list(self.exclude_fx)
+        if self.exclude_palettes:
+            d["exclude_palettes"] = list(self.exclude_palettes)
         return d
 
 
 def parse_auto(d: Any, patch: Patch) -> AutoConfig:
     if d is None:
         return AutoConfig()
-    if not isinstance(d, dict) or set(d) - {"classes", "exclude", "exclude_fx"}:
-        raise ConfigError("auto: classes {light: class}, exclude [lights] and exclude_fx [FX types]")
+    if not isinstance(d, dict) or set(d) - {"classes", "exclude", "exclude_fx", "exclude_palettes"}:
+        raise ConfigError("auto: classes {light: class}, exclude [lights], exclude_fx [FX types] and "
+                          "exclude_palettes [palettes]")
     classes = d.get("classes") or {}
     if not isinstance(classes, dict):
         raise ConfigError("auto classes: {light: class}")
@@ -101,8 +106,11 @@ def parse_auto(d: Any, patch: Patch) -> AutoConfig:
             raise ConfigError(f"auto exclude_fx: unknown FX type {k!r}")
         if item.bank == "flash":
             raise ConfigError(f"auto exclude_fx: {k} is a Flash FX (played by hand, never by the autopilot)")
+    xpal = d.get("exclude_palettes") or []  # v7; a palette deleted later is just ignored
+    if not isinstance(xpal, list) or not all(isinstance(x, str) and x for x in xpal):
+        raise ConfigError("auto exclude_palettes: a list of palette names")
     return AutoConfig({str(k): str(v) for k, v in classes.items()}, [str(x) for x in excl],
-                      list(dict.fromkeys(str(x) for x in xfx)))
+                      list(dict.fromkeys(str(x) for x in xfx)), list(dict.fromkeys(xpal)))
 
 
 @dataclass
@@ -117,6 +125,7 @@ class AutoRig:
     pixels: int = 0  # pixel cells across the pixel lights
     has_layout: bool = False
     excluded_fx: frozenset[str] = frozenset()  # FX types the autopilot leaves out (auto: exclude_fx)
+    excluded_palettes: frozenset[str] = frozenset()  # v7: auto: exclude_palettes
 
     def ids(self, *classes: str) -> list[str]:
         out: list[str] = []
@@ -134,7 +143,8 @@ class AutoRig:
 
     def summary(self) -> dict[str, Any]:
         return {"classes": {c: list(v) for c, v in self.classes.items() if v}, "excluded": self.excluded,
-                "pixels": self.pixels, "left": self.left, "right": self.right, "excluded_fx": sorted(self.excluded_fx)}
+                "pixels": self.pixels, "left": self.left, "right": self.right, "excluded_fx": sorted(self.excluded_fx),
+                "excluded_palettes": sorted(self.excluded_palettes)}
 
 
 def auto_rig(rig: Any) -> AutoRig:
@@ -162,4 +172,5 @@ def auto_rig(rig: Any) -> AutoRig:
     right = [f for f in placed if f not in left]
     pixels = sum(rig.patch.fixtures[f].type.pixels for f in classes["pixel"])
     # full_layout always places every light
-    return AutoRig(classes, of, excluded, left, right, pixels, True, frozenset(cfg.exclude_fx))
+    return AutoRig(classes, of, excluded, left, right, pixels, True, frozenset(cfg.exclude_fx),
+                   frozenset(cfg.exclude_palettes))

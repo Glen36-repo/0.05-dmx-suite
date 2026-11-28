@@ -6,14 +6,16 @@ The auto show builds looks from **FX banks** for whatever rig you have, with no 
 
 - along the top: **Autopilot** on/off, mood **LOW / MID / HIGH** (or **Auto mood**: it follows the energy), **Hold**, **◀ Previous**, **Next look ▶**, and the energy bar
 - the layout strip shows what the lights are doing
-- **Move FX** on the left, **Flash FX** in the middle (held while your finger is on them), **Colour FX** on the right, **Drum FX** below; tap one to use it now. The type running now is **green**
-- **Exclude…** leaves types out of the autopilot: tap Exclude…, tap the types (they turn **red**), then **Done excluding**. Holding a type down for about half a second does the same at any time. Tap a red type again in Exclude mode, or hold it, to put it back. Excluded types stay on the page and still play when you tap them; the autopilot, **Re-roll** and **More like this** never pick them. They're saved in the rig file, so they stay out for every show on that rig, and this works under gig lock. Flash FX are only played by hand, so they can't be excluded
-- **Palette**, with **Lock palette** so the autopilot keeps it
+- **Move FX**, **Flash FX** (held while your finger is on them), **Colour FX** and the **Palette** bank across, **Drum FX** below; tap one to use it now. The type running now is **green**. Tiles are smaller than before (v7) so more fit on screen; on phones and touch screens they stay finger-sized
+- **Palette bank** (v7): a tile per palette (the seven built-ins and your own) with its colours and moods (LOW / MID / HIGH). Tap to play it now; it's excluded and kept just like FX types (below)
+- **Layers** (v7) under the energy bar: Move FX, Colour FX, Palette and Darkness, each with when it next changes. Tap one to **lock** it: it holds while the others keep changing (replaces Lock palette)
+- **Exclude…** leaves types and palettes out of the autopilot: tap Exclude…, tap the types (they turn **red**), then **Done excluding**. Holding a type down for about half a second does the same at any time. Tap a red type again in Exclude mode, or hold it, to put it back. Excluded types stay on the page and still play when you tap them; the autopilot, **Re-roll** and **More like this** never pick them. They're saved in the rig file, so they stay out for every show on that rig, and this works under gig lock. Flash FX are only played by hand, so they can't be excluded
 - **Feel controls**: speed, fade, fan, size, shift, for everything or per bank
 - the **Haze** controls are here too, but they're separate: the auto show never touches haze
 - **Why did it do that?** lists the autopilot's last decisions with the reason for each
 - **Lights in the auto show**: how each light is used; change one or leave it out
 - **Learn**: tap Learn, tap any control, then hit a pad or press a pedal: it's mapped and saved
+- **Autopilot settings** (folded, v7): layer timing and between songs, saved with the rig
 
 ## The autopilot
 
@@ -26,13 +28,33 @@ It picks a Move FX + Colour FX + palette + ride settings and changes them on a t
 - **MASTER off**: drum flash owns the rig and the autopilot waits
 - picking a show, scene or look by hand turns the autopilot off
 
+### Layer timing (v7)
+
+A look has four layers: **Move FX**, **Colour FX** (the drum FX goes with it), **Palette** and **Darkness**.
+
+- **Together** (default, as before): all four change at once on each look change.
+- **Staggered**: each layer runs its own clock, so something is always changing and there's never a hard cut. In Autopilot settings, set each layer to change every so many **seconds**, every so many **looks** (a look is the set's time: LOW 60 s, MID 40 s, HIGH 20 s), or only on a **new song** or a **new set**. **Spread** (± %) varies each interval at random so the layers don't line up again.
+- Every single-layer change still passes the look quality rules (no clashing combinations, contrast with what's playing, no banned or recently played looks).
+- **Lock** a layer by tapping it on the page (or the `autopilot_lock` pedal action with `layer: move | colour | palette | darkness`): it holds while the rest keep changing, in both modes. The old `palette_lock` action locks the Palette layer.
+- Events still change the look at once: a fill and crash, a build or breakdown, **Next look** (the layers on a clock), a new song (all but **new set** layers), a new set (all but **new song** layers).
+
 ### Between songs
 
-No `activity` hits for 4 seconds = the song has ended: the lights fade to a calm **talking look**. A count-in (4 evenly spaced hits on an input with the `count_in` role, e.g. sticks or the hi-hat pedal) or the first hit = the song is starting: straight back into the show. **Walk-on** and **walk-off** looks play from their buttons, or when a setlist starts and after its last song.
+No `activity` hits for the **no activity time** (4 s) = the song has ended: the lights fade to the **between-songs look**. A count-in (evenly spaced hits on an input with the `count_in` role, e.g. sticks or the hi-hat pedal) or the first hit = the song is starting: straight back into the show. **Walk-on** and **walk-off** looks play from their buttons, or when a setlist starts and after its last song. A badge shows **Between songs** and the time since the last hit.
+
+In **Autopilot settings › Between songs** (v7, saved with the rig):
+
+- **Spot the gaps** on or off (off for continuous, DJ-style sets)
+- **No activity time**: how much silence ends a song (default 4 s)
+- **Min song length**: a gap in the first part of a song doesn't end it (default 20 s), so a quiet intro or a stop doesn't count
+- **Song start**: the **first hit**, or a **count-in only** (then a stray hit while talking does nothing), and how many **count-in hits** (default 4)
+- **Fade in / Fade out** of the between-songs look (empty: the LOW fade in, the song's own fade out)
+- **Ignore inputs**: inputs that don't count as playing (a pad tapped while talking, the FCB1010)
+- **Between-songs look**, **Walk-on**, **Walk-off**: a generated look (default) or **any of your scenes**. A scene plays exactly as you made it: no Darkness and no layer timing. MASTER and haze work as always
 
 ### Control priority
 
-Highest first: **1** blackout, **2** MASTER off (drum flash), **3** Flash FX and Override buttons, **4** hold (the look stays, the autopilot stops changing), **5** the autopilot or the running show. Pedals: `autopilot`, `hold`, `look_next`, `look_prev`, `mood`, `walk_on`, `walk_off`, plus `autopilot_fx`, `autopilot_palette`, `palette_lock` and the faders `feel_speed`, `feel_fade`, `feel_fan`, `feel_size`, `feel_shift`.
+Highest first: **1** blackout, **2** MASTER off (drum flash), **3** Flash FX and Override buttons, **4** hold (the look stays, the autopilot stops changing), **5** the autopilot or the running show. Pedals: `autopilot`, `hold`, `look_next`, `look_prev`, `mood`, `walk_on`, `walk_off`, plus `autopilot_fx`, `autopilot_palette`, `exclude_palette` (v7), `autopilot_lock` (v7, `layer:`), `palette_lock` and the faders `feel_speed`, `feel_fade`, `feel_fan`, `feel_size`, `feel_shift`.
 
 Set `release_fade_s` in the rig file (e.g. `0.5`) and letting go of a higher level fades back to the one below (MASTER back on, blackout off, a held Flash FX) instead of cutting.
 
@@ -44,11 +66,29 @@ autopilot:
   variation: 0.2
   no_repeat: 4
   fade: {low: 4, mid: 2, high: 0.5}
-  gap_s: 4
-  count_in: 4
-  talking: {colour: static, palette: white, move: kit, feel: {speed: 0.5}}
   palettes: [warm, cool, band]
+  timing: staggered                     # v7: together (default) or staggered
+  layers:
+    move: {every_s: 30, spread: 20}
+    colour: {every_looks: 1}
+    palette: {on: song}                 # song | set
+    darkness: {every_s: 12, locked: false}
+  between:                              # v7 (older shows had gap_s / count_in / talking here)
+    on: true
+    gap_s: 4
+    start: first_hit                    # or count_in
+    count_in: 4
+    min_song_s: 20
+    fade_in: null                       # null = the LOW fade
+    fade_out: null                      # null = the song's fade
+    ignore: [fcb_pad_1]
+    look: {colour: static, palette: white, move: kit, feel: {speed: 0.5}}   # or {scene: talking}
+  walk_on: {scene: intro}               # a generated look or a scene
+auto:
+  exclude_palettes: [ice]               # v7: palettes the autopilot never picks
 ```
+
+Show file format 7 (v7) moves `gap_s`, `count_in` and `talking` into `between:` (`talking` is its `look`). Older shows upgrade once when opened, with a backup; a comment on those three lines doesn't move with them.
 
 Every decision (time, energy, mood, look, why) is saved per gig in `logs/decisions-YYYY-MM-DD.jsonl` in app data; Claude reads it with `autopilot_status`.
 
@@ -120,19 +160,21 @@ Each item says what it needs (heads, colour lights, pixels). Only what the rig c
 
 - **Speed** (¼× to 4×), **fade** (how soft colour changes are), **fan** (spread across the lights), **size** (how big the movement, how wide the pixels, how dense the sparkle), **shift** (phase offset)
 - each can be set for everything and per bank (move, colour, drum) on top
-- a **palette** (Warm, Cool, Fire, Ice, Neon, White, Band colours or your own) can be locked so the autopilot keeps it
+- a **palette** (Warm, Cool, Fire, Ice, Neon, White, Band colours or your own) is picked from the palette bank; lock the Palette layer to keep it
 
 ## Darkness
 
 **Darkness** (Autopilot page, under the Feel controls) makes the show darker by putting **black into the effects**, not by dimming. At 0 the looks play as programmed. As it goes up, sweeps get narrower lit bands, colour cycles and palettes get black slots (50 % = colour, black, colour, black), gradients and rainbows get gaps between colours, and still colour looks get a regular pattern of black lights or pixels (alternate, every third ...) that moves with the look's shift. At 100 % the rig is black.
 
 - **Black is colour off.** Dimmers stay where they were, MASTER still owns on/off, the haze is untouched, and there's no glow: black is 0.
-- The **kick light** is exempt and always plays its look.
+- The **kick light** is exempt and always plays its look. From v7 it takes the look's colour like every other light (the palette, or the colour FX running), instead of white.
 - Only the **Autopilot's** looks: hand-made scenes and shows play as made. **Override** sits above it and ignores it.
 - **Moving heads** keep moving while black.
 - With MASTER off a **drum hit** flashes what the pattern has lit; black slots stay black.
 - The edge between lit and black is as soft as the look's **fade** (0 = a hard cut), and every change eases in over the same fade, so a pedal sweep never steps.
-- **Store for set** saves the slider's value for LOW, MID or HIGH; changing set loads its value. A slider or pedal move holds until the next set change.
+- **Manual** (as before): the slider or pedal sets it; it holds until the next set change.
+- **Auto** (v7): two markers on the slider bar, **Min** and **Max**. Darkness moves between them on its own, on the Darkness layer (its own clock when staggered, each look when together), spending **Time at Max** (%) of the time at Max and the rest at Min. It stays at each marker at least one Darkness-layer interval, so it never flips back and forth. Moving the slider or pedal in Auto goes back to Manual (the page says so).
+- **Store for set** saves what's shown for LOW, MID or HIGH: the slider's value in Manual, or Auto with its markers and time at Max; changing set loads it.
 - **Pedal:** give an expression pedal CC the `darkness` role on the MIDI page (or map the `darkness` action to it). See [MIDI](midi-osc.md).
 
 Each layer of a look can carry its own `lit:` (0-100 %, default 100), and the autopilot renders `lit x (1 - darkness)`: a look at 60 % with Darkness at 50 % plays 30 % lit.
@@ -141,8 +183,10 @@ In the rig file:
 
 ```yaml
 autopilot:
-  darkness: 0                 # % at start
-  set_darkness: {low: 60, mid: 30, high: 0}
+  darkness: 0                 # % at start (Manual)
+  darkness_mode: manual       # v7: manual | auto
+  darkness_auto: {min: 0, max: 60, time_at_max: 30, hold_s: null}   # hold null = the layer's interval
+  set_darkness: {low: 60, mid: 30, high: {mode: auto, min: 10, max: 80, time_at_max: 25}}
 ```
 
 ## Look quality rules
