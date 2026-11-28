@@ -2,7 +2,7 @@
 
 Repo: Glen36-repo/0.05-dmx-suite. Saved as `docs/v8-brief.md` on branch `v8` (from `v7`). Builds on v7 — start once v7 Parts A–E are merged (needs the v7 Palette bank, Darkness modes and layer timing).
 
-Scope: Autopilot effects only — palette use, how Darkness looks, and new / variant Colour FX. Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
+Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
 
 Background (from the code, 28/11):
 - Colour FX that ignore the palette: `rainbow` (full hue wheel), `lightning` (hard-coded white), `fire` (fixed fire colours).
@@ -23,7 +23,7 @@ Background (from the code, 28/11):
 - **Colour + background effects** (Wave, Comet, Bounce, Fill, Sparkle, Twinkle, Bars, Radial …): background forced to black when darkness > 0; the lit colour cycles through palette-with-black.
 - Pixel bars: never a few random dead segments mid-bar.
 - Tests at 50 % darkness: every light / segment is lit at some point within one effect cycle; no unit stays black longer than ~2 cycles; measured black share ≈ darkness (±15 %).
-- New effects in this brief (4, 5, 7, 8) are `lit_aware` from the start.
+- New effects in this brief (4, 5, 7, 8, 10) are `lit_aware` from the start.
 
 ## 3. Twinkle — make it readable
 - Today: each unit (light or segment) picks at random each ~3 s cycle (density 0.3) whether to fade in / out of `$colour` over `$colour2`. With two similar palette colours it barely reads.
@@ -65,10 +65,45 @@ Own tile each, alongside the original (separately excludable):
 - One-colour palette → mixed = original; Autopilot skips the mixed tile then (no duplicate looks).
 - Darkness: black is one of the colours a pulse can land on (item 2).
 
+## 9. Flash FX — split into Hit and Hold
+- **Hit** (one-shot: a press plays it through to the end; holding changes nothing): Colour hit (palette colour, fades out), Flash and decay (white hit, fades out), Blinder hit (full white, one short burst).
+- **Hold** (runs while the button / pedal is held, stops on release): Blinder, Strobe (at the set rate), Blackout (haze keeps running), Freeze (holds the current look).
+- Bank shows two rows (Hit / Hold), each tile marked. MIDI / pedal mappings follow the type: Hit fires on press, Hold runs press → release.
+- **Remove** Chase hit and Rig split hit. Mappings that use them are flagged on load and moved to Colour hit (nothing silently stops working).
+- Rules unchanged: colour only, never haze, never the MASTER-exempt kick light.
+
+## 10. New Colour FX (picked from the simulator, 28/11)
+Simulator: https://claude.ai/artifact/HG5LxQtkx5nqQMBBNyaTcv — reference for look and timing. All take the palette (item 1) and are `lit_aware` (item 2).
+- **Ripple**: a ring of colour spreads from a random spot on the stage layout and fades; new spots keep coming (Radial always starts at centre). Settings: rate, ring speed, ring width.
+- **Stack**: segments drop down each bar one at a time (gravity) and pile up at the bottom until full, hold, clear; each drop the next palette colour; bars offset so they don't stack in sync. Non-bar lights fill bottom-up with the stack by layout height.
+- **Sparkle dark** (inverse sparkle): all lit in the palette, random units blink off briefly. Darkness = more / longer blink-offs.
+- **Theatre chase**: marquee — one on, two off — crawling along the rig (layout order) in palette colours; on the beat.
+- **Collide — vertical**: two palette colours run in from the top and bottom of each bar, meet in the middle and blend, pull back. Non-bar lights by layout height (top vs bottom).
+- **Collide — horizontal**: two palette colours run in from the left and right of the rig (layout x, across all lights and bars), meet at centre stage and blend, pull back. Own tile each.
+- **Glitter**: slow-drifting palette base with quick white sparkles on top.
+- **Aurora / Ocean**: slow overlapping curtains of palette colour drifting across the rig — LOW, acoustic, opera.
+- **Candle**: gentle independent flicker per light in palette colours (Warm / White) — opera, acoustic.
+- **Alternate**: odd / even lights swap between two palette colours on the beat; pair moves on every 8 beats.
+- Not taken: Fireworks, Bouncing balls, Heartbeat.
+
+## 11. New Move FX (MHL36; U'Kings stay colour only)
+All respect head limits and v7 exclusion zones; positions from the rig's saved head points (kit, singer, audience L/R, stage L/R) with sensible defaults if a point is missing.
+- **Fly-out**: both heads start on the kit, sweep out to the audience (one left, one right), hold, come back.
+- **Converge / split**: heads meet on one point (kit, then singer, alternating), hold, split to the sides, hold.
+- **Beat stabs**: jump to a new saved point every beat (or snare hit) — quick move, short hold.
+- **Pendulum**: pan swings like a pendulum, beam traces an arc rising at each end, fastest through the middle; heads mirrored.
+- **Spiral**: circle that grows from centre to full size and shrinks back.
+- **Square / triangle / star**: traces a shape with sharp corners (shape setting; Autopilot may rotate between them).
+- **Lissajous search**: slow wandering path that never quite repeats — opera / between songs.
+- **Tilt nod**: small quick tilt dips on the beat while pan drifts slowly.
+- **Sky scan**: heads tilt up into the ceiling and sweep wide across it, crossing — for builds.
+- **Contrast**: one head runs a circle while the other runs a figure 8 at a different speed.
+- Beat-based ones (Theatre chase, Alternate, Beat stabs, Tilt nod) use the v6 e-drum tempo, else tap / set tempo.
+
 ---
 
 ## Bank / UI
-- New tiles: Rain, Random fill, Random fill (mixed), Directional sweep, Random flash (mixed), Bounce (mixed), Wave (mixed). Renamed: Directional wave.
+- New tiles: Rain, Random fill, Random fill (mixed), Directional sweep, Random flash (mixed), Bounce (mixed), Wave (mixed), Ripple, Stack, Sparkle dark, Theatre chase, Collide (vertical), Collide (horizontal), Glitter, Aurora / Ocean, Candle, Alternate; Move: Fly-out, Converge / split, Beat stabs, Pendulum, Spiral, Square / triangle / star, Lissajous search, Tilt nod, Sky scan, Contrast. Renamed: Directional wave. Flash bank: Hit / Hold rows.
 - Each new effect: busy score, speed class, moods, needs (`pixels` / `layout`) set like existing items; quality rules and contrast checks apply; manual page + ⓘ text.
 - MCP / API: new effects listed by `list_fx`, usable in `save_item` / `preview_look`.
 
