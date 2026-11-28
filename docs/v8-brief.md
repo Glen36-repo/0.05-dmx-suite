@@ -2,7 +2,7 @@
 
 Repo: Glen36-repo/0.05-dmx-suite. Saved as `docs/v8-brief.md` on branch `v8` (from `v7`). Builds on v7 — start once v7 Parts A–E are merged (needs the v7 Palette bank, Darkness modes and layer timing).
 
-Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review), plus adjustable stage centrelines (item 12). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
+Scope: Autopilot effects only — palette use, how Darkness looks, new / variant Colour FX, new Move FX, and the Flash FX Hit / Hold split (items 9–11 added 28/11 after the simulator review), plus adjustable stage centrelines (item 12) and the Heads page rework (item 13). Plan before writing code (`docs/v8-plan.md`, same style as v7). Rules unchanged: colour only (no dimmer — MASTER owns on/off), never haze, kick light MASTER- and Darkness-exempt, no background glow.
 
 Background (from the code, 28/11):
 - Colour FX that ignore the palette: `rainbow` (full hue wheel), `lightning` (hard-coded white), `fire` (fixed fire colours).
@@ -113,6 +113,24 @@ All respect head limits and v7 exclusion zones; positions from the rig's saved h
 - Lights exactly on a line count as centre (both sides / lit first in centre-out).
 - MCP / API: `get_layout` / `set_layout` include `centre: {x, y}`.
 - Rig file: `layout: centre: {x, y}` (grid cells); missing = auto middle, no warning; no format bump needed.
+
+## 13. Heads page — bigger pads, limit sliders, points on the pad
+- Today: each head's drag pad is a small 2:1 box; pan / tilt limits are number fields on the Fixtures page (`rig.head_limits`); saved head points are a list, not shown on the pad.
+- **Bigger pads**: each head's pad uses the full page width (one head per row on narrow screens, side by side on wide), at least double the current size. Fine mode stays.
+- **Limit sliders under each pad** — two range sliders, each with two draggable arrows (min / max):
+  - **Pan (horizontal)** under the pad, **Tilt (vertical)** beside or under it, labelled in % and degrees (from the fixture's pan / tilt range).
+  - The pad shades the area outside the limits; the head can't be dragged into it (same clamp as output, rule 8).
+  - **Click / drag an arrow → the head moves to that limit** (the arrow's axis at the limit, other axis where it is), so you can see exactly where the edge lands in the room and fine-tune it. Arrow keys nudge the selected arrow (fine step with Shift).
+  - Saved to the rig's `head_limits` (same data as today); the Fixtures page number fields go (one place to edit limits — Heads).
+- **Saved points as crosshairs on the pad**:
+  - Every head point for that head shows as a labelled crosshair at its pan / tilt.
+  - **Click a crosshair → the head goes there** (for checking / refocusing at load-in); drag it to move the point, release to save (undo available). Arrow keys nudge the selected crosshair.
+  - Crosshairs outside the limits or inside a v7 exclusion zone show in red (flagged, as now).
+  - Points that apply to all heads ("*") show on every pad; editing one asks "this head only / all heads".
+  - The existing points list, description / tags / stage place, Focus mode and re-focus walk stay.
+- Layers on the pad, bottom to top: out-of-limits shading, v7 exclusion zones, point crosshairs, live head dot.
+- Disabled under gig lock (view only; clicking a crosshair still moves the head unless the show is running).
+- MCP: `save_point` / `list_points` unchanged; `set_head_limits {fixture, pan: [lo, hi], tilt: [lo, hi]}`.
 
 ---
 
