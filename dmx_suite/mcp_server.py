@@ -125,7 +125,8 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
                       remove: bool = False) -> str:
         """Add or change one piece's zone of a kit: notes ('38 40'), role (kick, snare, hat, tom, cymbal, tap,
         count_in, trigger_only), tempo weight 0-2, velocity_floor, tempo (include in tempo), flash_yaml
-        ('{fixtures: [bars], colour: show, length_ms: 120}' or 'none'), trigger_yaml ('{scene: blue_wave}',
+        ('{fixtures: [bars], length_ms: 120, min_level: 0.6}' or 'none'; v7: a hit opens those lights onto the
+        playing look, min_level = how bright the softest hit is), trigger_yaml ('{scene: blue_wave}',
         '{preset: x}', '{flash_fx: x}' or 'none'), name, piece_name. remove=True removes the zone (zone ''
         = the whole piece). Saved and backed up; not under gig lock."""
         return t.set_kit_piece(kit, piece, zone, notes, role, weight, velocity_floor, tempo, flash_yaml, trigger_yaml,

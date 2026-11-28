@@ -149,7 +149,7 @@ def test_export_import_round_trip(app, tmp_path):
     from dmx_suite.app import App
 
     app.new_kit("gm")
-    app.set_kit_piece("gm", "snare", "rim", {"notes": [40, 39], "flash": {"fixtures": ["washes"], "colour": "white"}})
+    app.set_kit_piece("gm", "snare", "rim", {"notes": [40, 39], "flash": {"fixtures": ["washes"], "min_level": 0.5}})
     text = app.export_kit("gm")
     other = tmp_path / "other"
     shutil.copytree(SHOWS, other, ignore=shutil.ignore_patterns(".backups", ".state.json"))

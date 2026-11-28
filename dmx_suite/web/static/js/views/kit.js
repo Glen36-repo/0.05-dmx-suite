@@ -6,6 +6,8 @@ import { api, attempt, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
 import { onLeave, onShow } from "../nav.js";
+import { lightItems, picker } from "../picker.js";
+import { live as state } from "../state.js";
 
 let view = null;
 let timer = null;
@@ -18,7 +20,22 @@ async function change(piece, zone, changes) {
   load();
 }
 
-function flashText(f) { return f ? (f.fixtures || []).join(", ") : ""; }
+// v7: the flash target is a tick-box picker of lights (and groups) with the pad's min level (softest hit)
+function flashCell(pid, zid, z) {
+  const { items, groups } = lightItems(state.cat?.fixtures, state.cat?.groups || {});
+  const was = JSON.stringify(z.flash?.fixtures || []);
+  const p = picker({ items, groups, value: z.flash?.fixtures || [], label: t("kit.flash"), all: t("picker.all_lights") });
+  p.dataset.flash = z.input;
+  p.addEventListener("toggle", () => { // saved once the picker closes (each save redraws the table)
+    if (p.open || JSON.stringify(p.value) === was) return;
+    change(pid, zid, { flash: p.value.length ? { ...(z.flash || {}), fixtures: p.value } : null });
+  });
+  const lvl = el("input", { type: "number", class: "num", min: 0, max: 100, step: 5, "data-min-level": z.input,
+    value: z.flash ? Math.round((z.flash.min_level ?? 0.6) * 100) : "", disabled: !z.flash || undefined,
+    title: t("kit.min_level_tip"), "aria-label": t("kit.min_level_aria", { input: z.input }),
+    onchange: (e) => change(pid, zid, { flash: { ...z.flash, min_level: Math.max(0, Math.min(100, +e.target.value || 0)) / 100 } }) });
+  return el("div", { class: "row kit-flash" }, p, el("label", { class: "ap-field" }, lvl, el("span", { class: "muted", text: "%" })));
+}
 function triggerText(tr) { return tr ? Object.entries(tr).map(([k, v]) => `${k}:${v}`).join("") : ""; }
 
 function row(pid, piece, zid, z, first) {
@@ -32,10 +49,7 @@ function row(pid, piece, zid, z, first) {
     el("td", {}, inp({ class: "num", type: "number", step: 0.1, min: 0, max: 2, value: z.weight ?? "" }, (e) => change(pid, zid, { weight: e.value === "" ? null : +e.value }))),
     el("td", {}, inp({ class: "num", type: "number", min: 0, max: 127, value: z.velocity_floor ?? "" }, (e) => change(pid, zid, { velocity_floor: e.value === "" ? null : +e.value }))),
     el("td", {}, el("input", { type: "checkbox", checked: z.tempo !== false || undefined, onchange: (e) => change(pid, zid, { tempo: e.target.checked }) })),
-    el("td", {}, inp({ class: "wide", value: flashText(z.flash) }, (e) => {
-      const fx = e.value.split(/[\s,]+/).filter(Boolean);
-      change(pid, zid, { flash: fx.length ? { ...(z.flash || {}), fixtures: fx } : null });
-    })),
+    el("td", {}, flashCell(pid, zid, z)),
     el("td", {}, inp({ class: "wide", value: triggerText(z.trigger) }, (e) => {
       const [k, ...v] = e.value.split(":");
       change(pid, zid, { trigger: e.value.trim() ? { [k.trim()]: v.join(":").trim() } : null });

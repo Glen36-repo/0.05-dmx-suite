@@ -43,9 +43,19 @@ The **Drum Kit** section (MIDI page) is the drummer's kit, defined once: the tem
 
 - **Pieces and zones:** kick, snare (head, rim, cross-stick), hi-hat (closed, pedal, open), toms (head, rim), crashes, ride (bow, bell, edge), china / splash, extra pads, a tap pad. **Add piece** for anything else; ✕ removes a zone.
 - **Learn:** press Learn on a zone and hit that pad: its note is stored (and taken off any other zone). **+ note** adds a second note to the same zone.
-- Per zone: **role** (kick, snare, hat, tom, cymbal, tap, count-in, trigger only), **tempo weight** and **velocity floor** for the tempo (blank = the defaults), **Tempo** (in or out of the tempo), **Drum flash** (the fixtures it flashes with MASTER off; the kit owns these, not the MIDI map) and **Trigger** (`scene:name`, `preset:id` or `flash_fx:id`, fired by that pad, separate from the FCB1010).
+- Per zone: **role** (kick, snare, hat, tom, cymbal, tap, count-in, trigger only), **tempo weight** and **velocity floor** for the tempo (blank = the defaults), **Tempo** (in or out of the tempo), **Drum flash** (tick the lights or groups a hit opens with MASTER off, saved when the list closes, and the **softest hit %**; the kit owns these, not the MIDI map) and **Trigger** (`scene:name`, `preset:id` or `flash_fx:id`, fired by that pad, separate from the FCB1010).
 - Each hit lights its row. Notes heard on the kit's channel that aren't in the kit show in amber, so a missed zone is obvious.
 - **New kit (General MIDI)** starts from the GM note numbers; the menu switches the active kit; **Export** copies the kit as text and **Import** takes one from another laptop.
+
+### Drum flash: a gate on the playing look (v7)
+
+With MASTER off the rig is dark, and a drum hit **opens** the lights it's set to for the length of the hit: they show exactly what the playing scene, show or Autopilot look has on each of them at that moment (its colour or chase, pixels, head position, gobo and shutter). Nothing is added: a light the look leaves dark stays dark, and Darkness's black slots stay black. So with MASTER off the drums strobe the live show.
+
+- How bright: from the pad's **softest hit %** (default 60 %, so a soft hit still flashes clearly) up to full on the hardest hit, in a straight line. Calibrate the pad (above) to set what counts as soft and hard.
+- Moving heads open their shutter for the hit (the look's shutter setting, else the head's normal open value).
+- With MASTER on a hit does nothing visible to lights that are already lit.
+- The kick light is never flashed; Flash FX (blinder, colour hit, strobe ...) are separate and unchanged.
+- Shows from before v7 had a flash colour (show / white): it's removed when the show is opened (format 7); a white one is noted in the log.
 
 A show from before v6 has no kit yet: its drum inputs show as **band_kit**, and the first change you make saves it as a kit (the drum inputs and their flash settings move into it; inputs.yaml and the MIDI map are backed up first). Input names stay the same, so mappings and step scenes keep working.
 
@@ -74,7 +84,7 @@ The **Tempo** pane on the Monitor page shows each hit by drum against the beat g
 ```yaml
 mappings:
   - {input: master, action: master_toggle}
-  - {input: snare, action: flash, fixtures: [bars], length_ms: 120}
+  - {input: snare, action: flash, fixtures: [bars], length_ms: 120, min_level: 0.6}   # min_level: softest hit
   - {input: expression, action: grand_master}
 ```
 

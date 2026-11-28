@@ -237,8 +237,12 @@ def test_drum_kit_section_learn_live_and_unmapped(ui):
     page.wait_for_selector("#kit-rows tr[data-input=snare].hit")
     app.router.handle_mido(mido.Message("note_on", channel=9, note=99, velocity=90), "TD-25")
     page.wait_for_function("document.querySelector('#kit-unmapped').textContent.includes('99')")
-    page.fill("#kit-rows tr[data-input=snare] input.wide >> nth=0", "bar_1, bar_2")
-    page.locator("#kit-rows tr[data-input=snare] input.wide >> nth=0").dispatch_event("change")
+    flash = "#kit-rows [data-flash=snare]"  # v7: a tick-box picker, saved when it closes
+    page.click(f"{flash} summary")
+    page.click(f"{flash} [data-pick=none]")
+    page.check(f"{flash} [data-item=bar_1]")
+    page.check(f"{flash} [data-item=bar_2]")
+    page.keyboard.press("Escape")
     for _ in range(40):
         if app.files.midimap.get_input("snare").params["fixtures"] == ["bar_1", "bar_2"]:
             break

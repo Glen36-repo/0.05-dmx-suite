@@ -37,7 +37,7 @@ ACTIONS: dict[str, set[str]] = {
     "blackout_on": set(),
     "blackout_off": set(),
     "blackout_toggle": set(),
-    "flash": {"fixtures", "length_ms", "colour", "min_level"},
+    "flash": {"fixtures", "length_ms", "min_level"},  # v7: no colour (a hit shows the live look)
     "grand_master": set(),
     "sub_master": {"kind"},
     "flash_level": set(),
@@ -200,9 +200,9 @@ def validate(m: Mapping, input_type: str | None = None) -> None:
     if m.action == "flash":
         if not m.params.get("fixtures"):
             raise ConfigError(f"{where}: flash needs fixtures")
-        c = m.params.get("colour", "show")
-        if c not in ("show", "white"):
-            raise ConfigError(f"{where}: flash colour must be show or white")
+        ml = m.params.get("min_level")
+        if ml is not None and (isinstance(ml, bool) or not isinstance(ml, (int, float)) or not 0 <= ml <= 1):
+            raise ConfigError(f"{where}: flash min_level 0-1 (how bright the softest hit is)")
     for action, key in (("select_show", "show"), ("select_set", "set"), ("select_scene", "scene")):
         if m.action == action and not m.params.get(key):
             raise ConfigError(f"{where}: {action} needs {key}")

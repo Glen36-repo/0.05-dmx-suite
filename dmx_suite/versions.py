@@ -124,7 +124,8 @@ def _midi_5_to_6(d: dict[str, Any]) -> dict[str, Any]:
 
 
 # Format 6 -> 7 (v7): between songs gets its own block. Rig `autopilot:` gap_s / count_in / talking
-# move into `autopilot: between:` (talking is its `look`). Part D adds the flash steps here.
+# move into `autopilot: between:` (talking is its `look`). Drum flash is a gate on the playing look
+# (Part D), so flash mappings and kit zone flash targets lose their `colour:` (show / white).
 
 def _rig_6_to_7(d: dict[str, Any]) -> dict[str, Any]:
     from .autopilot import fold_between
@@ -135,11 +136,38 @@ def _rig_6_to_7(d: dict[str, Any]) -> dict[str, Any]:
     return d
 
 
+def _drop_flash_colour(flash: Any, where: str) -> None:
+    if isinstance(flash, dict) and "colour" in flash:
+        c = flash.pop("colour")
+        if c not in (None, "show"):
+            import logging
+
+            logging.getLogger(__name__).warning("%s: drum flash colour %r dropped: a hit now shows the playing look (v7)",
+                                                where, c)
+
+
+def _midi_6_to_7(d: dict[str, Any]) -> dict[str, Any]:
+    for m in d.get("mappings") or []:
+        if isinstance(m, dict) and m.get("action") == "flash":
+            _drop_flash_colour(m, f"MIDI map flash on {m.get('input') or m.get('note') or m.get('address')}")
+    return d
+
+
+def _inputs_6_to_7(d: dict[str, Any]) -> dict[str, Any]:
+    for kid, kit in (d.get("kits") or {}).items():
+        for pid, piece in ((kit or {}).get("pieces") or {}).items() if isinstance(kit, dict) else ():
+            for zid, zone in ((piece or {}).get("zones") or {}).items() if isinstance(piece, dict) else ():
+                if isinstance(zone, dict):
+                    _drop_flash_colour(zone.get("flash"), f"kit {kid} {pid} {zid}")
+    return d
+
+
 STEPS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
     "rig": {1: _rig_1_to_2, 2: _rig_2_to_3, 5: _rig_5_to_6, 6: _rig_6_to_7},
     "fixtures": {3: _fixtures_3_to_4},
     "presets": {5: _presets_5_to_6},
-    "midi": {5: _midi_5_to_6},
+    "midi": {5: _midi_5_to_6, 6: _midi_6_to_7},
+    "inputs": {6: _inputs_6_to_7},
 }
 
 

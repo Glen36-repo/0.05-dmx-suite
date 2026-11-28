@@ -5,6 +5,8 @@ import { t } from "../i18n.js";
 import { init as initKit } from "./kit.js";
 import { onCatalogue, onMidi, onState } from "../state.js";
 import { onShow } from "../nav.js";
+import { lightItems, picker } from "../picker.js";
+import { live } from "../state.js";
 
 let channel = "";
 let paused = false;
@@ -175,6 +177,18 @@ export function init() {
     $("#midi-pause").textContent = t(paused ? "midi.resume" : "midi.pause");
   };
   $("#midi-clear").onclick = () => { attempt(() => api("POST", "/api/midi/clear", {})); $("#monitor").replaceChildren(); };
+  // v7: the lights a flash opens come from a tick-box picker (fixtures= in the text still works)
+  let targets = [];
+  const buildTargets = () => {
+    const { items, groups } = lightItems(live.cat?.fixtures, live.cat?.groups || {});
+    const p = picker({ items, groups, value: targets, label: t("midi.flash_targets"), all: t("picker.all_lights"),
+      onChange: (ids) => { targets = ids; } });
+    p.id = "learn-fixtures";
+    $("#learn-fixtures").replaceWith(p);
+    p.classList.toggle("hidden", $("#learn-action").value !== "flash");
+  };
+  onCatalogue(buildTargets);
+  $("#learn-action").addEventListener("change", () => $("#learn-fixtures").classList.toggle("hidden", $("#learn-action").value !== "flash"));
   $("#learn-go").onclick = () => {
     let params;
     try {
@@ -182,6 +196,7 @@ export function init() {
     } catch (e) {
       return toast(e.message, true);
     }
+    if ($("#learn-action").value === "flash" && targets.length) params.fixtures = targets;
     attempt(() => api("POST", "/api/midi/learn", { action: $("#learn-action").value, params }));
   };
   $("#learn-cancel").onclick = () => attempt(() => api("POST", "/api/midi/cancel", {}));

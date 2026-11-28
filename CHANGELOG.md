@@ -2,6 +2,14 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v7 Part D: drum flash)
+
+### Changed
+- **A drum hit is a gate on the playing look.** With MASTER off, a hit opens only its lights for the hit and they show what the playing scene or look has on each of them at that moment (colour, chase, pixels, position, gobo, shutter). Nothing is added: no flash colour, no white. With MASTER on a hit does nothing visible to lit lights.
+- Hit level runs from the pad's **softest hit %** (default 60 %) to full, so soft hits still flash clearly. Set per pad on the Drum Kit page (`min_level` in the kit or the MIDI map).
+- Drum Kit page and MIDI learn: flash targets are a tick-box picker of lights and groups instead of a typed list.
+- Show file format 7 removes the old flash `colour` (show / white) from MIDI maps and kits; a white one is noted in the log.
+
 ## Unreleased (v7 Part C: Heads)
 
 ### Added

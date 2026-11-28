@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from ..engine import Engine
+from ..engine import FLASH_MIN_LEVEL, Engine
 from .map import ACTIONS, AUTOPILOT_ACTIONS, CONTINUOUS, Mapping, MidiMap, canonical, validate
 from .monitor import MidiMonitor, MonitorEntry, note_name
 from .named import InputDef, Inputs, suggest
@@ -319,7 +319,7 @@ class MidiRouter:
             vel = m.value if m.type == "note" else 127
             if inp is not None and m.type == "note":
                 vel = max(1, round(inp.strength(vel) * 127))  # calibrated velocity curve (linear = as hit)
-            ok = e.flash(fixtures, vel, p.get("colour", "show"), int(p.get("length_ms", 100)), float(p.get("min_level", 0)))
+            ok = e.flash(fixtures, vel, int(p.get("length_ms", 100)), float(p.get("min_level", FLASH_MIN_LEVEL)))
             return f"flash {','.join(p['fixtures'])} vel {vel}" if ok else "flash ignored (MASTER on)"
         if a in SHOW_ACTIONS:
             return self._show_action(a, p)

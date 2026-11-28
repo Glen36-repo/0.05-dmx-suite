@@ -168,7 +168,7 @@ def control(app: App, cmd: str, a: dict[str, Any]) -> Any:
     elif cmd == "preview_end":
         e.end_preview()
     elif cmd == "flash_test":  # drum-flash check from the setup page
-        e.flash(app.files.patch.resolve(a.get("fixtures", ["all"])), int(a.get("velocity", 127)), a.get("colour", "show"))
+        e.flash(app.files.patch.resolve(a.get("fixtures", ["all"])), int(a.get("velocity", 127)))
     else:
         raise ApiError(400, f"unknown command {cmd!r}")
     return {"ok": True, "describe": c.describe()}

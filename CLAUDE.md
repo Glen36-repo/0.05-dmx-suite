@@ -29,7 +29,7 @@ Numbers are kept from v1 so tests and docs still match. From v2 R1, every rule i
 **Profile rules: settings in the rig config's profile. "0.05 band" turns all three on; "Generic" uses standard dimmer behaviour with no drum flash.**
 
 1. MASTER owns on/off. Scenes never set dimmer channels; on/off inside a scene is done through colour channels.
-2. MASTER off → mapped drum hits flash the rig, then cut to black. A hit sends a frame immediately, not on the next 40 Hz tick.
+2. MASTER off → mapped drum hits open their lights onto the playing look for the hit (v7: a gate, no colour of its own), then cut to black. A hit sends a frame immediately, not on the next 40 Hz tick.
 3. Fixtures excluded from MASTER (0.05: the kick-drum light) are never affected by it.
 
 **Fixture definition:**

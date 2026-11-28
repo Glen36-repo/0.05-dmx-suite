@@ -70,7 +70,7 @@ def test_flash_end_is_cut_exactly():
     e, view, clock = build()
     clock.advance(2)
     e.set_master(False)
-    e.flash(["bar_1"], 127, "white", length_ms=10)
+    e.flash(["bar_1"], 127, length_ms=10)
     next_tick, wait = e.loop_step(clock())
     assert wait <= 0.010 + 1e-9  # wakes for the flash end, before the next frame
     clock.advance(0.010)

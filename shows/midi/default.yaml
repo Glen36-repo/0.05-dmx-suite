@@ -14,12 +14,12 @@ mappings:
   - {input: expression, action: grand_master}     # expression pedal
 
   # TD-25, ch 10 (GM drum notes)
-  - {input: snare, action: flash, fixtures: [bars], length_ms: 120, colour: show}
-  - {input: snare_rim, action: flash, fixtures: [bars], length_ms: 120, colour: show}
-  - {input: tom_1, action: flash, fixtures: [bar_1, bar_2], length_ms: 150, colour: show}
-  - {input: tom_3, action: flash, fixtures: [bar_3, bar_4], length_ms: 150, colour: show}
-  - {input: crash, action: flash, fixtures: [all], length_ms: 250, colour: white}
-  - {input: ride, action: flash, fixtures: [washes], length_ms: 200, colour: show}
+  - {input: snare, action: flash, fixtures: [bars], length_ms: 120}
+  - {input: snare_rim, action: flash, fixtures: [bars], length_ms: 120}
+  - {input: tom_1, action: flash, fixtures: [bar_1, bar_2], length_ms: 150}
+  - {input: tom_3, action: flash, fixtures: [bar_3, bar_4], length_ms: 150}
+  - {input: crash, action: flash, fixtures: [all], length_ms: 250}
+  - {input: ride, action: flash, fixtures: [washes], length_ms: 200}
 
   # Shows and setlist (FCB1010, ch 1). PLACEHOLDER program numbers.
   - {input: set_low, action: select_set, set: low}
@@ -33,4 +33,4 @@ mappings:
   - {input: tap, action: tap_tempo}
 
   # SamplePad 4 (phase 2): add its pads to inputs.yaml (device samplepad), then map them here, e.g.
-  # - {input: pad_1, action: flash, fixtures: [movers], length_ms: 150, colour: white}
+  # - {input: pad_1, action: flash, fixtures: [movers], length_ms: 150}

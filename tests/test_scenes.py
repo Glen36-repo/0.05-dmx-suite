@@ -227,13 +227,14 @@ def test_scene_animates_in_engine(patch, pal, rig, clock):
     assert e.frames[0][40] == 0
 
 
-def test_flash_uses_scene_show_colour(patch, pal, rig, clock):
+def test_flash_shows_the_scene_not_its_show_colour(patch, pal, rig, clock):
+    """v7: a drum hit opens the light onto the scene (blue bars), not the scene's show_colour (amber)."""
     sc = scene(patch, pal, {"fixtures": ["bars"], "colour": "blue"}, show_colour="amber")
     e = Engine(rig, [LogDriver()], clock=clock)
     e.set_scene(sc)
     e.set_master(False)
-    e.flash(["bar_1"], 127, "show")
-    assert e.frames[0][19:22] == bytes([255, 128, 0])
+    e.flash(["bar_1"], 127)
+    assert e.frames[0][19:22] == bytes([0, 0, 255])
 
 
 def test_missing_fixtures_skipped(patch, pal):

@@ -38,7 +38,7 @@ def test_program_change_toggles_master(engine, midi):
 def test_drum_hit_flashes_with_velocity(engine, midi, view, clock):
     midi.program(0)  # MASTER off
     assert midi.note(38, 127).startswith("flash bars")
-    assert view("bar_1", "blue", 0) == 255
+    assert view("bar_1", "green", 0) == 255  # v7: the look's colour (bars are green), opened by the hit
     assert midi.note_off(38) == "release"
 
 
@@ -84,7 +84,7 @@ def test_monitor_records_results(router, midi):
 
 def test_learn_maps_next_message(router, midi, tmp_path, engine):
     learned = []
-    router.learn("flash", {"fixtures": ["wash"], "colour": "white"}, learned.append)
+    router.learn("flash", {"fixtures": ["wash"], "min_level": 0.8}, learned.append)
     assert router.learning == "flash"
     assert midi.note(42, 90).startswith("learned: flash")
     assert router.learning is None
@@ -96,7 +96,7 @@ def test_learn_maps_next_message(router, midi, tmp_path, engine):
     path = tmp_path / "map.yaml"
     save_map(router.map, path)
     again = load_map(path)
-    assert again.get_input("hihat").params == {"fixtures": ["wash"], "colour": "white"}
+    assert again.get_input("hihat").params == {"fixtures": ["wash"], "min_level": 0.8}
 
 
 def test_learn_continuous_needs_cc(router, midi):
