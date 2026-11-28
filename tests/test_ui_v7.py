@@ -416,3 +416,56 @@ def test_address_map_panel_remembers_open(ui):
     go(page, "live")
     go(page, "fixtures")
     assert page.eval_on_selector("#fx-addr", "e => e.open")
+
+
+# ------------------------------------------------------------------ C1 zones on the Heads page
+
+
+def test_draw_save_and_delete_a_zone(ui):
+    import yaml
+
+    page, app, root, _ = ui
+    go(page, "heads")
+    area = "[data-pad=mh_a] .area"
+    page.wait_for_selector(area)
+    page.click("#zones-mode")
+    r = page.eval_on_selector(area, "e => { const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height]; }")
+    x, y, w, h = r
+    page.mouse.move(x + 0.4 * w, y + 0.6 * h)  # pan 40 %, tilt 40 %
+    page.mouse.down()
+    page.mouse.move(x + 0.6 * w, y + 0.3 * h, steps=5)  # to pan 60 %, tilt 70 %
+    page.mouse.up()
+    page.wait_for_selector("#zone-editor:not(.hidden)")
+    page.fill("#zone-name", "Mirror")
+    page.select_option("#zone-scope", "type")
+    page.click("#zone-save")
+    for _ in range(80):
+        if app.engine.rig.head_zones.get("mh_b"):
+            break
+        page.wait_for_timeout(25)
+    z = yaml.safe_load((root / "rigs" / "full.yaml").read_text())["head_zones"]
+    m = z["mh_a"][0]
+    assert m["name"] == "Mirror" and m["shape"] == "rect" and z["mh_b"][0]["name"] == "Mirror"
+    assert abs(m["pan"][0] - 40) < 2 and abs(m["pan"][1] - 60) < 2 and abs(m["tilt"][0] - 40) < 2 and abs(m["tilt"][1] - 70) < 2
+    page.wait_for_selector("[data-pad=mh_a] svg.zones .zone[data-zone=Mirror]")
+    # aiming isn't possible while drawing; tap the zone to edit it, then delete it
+    page.mouse.click(x + 0.5 * w, y + 0.5 * h)
+    page.wait_for_selector("#zone-editor:not(.hidden)")
+    assert page.input_value("#zone-name") == "Mirror"
+    page.select_option("#zone-scope", "head")  # just this one
+    page.once("dialog", lambda d: d.accept())
+    page.click("#zone-delete")
+    for _ in range(80):
+        if not app.engine.rig.head_zones.get("mh_a"):
+            break
+        page.wait_for_timeout(25)
+    assert not app.engine.rig.head_zones.get("mh_a") and app.engine.rig.head_zones.get("mh_b")
+
+
+def test_pad_shows_a_head_held_at_a_zone(ui):
+    page, app, *_ = ui
+    app.store.put_head_zone("full", "mh_a", {"name": "Wall", "shape": "rect", "pan": [0, 100], "tilt": [0, 100]})
+    app.reload()
+    go(page, "heads")
+    page.wait_for_selector("[data-pad=mh_a].zone-held")
+    assert "held at Wall" in page.inner_text("[data-pad=mh_a] .head-row")
