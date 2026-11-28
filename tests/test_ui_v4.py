@@ -98,7 +98,7 @@ def test_focus_outline_visible(ui):
 
 # ---------------------------------------------------------------- stage view (items 1-5)
 
-FILL = """sel => { const host = document.querySelector(sel), g = host.querySelector('svg.lightgrid > g:nth-of-type(3)');
+FILL = """sel => { const host = document.querySelector(sel), g = host.querySelector('svg.lightgrid > g.lights');
   const h = host.getBoundingClientRect(), b = g.getBoundingClientRect();
   return Math.max(b.width / h.width, b.height / h.height); }"""
 
@@ -731,16 +731,20 @@ def test_exclude_mode_turns_types_red_and_keeps_them(ui):
     assert rig_exclude_fx(app, [], page) == []
 
 
-def test_long_press_excludes_without_playing(ui):
+def test_long_press_opens_settings_without_playing(ui):
+    """v8: holding a type opens its settings panel (exclude = priority 0 there, or Exclude mode)."""
     page, app, *_ = ui
     go(page, "autopilot")
     page.wait_for_selector("#ride-move [data-fx=circle]")
     before = app.ride_pick.move
-    x, y = centre(page, "#ride-move [data-fx=circle]")
+    x, y = centre(page, "#ride-move [data-fx=circle] .lbl")
     page.mouse.move(x, y)
     page.mouse.down()
     page.wait_for_timeout(750)
     page.mouse.up()
+    page.wait_for_selector("#fx-panel[open]")
+    page.select_option("#fxp-prio", "0")
+    page.click("#fxp-save")
     page.wait_for_selector("#ride-move [data-fx=circle].excluded")
     assert rig_exclude_fx(app, ["circle"], page) == ["circle"] and app.ride_pick.move == before
 

@@ -146,7 +146,8 @@ def merge_positions(rig: Rig, current: dict[str, object] | None, positions: dict
             elif not isinstance(v, dict) or set(v) - {"x", "y"}:
                 raise ConfigError("layout centre: {x, y} in grid cells, or null for the middle of the lights")
             else:
-                cur = out.get(CENTRE_KEY) if isinstance(out.get(CENTRE_KEY), dict) else {}
+                old = out.get(CENTRE_KEY)
+                cur: dict[str, object] = old if isinstance(old, dict) else {}
                 now = rig.layout_centre()
                 out[CENTRE_KEY] = {"x": v.get("x", cur.get("x", now[0])), "y": v.get("y", cur.get("y", now[1]))}
             continue

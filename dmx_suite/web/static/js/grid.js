@@ -141,7 +141,7 @@ export class LightGrid {
     this.root = svg("svg", { class: "lightgrid" + (this.selectable ? " edit" : ""), role: "img" });
     this.gGrid = svg("g", { class: "gridlines" });
     this.gBeams = svg("g", { class: "beams" });
-    this.gLights = svg("g");
+    this.gLights = svg("g", { class: "lights" });
     this.gMarquee = svg("g");
     this.gArrow = svg("g", { class: "arrow" });
     this.gCentre = svg("g", { class: "centrelines" });

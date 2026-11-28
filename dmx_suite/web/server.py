@@ -56,6 +56,7 @@ CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/st
                  "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness", "/api/tempo",
                  "/api/kits",  # v5 / v6
                  "/api/autopilot/palette",  # v7 palette bank: play / leave out (a live control)
+                 "/api/autopilot/fx",  # v8 FX settings (store edits; the gig lock applies)
                  "/api/autopilot/settings")  # v7: layer timing, between songs, darkness (a store edit)
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
@@ -770,6 +771,32 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             with app.store.acting(who):  # undo remembers who made each change
                 return self._dispatch(method, path, body)
 
+        def _fx_settings(self, b: dict) -> dict[str, Any]:
+            """v8: one FX tile's settings. action: get | save | reset | priority | duplicate | delete | preview."""
+            a = str(b.get("action", "get"))
+            item = str(b.get("item", ""))
+            pal = b.get("palette")
+            if a == "get":
+                return app.palette_item(str(pal)) if pal else app.fx_item(item)
+            if a == "save":
+                ov = b.get("overrides")
+                if not isinstance(ov, dict):
+                    raise ValueError("save needs overrides {priority, darkness, moods, min_s, max_s, params, name}")
+                return app.save_palette_settings(str(pal), ov) if pal else app.save_fx(item, ov)
+            if a == "reset":
+                return app.save_palette_settings(str(pal), None) if pal else app.save_fx(item, None)
+            if a == "priority":
+                p = b.get("priority")
+                return app.set_fx_priority(str(pal) if pal else item, None if p is None else int(p), palette=bool(pal))
+            if a == "duplicate":
+                return app.duplicate_fx(item, b.get("name"))
+            if a == "delete":
+                return app.delete_fx(item)
+            if a == "preview":
+                msg = app.preview_fx(item or None, str(pal) if pal else None, float(b.get("seconds", 10)))
+                return {"ok": True, "message": msg}
+            raise ValueError("action: get, save, reset, priority, duplicate, delete or preview")
+
         def _dispatch(self, method: str, path: str, body: dict) -> None:
             if method == "POST" and path.startswith("/api/autopilot/"):  # v4 names for the Ride page's routes
                 rest = path[len("/api/autopilot/"):]
@@ -801,11 +828,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 app.set_gig_lock(bool(body.get("on")))
                 return self._json(200, {"ok": True, "gig_lock": app.gig_lock})
             if path == "/api/layout" and method == "PUT":
-                try:
-                    bid = (app.save_layout(body.get("layout") or {}, body["centre"]) if "centre" in body
-                           else app.save_layout(body.get("layout") or {}))
-                except ValueError as e:
-                    raise ApiError(400, str(e)) from e
+                bid = (app.save_layout(body.get("layout") or {}, body["centre"]) if "centre" in body
+                       else app.save_layout(body.get("layout") or {}))
                 return self._json(200, {"ok": True, "backup": bid})
             if path == "/api/monitor/send" and method == "POST":  # MIDI test send (gig-locked)
                 sent = app.midi_send(str(body.get("port", "")), str(body.get("type", "note_on")), int(body.get("channel", 1)),
@@ -976,6 +1000,11 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     if body.get("play"):
                         out["message"] = app.ride_action("autopilot_palette", {"palette": pal})
                     return self._json(200, out)
+                except ValueError as e:
+                    raise ApiError(400, str(e)) from e
+            if path == "/api/ride/fx" and method == "POST":  # v8 FX settings panel (long-press a tile)
+                try:
+                    return self._json(200, self._fx_settings(body))
                 except ValueError as e:
                     raise ApiError(400, str(e)) from e
             if path == "/api/ride/exclude" and method == "POST":  # leave an FX type out of the autopilot (v4.1)

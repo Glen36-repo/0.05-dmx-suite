@@ -36,8 +36,10 @@ PALETTE_KEYS = ("priority", "restore", "darkness")
 DARKNESS = ("follow", "exempt")
 DEFAULT_PRIORITY = 3
 MOODS = ("low", "mid", "high")
-# settings the panel doesn't offer: colours come from the playing palette, fixtures from the bank
-FIXED_PARAMS = {"colour", "colours", "background", "fixtures", "blend"}
+# settings the panel doesn't offer: colours come from the playing palette, fixtures from the bank; free text
+# (tags, seed) and positions (points come with v8 Part B's Position / Point tour) aren't per-look settings
+FIXED_PARAMS = {"colour", "colours", "background", "fixtures", "blend", "tags", "seed"}
+FIXED_KINDS = {"colour", "colours", "position", "text"}
 VARIANT_ID = re.compile(r"^(?P<of>[a-z0-9_]+)_v(?P<n>\d+)$")
 
 
@@ -56,7 +58,8 @@ def editable_params(item: Any) -> list[Any]:
     eff = get(str(item.layer.get("effect", "")))
     if eff is None:
         return []
-    return [p for p in eff.params if p.key not in FIXED_PARAMS and p.kind not in ("colour", "colours")]
+    fixed = FIXED_PARAMS | ({"pattern"} if item.bank == "move" else set())  # a Move FX's pattern is what it is
+    return [p for p in eff.params if p.key not in fixed and p.kind not in FIXED_KINDS]
 
 
 def check_params(item: Any, params: Any, where: str) -> dict[str, Any]:

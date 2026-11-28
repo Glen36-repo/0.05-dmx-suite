@@ -6,6 +6,7 @@ import { api, attempt, cmd, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { LightGrid } from "../grid.js";
 import { t } from "../i18n.js";
+import { infoButton } from "../info.js";
 import { go, onLeave, onShow } from "../nav.js";
 import { picker } from "../picker.js";
 import { review } from "./review.js";
@@ -15,7 +16,7 @@ let fx = null; // /api/fx
 let grid = null;
 let learning = false;
 let excluding = false; // Exclude mode: a tap on a type leaves it out of the autopilot (or puts it back)
-const HOLD_MS = 600; // long-press on a type does the same, any time
+const HOLD_MS = 600; // v8: long-press (or right-click) a type opens its settings panel
 let bank = ""; // fader tab: "" = everything, or move / colour / drum
 const FADERS = ["speed", "fade", "fan", "size", "shift"];
 const CLASSES = ["head", "wash", "pixel", "strobe", "effect"];
@@ -30,28 +31,189 @@ function act(action, params = {}, level) {
 }
 
 function fxTitle(item) {
-  return `${item.label} · ${t("autopilot.busy", { n: Math.round(item.busy * 100) })}` + (item.excluded ? ` · ${t("autopilot.excluded_tip")}` : "");
+  return `${item.label} · ${t("autopilot.busy", { n: Math.round(item.busy * 100) })}` + (item.excluded ? ` · ${t("autopilot.excluded_tip")}` : "")
+    + ` · ${t("fxp.hold_tip")}`;
 }
 
-// a type button: tap plays it (or, in Exclude mode, leaves it out / puts it back); hold to exclude any time
-function fxButton(item, onClick, b = null, toggle = toggleExcluded) {
-  b = b || el("button", { class: "ride-fx" + (item.excluded ? " excluded" : ""), "data-fx": item.id, title: fxTitle(item) }, item.label);
+// v8: the priority badge (0-5) on a tile, its own touch target; a tap steps 1 -> 5 -> 1 (never to 0)
+function badge(item, b, key) {
+  const p = el("span", { class: "prio", role: "button", tabindex: 0, "data-prio": String(item.priority ?? 3),
+                         "aria-label": t("fxp.badge_tip", { n: item.priority ?? 3 }), title: t("fxp.badge_tip", { n: item.priority ?? 3 }) },
+    String(item.priority ?? 3));
+  const step = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (live.state?.gig_lock) return toast(t("fxp.locked"), true);
+    try {
+      const r = await api("POST", "/api/autopilot/fx", { action: "priority", ...key });
+      item.priority = r.priority;
+      item.excluded = r.priority === 0;
+      p.textContent = p.dataset.prio = String(r.priority);
+      p.title = t("fxp.badge_tip", { n: r.priority });
+      b.classList.toggle("excluded", item.excluded);
+    } catch (err) { toast(err.message, true); }
+  };
+  for (const ev of ["pointerdown", "pointerup"]) p.addEventListener(ev, (e) => e.stopPropagation()); // no long-press, no play
+  p.addEventListener("click", step);
+  p.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") step(e); });
+  const dot = el("span", { class: "ovr" + (item.overridden ? "" : " hidden"), title: t("fxp.changed") });
+  b.append(dot, p);
+  return b;
+}
+
+// a type button: tap plays it (or, in Exclude mode, leaves it out / puts it back); hold or right-click for its settings
+function fxButton(item, onClick, b = null, toggle = toggleExcluded, key = { item: item.id }) {
+  b = b || el("button", { class: "ride-fx" + (item.excluded ? " excluded" : ""), "data-fx": item.id, title: fxTitle(item) },
+    el("span", { class: "lbl", text: item.label }));
+  badge(item, b, key);
   let timer = null, held = false;
   const cancel = () => { clearTimeout(timer); timer = null; };
   b.addEventListener("pointerdown", (e) => {
     if (e.button > 0) return;
     held = false;
     cancel();
-    timer = setTimeout(() => { held = true; timer = null; navigator.vibrate?.(15); toggle(item, b); }, HOLD_MS);
+    timer = setTimeout(() => { held = true; timer = null; navigator.vibrate?.(15); openPanel(key); }, HOLD_MS);
   });
   for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, cancel);
-  b.addEventListener("contextmenu", (e) => e.preventDefault()); // a long touch mustn't open the browser's menu
+  b.addEventListener("contextmenu", (e) => { e.preventDefault(); if (!held) openPanel(key); }); // right-click; a long touch mustn't open the browser's menu
   b.addEventListener("click", (e) => {
     if (held) { held = false; e.preventDefault(); return; } // the long-press already did its job
     if (excluding && !learning) return toggle(item, b);
     onClick();
   });
   return b;
+}
+
+// ---------------------------------------------------------------- v8 FX settings panel
+
+const num0 = (v) => (v === "" || v === null || v === undefined ? null : +v);
+
+function paramInput(p) {
+  const id = `fxp-p-${p.key}`;
+  const has = p.value !== undefined && JSON.stringify(p.value) !== JSON.stringify(p.default);
+  let inp;
+  if (p.kind === "bool") {
+    inp = el("select", { id }, el("option", { value: "" }, t("fxp.default", { v: p.default ? t("fxp.on") : t("fxp.off") })),
+      el("option", { value: "true" }, t("fxp.on")), el("option", { value: "false" }, t("fxp.off")));
+    inp.value = has ? String(!!p.value) : "";
+  } else if (p.kind === "choice") {
+    inp = el("select", { id }, el("option", { value: "" }, t("fxp.default", { v: p.default ?? "" })),
+      ...(p.choices || []).map((c) => el("option", { value: c }, c)));
+    inp.value = has ? p.value : "";
+  } else if (["number", "int", "angle"].includes(p.kind)) {
+    inp = el("input", { id, type: "number", step: p.kind === "int" ? 1 : "any", placeholder: p.default ?? "",
+                        ...(p.lo !== undefined ? { min: p.lo } : {}), ...(p.hi !== undefined ? { max: p.hi } : {}) });
+    inp.value = has ? p.value : "";
+  } else {
+    inp = el("input", { id, placeholder: p.default ?? "" });
+    inp.value = has ? p.value : "";
+  }
+  inp.dataset.key = p.key;
+  inp.dataset.kind = p.kind;
+  return el("label", { class: "fxp-field", for: id, title: p.help || "" }, el("span", { text: p.label }), inp);
+}
+
+function readParams(d) {
+  const out = {};
+  for (const inp of d.querySelectorAll("[data-key]")) {
+    const v = inp.value;
+    if (v === "") continue;
+    const k = inp.dataset.kind;
+    out[inp.dataset.key] = k === "bool" ? v === "true" : ["number", "int", "angle"].includes(k) ? +v : v;
+  }
+  return out;
+}
+
+let panelKey = null;
+
+async function openPanel(key) {
+  let it;
+  try { it = await api("POST", "/api/autopilot/fx", { action: "get", ...key }); } catch (err) { return toast(err.message, true); }
+  panelKey = key;
+  const d = $("#fx-panel");
+  const locked = !!live.state?.gig_lock;
+  const pal = !!key.palette;
+  const dk = it.darkness === "follow" || it.darkness === "exempt" ? it.darkness : "reduced";
+  const dkLabels = { follow: t("fxp.dark_follow"), exempt: t("fxp.dark_exempt"), reduced: t("fxp.dark_reduced") };
+  const dkSel = el("select", { id: "fxp-dark" }, ...Object.entries(dkLabels).map(([v, label]) => el("option", { value: v }, label)));
+  dkSel.value = dk;
+  const dkVal = el("input", { id: "fxp-dark-val", type: "range", min: 0, max: 100, step: 5, value: dk === "reduced" ? Math.round(+it.darkness * 100) : 50,
+                              "aria-label": t("fxp.dark_share") });
+  const dkOut = el("span", { class: "muted", text: dkVal.value + " %" });
+  dkVal.oninput = () => (dkOut.textContent = dkVal.value + " %");
+  const showVal = () => { dkVal.closest("label").classList.toggle("hidden", dkSel.value !== "reduced"); };
+  dkSel.onchange = showVal;
+  const prio = el("select", { id: "fxp-prio" }, ...[0, 1, 2, 3, 4, 5].map((n) => el("option", { value: n }, n === 0 ? t("fxp.prio_0") : String(n))));
+  prio.value = String(it.priority ?? 3);
+  const moods = el("span", { class: "fxp-moods" }, ...MOODS.map((m) => el("label", { class: "check" },
+    el("input", { type: "checkbox", "data-mood": m, checked: (it.moods || []).includes(m) || undefined }),
+    el("span", { text: t("autopilot.mood_" + m) }))));
+  const minS = el("input", { id: "fxp-min", type: "number", min: 2, max: 3600, step: 1, value: it.min_s ?? "", placeholder: t("fxp.any") });
+  const maxS = el("input", { id: "fxp-max", type: "number", min: 2, max: 3600, step: 1, value: it.max_s ?? "", placeholder: t("fxp.any") });
+  const name = it.variant ? el("input", { id: "fxp-name", value: it.label }) : null;
+  const params = pal ? [] : (it.params || []).map(paramInput);
+  const btn = (id, label, onclick, cls = "") => el("button", { type: "button", id, class: cls, onclick }, label);
+  const save = async () => {
+    const ov = {};
+    const p = +prio.value;
+    if (p !== 3) ov.priority = p;
+    if (dkSel.value === "exempt") ov.darkness = "exempt";
+    else if (dkSel.value === "reduced") ov.darkness = +dkVal.value / 100;
+    if (!pal) {
+      const ms = MOODS.filter((m) => moods.querySelector(`[data-mood=${m}]`).checked);
+      if (!ms.length) return toast(t("fxp.need_mood"), true);
+      if (ms.join() !== (it.default_moods || MOODS).join()) ov.moods = ms;
+      if (num0(minS.value) !== null) ov.min_s = num0(minS.value);
+      if (num0(maxS.value) !== null) ov.max_s = num0(maxS.value);
+      const ps = readParams(d.querySelector(".fxp-params"));
+      if (Object.keys(ps).length) ov.params = ps;
+      if (name && name.value.trim()) ov.name = name.value.trim();
+    }
+    const r = await attempt(() => api("POST", "/api/autopilot/fx", { action: "save", ...key, overrides: ov }), t("fxp.saved", { name: it.label }));
+    if (r) { d.close(); load(); }
+  };
+  const children = [
+    el("h3", {}, name ? t("fxp.title_variant") : it.label, infoButton("autopilot.fx_settings")),
+    name ? el("label", { class: "fxp-field" }, el("span", { text: t("fxp.name") }), name) : null,
+    locked ? el("p", { class: "muted", text: t("fxp.locked") }) : null,
+    el("h4", { text: t("fxp.darkness") }),
+    el("div", { class: "fxp-row" }, el("label", { class: "fxp-field" }, el("span", { text: t("fxp.darkness_mode") }), dkSel),
+      el("label", { class: "fxp-field" }, el("span", { text: t("fxp.dark_share") }), dkVal, dkOut)),
+    params.length ? el("h4", { text: t("fxp.params") }) : null,
+    params.length ? el("div", { class: "fxp-params fxp-row" }, ...params) : el("div", { class: "fxp-params" }),
+    el("h4", { text: t("fxp.autopilot") }),
+    el("div", { class: "fxp-row" }, el("label", { class: "fxp-field" }, el("span", { text: t("fxp.priority") }), prio),
+      pal ? null : el("div", { class: "fxp-field" }, el("span", { text: t("fxp.moods") }), moods),
+      pal ? null : el("label", { class: "fxp-field" }, el("span", { text: t("fxp.min_s") }), minS),
+      pal ? null : el("label", { class: "fxp-field" }, el("span", { text: t("fxp.max_s") }), maxS)),
+    el("div", { class: "row wrap fxp-buttons" },
+      btn("fxp-save", t("fxp.save"), save, "primary"),
+      btn("fxp-preview", t("fxp.preview"), () => attempt(() => api("POST", "/api/autopilot/fx", { action: "preview", ...key }), (r) => r.message)),
+      btn("fxp-reset", t("fxp.reset"), async () => {
+        if (await attempt(() => api("POST", "/api/autopilot/fx", { action: "reset", ...key }), t("fxp.reset_done", { name: it.label }))) { d.close(); load(); }
+      }),
+      pal ? null : btn("fxp-dup", t("fxp.duplicate"), async () => {
+        const r = await attempt(() => api("POST", "/api/autopilot/fx", { action: "duplicate", ...key }), (x) => t("fxp.duplicated", { name: x.item.label }));
+        if (r) { await load(); openPanel({ item: r.id }); }
+      }),
+      it.variant ? btn("fxp-delete", t("fxp.delete"), async () => {
+        if (!confirm(t("fxp.delete_confirm", { name: it.label }))) return;
+        if (await attempt(() => api("POST", "/api/autopilot/fx", { action: "delete", ...key }), t("fxp.deleted", { name: it.label }))) { d.close(); load(); }
+      }, "danger-text") : null,
+      btn("fxp-close", t("fxp.close"), () => d.close())),
+  ].filter(Boolean);
+  d.replaceChildren(...children);
+  showVal();
+  if (locked) { // gig lock: read-only, no Preview
+    d.querySelectorAll("input, select").forEach((x) => (x.disabled = true));
+    for (const id of ["fxp-save", "fxp-preview", "fxp-reset", "fxp-dup", "fxp-delete"]) { const b = d.querySelector("#" + id); if (b) b.disabled = true; }
+  }
+  if (!d.open) d.showModal();
+}
+
+function setBadge(b, n) {
+  const p = b.querySelector(".prio");
+  if (p) { p.textContent = p.dataset.prio = String(n); p.title = t("fxp.badge_tip", { n }); }
 }
 
 async function toggleExcluded(item, b) {
@@ -61,6 +223,9 @@ async function toggleExcluded(item, b) {
   b.title = fxTitle(item);
   try {
     await api("POST", "/api/autopilot/exclude", { item: item.id, excluded: want });
+    const now = (await api("POST", "/api/autopilot/fx", { action: "get", item: item.id })).priority; // put back: its old priority
+    item.priority = now;
+    setBadge(b, now);
     toast(t(want ? "autopilot.excluded_toast" : "autopilot.included_toast", { name: item.label }));
   } catch (err) {
     item.excluded = !want;
@@ -80,7 +245,7 @@ function palTile(key, p) {
   const b = el("button", { class: "ride-fx ride-pal-tile" + (p.excluded ? " excluded" : ""), "data-palette": key, title: palTitle(p) },
     el("span", { class: "pal-sw" }, ...p.swatches.map((c) => el("i", { style: `background:${c}` }))),
     el("span", { text: p.name }), el("span", { class: "tags", text: tags }));
-  return fxButton(p, () => act("autopilot_palette", { palette: key }), b, (item, btn) => togglePalette(key, item, btn));
+  return fxButton(p, () => act("autopilot_palette", { palette: key }), b, (item, btn) => togglePalette(key, item, btn), { palette: key });
 }
 async function togglePalette(key, p, b) {
   const want = !p.excluded;
@@ -89,6 +254,9 @@ async function togglePalette(key, p, b) {
   b.title = palTitle(p);
   try {
     await api("POST", "/api/autopilot/palette", { palette: key, excluded: want });
+    const now = (await api("POST", "/api/autopilot/fx", { action: "get", palette: key })).priority;
+    p.priority = now;
+    setBadge(b, now);
     toast(t(want ? "autopilot.excluded_toast" : "autopilot.included_toast", { name: p.name }));
   } catch (err) {
     p.excluded = !want;

@@ -162,7 +162,11 @@ AUTOPILOT (v3.4): changes looks on a timer per mood (rig `autopilot:` moods {low
   (between Min and Max markers, time_at_max % at Max, a minimum hold; a slider / pedal move goes back to Manual).
   Layer timing (v7): save_autopilot_settings timing together | staggered, layers {move, colour, palette,
   darkness: {every_s | every_looks | on: song|set, spread, locked}}. Palette bank (v7): play_palette plays one
-  now; exclude_palette leaves one out of the autopilot's picks (rig auto: exclude_palettes), like FX types.
+  now; exclude_palette leaves one out of the autopilot's picks (v8: priority 0), like FX types.
+FX SETTINGS (v8): get_fx / save_fx per Move, Colour or Drum FX type (and palette): priority 0-5 (pick
+  weight; 0 = excluded), darkness follow | exempt | 0-1, moods, min_s / max_s on screen, params (the
+  effect's own settings, see get_fx). duplicate_fx makes a variant (its own tile, picked as its own type,
+  never right after its original); delete_fx removes a variant. set_fx_priority sets 0-5 or steps 1-5.
 AUTO SHOW (v3.3): list_fx shows the FX banks for this rig (Move, Colour, Flash, drum-reactive), how the
   lights are classified, and the palettes. preview_look tries a pick {move, colour, drum, palette, feel:
   {speed, fade, fan, size, shift}, mood} and says what the look quality rules think (get_quality_rules,
@@ -479,6 +483,33 @@ class DmxTools:
     def play_palette(self, palette: str) -> str:
         r = self._live("POST", "/api/autopilot/palette", {"palette": palette, "play": True})
         return r.get("message", "ok")
+
+    # ---- v8 FX settings (the Autopilot page's long-press panel)
+
+    def get_fx(self, item: str = "", palette: str = "") -> str:
+        return _dump(self._live("POST", "/api/autopilot/fx", {"action": "get", "item": item, "palette": palette or None}))
+
+    def save_fx(self, item: str = "", overrides_yaml: str = "{}", palette: str = "") -> str:
+        ov = _yaml(overrides_yaml or "{}", "FX settings")
+        action = "save" if ov else "reset"
+        r = self._live("POST", "/api/autopilot/fx", {"action": action, "item": item, "palette": palette or None,
+                                                     "overrides": ov})
+        it = r["item"]
+        return (f"saved (backup {r['backup']}): {it['label']} priority {it['priority']}, darkness {it['darkness']}"
+                + (f", settings {it['overrides']}" if it.get("overrides") else ", defaults"))
+
+    def set_fx_priority(self, item: str = "", priority: int | None = None, palette: str = "") -> str:
+        r = self._live("POST", "/api/autopilot/fx", {"action": "priority", "item": item, "palette": palette or None,
+                                                     "priority": priority})
+        return f"{palette or item}: priority {r['priority']}{' (excluded)' if r['priority'] == 0 else ''} (backup {r['backup']})"
+
+    def duplicate_fx(self, item: str, name: str = "") -> str:
+        r = self._live("POST", "/api/autopilot/fx", {"action": "duplicate", "item": item, "name": name or None})
+        return f"made {r['id']} ({r['item']['label']}), a copy of {item} with its settings (backup {r['backup']})"
+
+    def delete_fx(self, item: str) -> str:
+        r = self._live("POST", "/api/autopilot/fx", {"action": "delete", "item": item})
+        return f"deleted {item} (backup {r['backup']})"
 
     def exclude_palette(self, palette: str, excluded: bool = True) -> str:
         r = self._live("POST", "/api/autopilot/palette", {"palette": palette, "excluded": excluded})

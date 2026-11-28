@@ -1170,6 +1170,7 @@ class App:
                                                for i in ar.all_items()],
                 "palettes": {k: {"name": v["name"], "tags": v["tags"], "excluded": k in ar.excluded_palettes,
                                  "priority": ar.palette_priority.get(k, 3),
+                                 "overridden": k in ((self.engine.rig.autopilot or {}).get("palette_settings") or {}),
                                  "swatches": [hex_of(c) for c in v["resolved"]][:6]}
                              for k, v in self.files.palettes.sets.items()},
                 "pick": self.ride_pick.to_dict(), "quality": self.quality().r}
@@ -1566,6 +1567,48 @@ class App:
         out = self._edit_fx(vid, lambda _: {"of": of, "name": label, **cur}, f"autopilot: duplicate {it.label} as {label}",
                             block="variants")
         return {**out, "id": vid, "item": self.fx_item(vid)}
+
+    def preview_fx(self, item: str | None = None, palette: str | None = None, seconds: float = 10) -> str:
+        """The settings panel's Preview: the playing look with this FX type (or palette) in it, for a while,
+        with its settings; then back to what was running. Not under gig lock (as every preview)."""
+        from .fxbanks import Pick
+
+        pick = Pick.from_dict(self.ride_pick.to_dict())
+        if palette is not None:
+            if palette not in self.files.palettes.sets:
+                raise ValueError(f"no palette {palette!r}")
+            pick.palette = palette
+            label = f"palette {self.files.palettes.sets[palette]['name']}"
+        else:
+            it = self.rig_auto().item(item)
+            if it is None or it.bank == "flash":
+                raise ValueError(f"no autopilot FX type {item!r}")
+            setattr(pick, it.bank, it.id)
+            label = it.label
+        _, data = self.compose(pick, f"Preview: {label}")
+        return self.preview_scene(data, seconds, darkness=self.darkness(self.engine.clock()) * 100)
+
+    def palette_item(self, palette: str) -> dict[str, Any]:
+        """A palette tile for the settings panel (v8): priority and darkness only."""
+        sets = self.files.palettes.sets
+        if palette not in sets:
+            raise ValueError(f"no palette {palette!r}")
+        ov = dict(((self.engine.rig.autopilot or {}).get("palette_settings") or {}).get(palette) or {})
+        return {"id": palette, "bank": "palette", "label": sets[palette]["name"], "priority": ov.get("priority", 3),
+                "darkness": ov.get("darkness", "follow"), "overrides": ov, "overridden": bool(ov), "params": [],
+                "variant": False}
+
+    def save_palette_settings(self, palette: str, overrides: dict[str, Any] | None) -> dict[str, Any]:
+        from . import fxoverrides as fo
+
+        if palette not in self.files.palettes.sets:
+            raise ValueError(f"no palette {palette!r}")
+        ov = dict(overrides or {})
+        if set(ov) - set(fo.PALETTE_KEYS):
+            raise ValueError("palette settings are priority and darkness")
+        out = self._edit_fx(palette, lambda _: ov, f"autopilot: palette {palette} {'settings' if ov else 'reset'}",
+                            block="palette_settings")
+        return {**out, "item": self.palette_item(palette)}
 
     def delete_fx(self, item: str) -> dict[str, Any]:
         """Delete a variant (originals can't be deleted, only excluded)."""

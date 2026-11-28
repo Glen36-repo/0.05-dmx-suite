@@ -200,8 +200,41 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     @tool
     def exclude_palette(palette: str, excluded: bool = True) -> str:
         """Leave a palette out of the Autopilot's picks (excluded=True) or put it back (False). Saved in the rig
-        (auto: exclude_palettes); it stays on the page and can still be played by hand. Allowed under gig lock."""
+        (v8: priority 0 under autopilot: palette_settings); it stays on the page and can still be played by
+        hand. Allowed under gig lock."""
         return t.exclude_palette(palette, excluded)
+
+    @tool
+    def get_fx(item: str = "", palette: str = "") -> str:
+        """One Autopilot FX type's settings (v8 settings panel): priority 0-5 (0 = excluded), darkness (follow,
+        exempt or 0-1 Reduced), moods, min_s / max_s, its overrides, and every editable param of its effect
+        with the default and current value. Give `palette` instead for a palette tile (priority, darkness)."""
+        return t.get_fx(item, palette)
+
+    @tool
+    def save_fx(item: str = "", overrides_yaml: str = "{}", palette: str = "") -> str:
+        """Save an FX type's settings on the running rig, e.g. item fan, overrides_yaml
+        '{priority: 4, darkness: exempt, moods: [mid, high], min_s: 20, params: {period_s: 8}}'. Only what you
+        give is stored (the rest stays default); '{}' resets it. For a variant, `name` renames it. Palette tiles
+        take priority and darkness. Not during gig lock."""
+        return t.save_fx(item, overrides_yaml, palette)
+
+    @tool
+    def set_fx_priority(item: str = "", priority: int | None = None, palette: str = "") -> str:
+        """Set an FX type's (or palette's) priority 0-5: how often the Autopilot picks it (a 5 about 5x a 1;
+        0 = excluded, still playable by hand). No priority = the next one 1 -> 5 -> 1 (the tile's badge)."""
+        return t.set_fx_priority(item, priority, palette)
+
+    @tool
+    def duplicate_fx(item: str, name: str = "") -> str:
+        """Duplicate an FX type as a variant with its own settings (e.g. a slow wide Fan and a fast tight one):
+        its own tile, picked as its own type, never straight after its original. Returns the new id."""
+        return t.duplicate_fx(item, name)
+
+    @tool
+    def delete_fx(item: str) -> str:
+        """Delete an FX variant (built-in types can't be deleted, only excluded with priority 0)."""
+        return t.delete_fx(item)
 
     @tool
     def save_autopilot_settings(rig: str, yaml_text: str = "{}", timing: str | None = None,

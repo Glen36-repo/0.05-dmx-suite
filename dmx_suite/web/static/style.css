@@ -429,6 +429,24 @@ button.big { min-height: var(--perform-h); padding: 0 18px; font-size: 16px; fon
 .sep-v { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
 /* the type running now is green; a type left out of the autopilot is red and stays on the page (v4.1) */
 button.ride-fx.sel { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 34%, var(--panel)); }
+/* v8: priority badge (its own touch target, 32 px) and the "settings changed" dot */
+button.ride-fx { position: relative; }
+button.ride-fx:has(> .prio) { padding-right: 30px; }
+button.ride-fx .prio { position: absolute; top: 0; right: 0; width: 28px; min-height: 32px; height: 100%; max-height: 44px;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--muted);
+  border-left: 1px solid color-mix(in srgb, var(--line) 70%, transparent); cursor: pointer; }
+button.ride-fx .prio[data-prio="0"] { color: var(--bad); }
+button.ride-fx .prio[data-prio="4"], button.ride-fx .prio[data-prio="5"] { color: var(--ok); }
+button.ride-fx .ovr { position: absolute; top: 3px; left: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.fx-panel { max-width: min(640px, calc(100vw - 32px)); width: 100%; margin: auto; max-height: calc(100dvh - 32px); overflow: auto; }
+.fx-panel::backdrop { background: rgb(0 0 0 / 45%); }
+.fx-panel h3 { margin-top: 0; display: flex; gap: 8px; align-items: center; }
+.fx-panel h4 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.fxp-row { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.fxp-field { display: flex; flex-direction: column; gap: 4px; min-width: 120px; font-size: 13px; }
+.fxp-field input[type=number], .fxp-field select { min-height: 32px; }
+.fxp-moods { display: flex; gap: 10px; }
+.fxp-buttons { margin-top: 16px; gap: 8px; }
 button.ride-fx.excluded { border-color: color-mix(in srgb, var(--bad) 70%, var(--line)); background: color-mix(in srgb, var(--bad) 26%, var(--panel)); }
 button.ride-fx.excluded.sel { background: color-mix(in srgb, var(--ok) 34%, var(--panel)); border: 2px dashed var(--bad); } /* played by hand */
 #page-autopilot.excluding .ride-fx:not(.flash) { outline: 1px dashed color-mix(in srgb, var(--bad) 60%, transparent); outline-offset: 1px; }

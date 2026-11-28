@@ -132,16 +132,21 @@ def test_palette_tiles_play_and_exclude(ui):
 
 
 def test_palette_long_press_excludes(ui):
+    """v8: holding a palette opens its settings (priority, darkness); priority 0 leaves it out."""
     page, app, *_ = ui
     go(page, "autopilot")
     tile = "#ride-palettes [data-palette=neon]"
     page.wait_for_selector(tile)
     box = page.eval_on_selector(tile, "e => { const r = e.getBoundingClientRect(); "
-                                      "return [r.x + r.width / 2, r.y + r.height / 2]; }")
+                                      "return [r.x + r.width / 3, r.y + r.height / 2]; }")
     page.mouse.move(*box)
     page.mouse.down()
     page.wait_for_timeout(750)
     page.mouse.up()
+    page.wait_for_selector("#fx-panel[open]")
+    assert page.locator("#fx-panel .fxp-params [data-key]").count() == 0  # palettes: priority and darkness only
+    page.select_option("#fxp-prio", "0")
+    page.click("#fxp-save")
     page.wait_for_selector(f"{tile}.excluded")
     assert rig_auto_key(app, "exclude_palettes", ["neon"], page) == ["neon"]
 

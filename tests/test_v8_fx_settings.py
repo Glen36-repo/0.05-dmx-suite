@@ -8,7 +8,7 @@ import collections
 import pytest
 import yaml
 from test_autopilot import app  # noqa: F401 - pytest fixture
-from test_v6_darkness import lit_px
+from test_v6_darkness import lit_px, running  # noqa: F401 - pytest fixture
 
 from dmx_suite import fxoverrides as fo
 from dmx_suite.autopilot import parse_config
@@ -259,3 +259,32 @@ def test_layer_darkness_key_in_scenes(app):
     with pytest.raises(Exception, match="isn't one of this layer's lights"):
         parse_scene({"layers": [{"fixtures": ["bars"], "colour": "red", "darkness": {"mh_a": 0}}]},
                     app.files.patch, app.files.palettes, "t")
+
+
+# ---------------------------------------------------------------- API and Claude
+
+
+def test_api_and_claude(running):
+    from test_web import call
+
+    from dmx_suite.claude_tools import DmxTools
+
+    app, url, root, claude = running
+    st, it = call(f"{url}/api/autopilot/fx", "POST", {"action": "get", "item": "fan"})
+    assert st == 200 and it["priority"] == 3 and any(p["key"] == "period_s" for p in it["params"])
+    st, r = call(f"{url}/api/autopilot/fx", "POST", {"action": "priority", "item": "fan"})
+    assert st == 200 and r["priority"] == 4
+    assert call(f"{url}/api/autopilot/fx", "POST", {"action": "save", "item": "fan", "overrides": {"priority": 9}})[0] == 400
+    t = DmxTools(shows=root, url=url, token=claude)
+    assert "priority 5" in t.save_fx("fan", "{priority: 5, darkness: exempt, params: {period_s: 8}}")
+    got = yaml.safe_load(t.get_fx("fan"))
+    assert got["overrides"] == {"priority": 5, "darkness": "exempt", "params": {"period_s": 8}}
+    assert "fan_v1" in t.duplicate_fx("fan", "Fan wide")
+    assert "priority 0 (excluded)" in t.set_fx_priority("fan_v1", 0)
+    assert "fan_v1" in app.rig_auto().excluded_fx
+    assert "deleted fan_v1" in t.delete_fx("fan_v1")
+    assert "defaults" in t.save_fx("fan", "{}")
+    assert "priority 2" in t.set_fx_priority(palette="ice", priority=2)
+    assert yaml.safe_load(t.get_fx(palette="ice"))["priority"] == 2
+    st, r = call(f"{url}/api/autopilot/fx", "POST", {"action": "preview", "item": "rainbow"})
+    assert st == 200 and "previewing" in r["message"]
