@@ -44,8 +44,21 @@ function renderTempo(tp) {
   lastBeat = tp.beat;
 }
 
+// The header: what's playing, short (the tempo has its own box on the right, so it isn't repeated here)
+function nowText(s) {
+  const n = s.now;
+  if (!n) return s.describe;
+  const parts = [n.label === "static look" ? t("top.static_look") : n.label];
+  if (n.mode === "show" && n.step) {
+    parts.push(t("top.now_step", { n: n.step, scene: n.scene || "" }) + (n.time_left_s != null ? ` · ${t("top.now_left", { s: Math.round(n.time_left_s) })}` : ""));
+  }
+  if (n.setlist && n.song != null) parts.push(t("top.now_song", { n: n.song + 1, name: n.song_name || "" }));
+  return parts.join("  ·  ");
+}
+
 function render(s) {
-  $("#now").textContent = s.describe;
+  $("#now").textContent = nowText(s);
+  $("#now").title = s.describe; // the full line on hover
   renderTempo(s.tempo);
   const gated = !s.profile || s.profile.master_gate;
   $("#master").classList.toggle("hidden", !gated); // no MASTER on/off under the generic profile

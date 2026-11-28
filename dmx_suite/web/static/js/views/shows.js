@@ -117,9 +117,9 @@ function renderSet() {
 function stepList(s) {
   return el("ol", { class: "steps-edit" }, ...s.steps.map((st, i) => {
     const how = HOLDS.find((h) => h in st) || "hold_s";
-    const scene = el("select", { onchange: (e) => { st.scene = e.target.value; changed(); } },
+    const scene = el("select", { "aria-label": t("a11y.step_scene", { n: i + 1 }), onchange: (e) => { st.scene = e.target.value; changed(); } },
       ...Object.entries(live.cat.scenes).map(([k, n]) => el("option", { value: k, selected: k === st.scene }, n)));
-    const holdSel = el("select", { onchange: (e) => {
+    const holdSel = el("select", { "aria-label": t("a11y.step_hold", { n: i + 1 }), onchange: (e) => {
       const v = st[how];
       HOLDS.forEach((h) => delete st[h]);
       st[e.target.value] = e.target.value === "repeats" ? Math.max(1, Math.round(v || 1)) : v || 1;
@@ -209,16 +209,17 @@ function renderList() {
   if (!list) return;
   $("#songs-edit").replaceChildren(...list.songs.map((sg, i) => {
     const isScene = "scene" in sg;
-    const showSel = el("select", { onchange: (e) => { sg.show = e.target.value; delete sg.set; renderList(); } },
+    const n = i + 1;
+    const showSel = el("select", { "aria-label": t("a11y.song_show", { n }), onchange: (e) => { sg.show = e.target.value; delete sg.set; renderList(); } },
       ...Object.entries(live.cat.shows).map(([k, s]) => el("option", { value: k, selected: sg.show === k }, s.name)));
     const sets = sg.show && live.cat.shows[sg.show] ? live.cat.shows[sg.show].sets : [];
-    const setSel = el("select", { onchange: (e) => { setKey(sg, "set", e.target.value || undefined); renderList(); } },
+    const setSel = el("select", { "aria-label": t("a11y.song_set", { n }), onchange: (e) => { setKey(sg, "set", e.target.value || undefined); renderList(); } },
       el("option", { value: "" }, t("setlists.default_set")), ...sets.map((s) => el("option", { value: s, selected: sg.set === s }, s)));
-    const sceneSel = el("select", { onchange: (e) => { sg.scene = e.target.value; renderList(); } },
+    const sceneSel = el("select", { "aria-label": t("a11y.song_scene", { n }), onchange: (e) => { sg.scene = e.target.value; renderList(); } },
       ...Object.entries(live.cat.scenes).map(([k, n]) => el("option", { value: k, selected: sg.scene === k }, n)));
     return el("li", {},
       el("input", { value: sg.name || "", placeholder: t("setlists.song_name"), oninput: (e) => { sg.name = e.target.value; renderListState(); } }),
-      el("select", { onchange: (e) => {
+      el("select", { "aria-label": t("a11y.song_kind", { n }), onchange: (e) => {
         if (e.target.value === "scene") { delete sg.show; delete sg.set; sg.scene = Object.keys(live.cat.scenes)[0]; }
         else { delete sg.scene; sg.show = Object.keys(live.cat.shows)[0]; }
         renderList();

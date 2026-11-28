@@ -152,7 +152,7 @@ function renderLights() {
   for (const f of rig.excluded) rows.push([f, null]);
   $("#ride-lights").replaceChildren(...rows.map(([f, c]) => el("li", {},
     el("b", { text: f }),
-    el("select", { onchange: (e) => saveClass(f, e.target.value) },
+    el("select", { "aria-label": t("a11y.light_class", { id: f }), onchange: (e) => saveClass(f, e.target.value) },
       ...CLASSES.map((x) => el("option", { value: x, selected: x === c || undefined }, t("autopilot.class_" + x))),
       el("option", { value: "exclude", selected: c === null || undefined }, t("autopilot.class_exclude"))))));
 }
@@ -207,6 +207,7 @@ function update(s) {
   document.querySelectorAll("#ride-moods [data-mood]").forEach((b) => b.classList.toggle("sel",
     b.dataset.mood === "auto" ? !ap.mood_manual : ap.mood_manual && ap.mood === b.dataset.mood));
   $("#ap-energy").style.width = Math.round(ap.energy * 100) + "%";
+  $("#ap-energy").parentElement.setAttribute("aria-valuenow", Math.round(ap.energy * 100));
   $("#ap-state").textContent = [t("autopilot.mood_now", { mood: t("autopilot.mood_" + ap.mood) }),
     ap.paused ? t("autopilot.paused") : ap.between ? t("autopilot.between") : ap.next_change_s != null ? t("autopilot.next_in", { s: Math.round(ap.next_change_s) }) : "",
     t("autopilot.priority_" + s.priority.top)].filter(Boolean).join(" · ");

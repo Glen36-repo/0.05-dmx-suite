@@ -312,6 +312,11 @@ function drawTempo(r) {
     c.fillRect(x(o.t) - 2, i * lh + 2, 4, lh - 4);
   }
   c.globalAlpha = 1;
+  const hint = (ctx, w0, h0, text) => {
+    ctx.fillStyle = css("--muted", "#888"); ctx.font = "13px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(text, w0 / 2, h0 / 2 + 4); ctx.textAlign = "start";
+  };
+  if (!(dbg.onsets || []).length) hint(c, w, h, t(st.source === "drums" ? "tempo2.empty_hits" : "tempo2.empty_other"));
   const [g2, w2, h2] = sized($("#tempo-graph"));
   g2.clearRect(0, 0, w2, h2);
   const hist = dbg.history || [];
@@ -328,7 +333,7 @@ function drawTempo(r) {
     }
     g2.fillStyle = css("--muted", "#888"); g2.font = "10px sans-serif";
     g2.fillText(`${Math.round(hi)}`, 2, 10); g2.fillText(`${Math.round(lo)}`, 2, h2 - 2);
-  }
+  } else hint(g2, w2, h2, t("tempo2.empty_graph"));
   if (r.params && JSON.stringify(r.params) !== JSON.stringify(tempoParams)) { tempoParams = r.params; drawParams(); }
 }
 

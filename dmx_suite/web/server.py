@@ -411,7 +411,7 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 input_rows = ins.summary()
                 for row in input_rows:
                     m = app.router.map.get_input(row["id"])
-                    row["mapped"] = m.describe() if m else None
+                    row["mapped"] = m.label() if m else None
                 devices = [{"id": d.id, "name": d.name, "port": d.port, "channel": d.channel, "inputs": d.inputs}
                            for d in ins.devices.values()]
                 return self._json(200, {"devices": devices, "inputs": input_rows, "profiles": device_profiles(app.files.root)})

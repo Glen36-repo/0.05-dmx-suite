@@ -243,3 +243,80 @@ def test_drum_kit_section_learn_live_and_unmapped(ui):
             break
         page.wait_for_timeout(50)
     assert app.files.midimap.get_input("snare").params["fixtures"] == ["bar_1", "bar_2"]
+
+
+# ---------------------------------------------------------------- UI polish (28/11/2026 review)
+
+UNNAMED = """() => [...document.querySelectorAll(
+    'section.page.on input:not([type=hidden]):not([type=checkbox]):not([type=radio]),'
+  + ' section.page.on select, section.page.on textarea')]
+  .filter(e => e.offsetParent && !e.closest('.hidden'))
+  .filter(e => !(e.getAttribute('aria-label') || e.title || e.placeholder || e.closest('label')
+    || (e.id && document.querySelector('label[for="' + e.id + '"]'))))
+  .map(e => (e.id || e.className || e.tagName) + ' in ' + (e.parentElement?.tagName || ''))"""
+
+
+def test_every_field_has_a_name(ui):
+    page, *_ = ui
+    for p in ("live", "autopilot", "override", "shows", "review", "layout", "fixtures", "heads", "midi", "monitor", "setup"):
+        go(page, p)
+        page.wait_for_timeout(400)
+        assert page.evaluate(UNNAMED) == [], p
+
+
+def test_header_is_short_and_full_line_on_hover(ui):
+    page, app, *_ = ui
+    app.ctl.select_show("band", "mid")
+    page.wait_for_function("document.querySelector('#now').textContent.includes('Main band show')")
+    text, title = page.inner_text("#now"), page.get_attribute("#now", "title")
+    assert "fixed timers" not in text and "|" not in text and "Main band show" in text
+    assert title and "|" in title
+
+
+def test_dmx_grid_cells_readable(ui):
+    page, *_ = ui
+    go(page, "monitor")
+    page.wait_for_selector("#mon-dmx-body .dc[data-ch='512']")
+    w = page.eval_on_selector("#mon-dmx-body .dc[data-ch='1']", "e => e.getBoundingClientRect().width")
+    assert w >= 30
+    ok = page.evaluate("""() => [...document.querySelectorAll('#mon-dmx-body .dc')].slice(0, 64).every(c => {
+      const n = c.querySelector('.n').getBoundingClientRect(), v = c.querySelector('.v').getBoundingClientRect();
+      return !v.width || v.top >= n.bottom - 1; })""")
+    assert ok  # the value sits under the channel number, never on it
+
+
+def test_midi_mappings_read_like_words(ui):
+    page, *_ = ui
+    go(page, "midi")
+    page.wait_for_selector("#inputs td.mapped")
+    text = " ".join(page.locator("#inputs td.mapped").all_inner_texts())
+    assert "['" not in text and "=" not in text and "Flash · bars · 120 ms" in text
+
+
+def test_danger_text_contrast_and_checkbox_size(ui):
+    page, *_ = ui
+    go(page, "shows")
+    page.wait_for_selector("#show-del")
+    ratio = page.evaluate("""() => {
+      const e = document.querySelector('#show-del');
+      const rgb = c => c.match(/[\\d.]+/g).map(Number);
+      const lin = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+      const lum = ([r, g, b]) => .2126 * lin(r) + .7152 * lin(g) + .0722 * lin(b);
+      let bg = null;
+      for (let n = e; n && !bg; n = n.parentElement) {
+        const c = rgb(getComputedStyle(n).backgroundColor);
+        if ((c[3] ?? 1) > .5) bg = c;
+      }
+      const a = lum(rgb(getComputedStyle(e).color)), b = lum(bg); return (Math.max(a,b)+.05)/(Math.min(a,b)+.05); }""")
+    assert ratio >= 4.5
+    go(page, "scenes")
+    sizes = page.evaluate("() => [...document.querySelectorAll('section.page.on input[type=checkbox]')]"
+                          ".filter(e => e.offsetParent).map(e => e.getBoundingClientRect().width)")
+    assert sizes and min(sizes) >= 20
+
+
+def test_layout_fields_fit_auto(ui):
+    page, *_ = ui
+    go(page, "layout")
+    page.wait_for_selector("#ar-spacing")
+    assert page.eval_on_selector("#ar-spacing", "e => e.clientWidth >= e.scrollWidth && e.getBoundingClientRect().width >= 60")

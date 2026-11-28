@@ -134,9 +134,11 @@ button.link { background: none; border: none; padding: 2px 0; color: inherit; te
 button.toggle.on.master { background: var(--ok); color: #000; border-color: var(--ok); }
 button.toggle.on.danger { background: var(--bad); color: #fff; border-color: var(--bad); }
 button.hold.on { background: var(--warn); color: #000; }
-button.danger-text { color: var(--bad); }
+button.danger-text { color: var(--bad-text, var(--bad)); }
 input, select { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-height: var(--btn-h); padding: 0 8px; font-size: var(--btn-fs); min-width: 0; }
-input[type=checkbox], input[type=radio] { min-height: 0; }
+/* 20 px with room round it: meets the 24 px target spacing (WCAG 2.5.8) instead of the browser's 13 px */
+input[type=checkbox], input[type=radio] { min-height: 0; width: 20px; height: 20px; margin: 2px 4px; accent-color: var(--accent);
+  flex: none; vertical-align: middle; cursor: pointer; }
 input.narrow { width: 80px; }
 input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); padding: 0; }
 label.check, label.zoom { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
@@ -386,7 +388,9 @@ table.map.inputs td.tools button { min-height: var(--mini-h); padding: 0 var(--m
 button.big { min-height: var(--perform-h); padding: 0 18px; font-size: 16px; font-weight: 600; }
 .ride-top .toggle.on { background: var(--ok); color: #000; border-color: var(--ok); }
 #ap-hold.on { background: var(--warn); color: #000; border-color: var(--warn); }
-.energy { width: 220px; height: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.energy { position: relative; width: 220px; height: 14px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.energy .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--muted); opacity: .5; }  /* LOW | MID | HIGH */
+.energy-l { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .energy i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--warn), var(--bad)); transition: width .3s; }
 .grid-host.strip { height: 230px; max-height: none; overflow: hidden; padding: 4px; }
 .ride-banks { display: grid; grid-template-columns: 1fr 0.65fr 1.35fr; gap: 12px; }
@@ -466,10 +470,10 @@ body:has(#page-layout.on) main { max-width: none; }
 .lp-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap) 12px; margin-bottom: 4px; }
 .lp-head .uni-tabs { border-bottom: none; margin: 0; }
 .lp-status { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60ch; }
-.lp-status.bad { color: var(--bad); }
+.lp-status.bad { color: var(--bad-text, var(--bad)); }
 .lp-actions { display: flex; gap: var(--gap); align-items: center; }
 .dirty-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); display: inline-block; }
-.lp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 500px); gap: 14px; align-items: start; }
+.lp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 580px); gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .lp-body { grid-template-columns: minmax(0, 1fr); } }
 .lp-side { position: sticky; top: 60px; max-height: calc(100vh - 80px); overflow: auto; }
 .lp-side h2:first-child { margin-top: 0; }
@@ -477,10 +481,10 @@ body:has(#page-layout.on) main { max-width: none; }
 table.lp-fixtures td, table.lp-routing td { padding: 2px 4px; }
 table.lp-fixtures input.num { width: 48px; min-height: 24px; padding: 0 4px; -moz-appearance: textfield; appearance: textfield; }
 table.lp-fixtures input.num::-webkit-inner-spin-button, table.lp-fixtures input.num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-table.lp-fixtures td:nth-child(2) { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+table.lp-fixtures td:nth-child(2) { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 table.lp-fixtures tr { cursor: pointer; }
 table.lp-fixtures tr.sel td { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-table.lp-fixtures tr.error td { color: var(--bad); }
+table.lp-fixtures tr.error td { color: var(--bad-text, var(--bad)); }
 table.lp-routing tr.on td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .st-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--muted); }
 .st-dot.ok { background: var(--ok); } .st-dot.warn, .st-dot.weak { background: var(--warn); } .st-dot.bad, .st-dot.lost { background: var(--bad); }
@@ -497,7 +501,7 @@ table.lp-routing tr.on td { background: color-mix(in srgb, var(--accent) 14%, tr
 .addr-map .ac.clash { background: color-mix(in srgb, var(--bad) 55%, #000); }
 .addr-map .ac.hl { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; }
 .addr-note { font-size: 12px; margin: 2px 0 4px; }
-.addr-note.bad { color: var(--bad); }
+.addr-note.bad { color: var(--bad-text, var(--bad)); }
 @media print {
   @page { size: A4 landscape; margin: 10mm; }
   body { background: #fff; color: #000; }
@@ -532,8 +536,9 @@ table.lp-routing tr.on td { background: color-mix(in srgb, var(--accent) 14%, tr
 .seg { display: grid; gap: 2px; }
 .seg3 { grid-template-columns: repeat(3, var(--icon-btn)); }
 .seg button { border-radius: 4px; }
-.ar-param { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); margin-top: 3px; }
-.ar-param input { width: 50px; min-height: 22px; padding: 0 4px; font-size: 12px; }
+/* the panel is three icons wide: the label sits over a full-width field, so "auto" and 3-digit values fit */
+.ar-param { display: flex; flex-direction: column; align-items: stretch; gap: 1px; font-size: 11px; color: var(--muted); margin-top: 3px; }
+.ar-param input { width: 100%; min-height: 24px; padding: 0 4px; font-size: 12px; box-sizing: border-box; }
 @media (max-width: 760px) {
   .stage-wrap { grid-template-columns: minmax(0, 1fr); }
   .arrange { flex-direction: row; flex-wrap: wrap; width: auto; }
@@ -567,7 +572,7 @@ body:has(#page-monitor.on) main { max-width: none; }
 .kit-table tr td { transition: background .4s; }
 .kit-table tr.unlearned td.notes-cell input { border-color: var(--warn); }
 .mon-checks { font-size: 13px; margin: 2px 0 6px; }
-.mon-checks .ck { margin: 2px 0; } .mon-checks .ck.warn b { color: var(--warn); } .mon-checks .ck.fail b { color: var(--bad); }
+.mon-checks .ck { margin: 2px 0; } .mon-checks .ck.warn b { color: var(--warn); } .mon-checks .ck.fail b { color: var(--bad-text, var(--bad)); }
 .mon-checks .fix { color: var(--muted, inherit); }
 td.amber, .mon-stats .amber { color: var(--warn); }
 .cycle-live { text-align: center; margin: 8px 0; padding: 12px; border: 2px solid var(--warn); border-radius: var(--radius); }
@@ -578,13 +583,15 @@ button.big.ok { background: var(--ok, #2e9d5b); color: #fff; min-width: 240px; f
   margin: 6px 0; padding: 8px; border: 2px solid var(--warn); border-radius: var(--radius); }
 .test-now { font-size: 22px; } .test-now strong { font-size: 28px; }
 button.big.bad { background: var(--bad); color: #fff; min-width: 180px; }
-.mon-flag { font-size: 13px; font-weight: 600; color: var(--bad); margin: 4px 0; }
+.mon-flag { font-size: 13px; font-weight: 600; color: var(--bad-text, var(--bad)); margin: 4px 0; }
 .mon-body { overflow: auto; max-height: 60vh; }
 .mon-pane.full .mon-body { max-height: none; }
-.dmx-grid { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 1px; background: var(--line); font-size: 9px; }
-.dmx-grid .dc { position: relative; background: var(--bg); padding: 1px 2px; min-height: 26px; }
-.dmx-grid .dc .n { color: var(--muted); opacity: .7; }
-.dmx-grid .dc .v { position: absolute; right: 2px; bottom: 1px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 32 a row when there's room, fewer in a narrow pane: a cell never gets too narrow for "512" over "255" */
+.dmx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 1px; background: var(--line); font-size: 10px; }
+.dmx-grid .dc { position: relative; background: var(--bg); padding: 1px 2px; min-height: 28px; display: flex; flex-direction: column;
+  align-items: center; justify-content: space-between; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.dmx-grid .dc .n { color: var(--muted); opacity: .75; font-size: 9px; }
+.dmx-grid .dc .v { font-weight: 700; position: relative; z-index: 1; }
 .dmx-grid .dc::after { content: ""; position: absolute; inset: 0; background: var(--accent); opacity: calc(var(--v, 0) * .6); pointer-events: none; }
 .dmx-grid .dc.moved { outline: 1px solid var(--warn); outline-offset: -1px; }
 .dmx-grid .dc.patched { background: color-mix(in srgb, var(--panel-2) 70%, var(--bg)); }

@@ -132,6 +132,29 @@ class Mapping:
         extra = " ".join(f"{k}={v}" for k, v in self.params.items())
         return f"{self.action} {extra}".strip() + (f" [port {self.port}]" if self.port else "")
 
+    def label(self) -> str:
+        """For people (the MIDI page): 'Flash · bars · 120 ms · colour show' rather than Python reprs."""
+        def val(v: Any) -> str:
+            if isinstance(v, (list, tuple)):
+                return ", ".join(map(str, v))
+            if isinstance(v, dict):
+                return ", ".join(f"{k} {val(x)}" for k, x in v.items())
+            return str(v)
+
+        parts = [self.action.replace("_", " ").capitalize()]
+        for k, v in self.params.items():
+            if k == "fixtures":
+                parts.append(val(v))
+            elif k == "length_ms":
+                parts.append(f"{v} ms")
+            elif k in ("set", "show", "scene", "preset", "fx", "mood", "palette", "state", "item", "bank"):
+                parts.append(val(v))
+            else:
+                parts.append(f"{k.replace('_', ' ')} {val(v)}")
+        if self.port:
+            parts.append(f"port {self.port}")
+        return " · ".join(parts)
+
     def to_dict(self) -> dict[str, Any]:
         if self.type == "input":
             return {"input": self.input, "action": self.action, **self.params}

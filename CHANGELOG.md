@@ -4,6 +4,16 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 
 ## Unreleased (v6: Darkness, tempo from the drums, drum kit)
 
+### Changed (UI polish, 28/11/2026 review)
+- The header shows what's playing in one short line (show / set · step · song); the tempo stays in its own box, and the full line is on hover.
+- Monitor DMX grid: each value sits under its channel number and cells never get too narrow to read (fewer per row in a narrow pane).
+- MIDI page: what an input does reads as words ("Flash · bars · 120 ms · colour show"), not code.
+- Layout: arrange fields fit "auto" and three-digit values; fixture types show in full on hover.
+- Red text (delete, ban, ✕, warnings) meets 4.5:1 contrast in the Neutral theme.
+- Autopilot: "Auto mood" matches LOW / MID / HIGH; the energy meter is labelled and marked in thirds.
+- Tempo pane says what to do when there's no tempo yet.
+- Every field has a name screen readers announce; checkboxes are 20 px.
+
 ### Added (Part A: Darkness)
 - **Darkness** on the Autopilot page: puts black into the Autopilot's effects (narrower bands, black palette slots, gaps between colours, a regular black pattern on still colours), never a dimmer. The kick light is exempt; hand-made scenes, shows and Override are untouched; heads keep moving dark; with MASTER off a drum hit only flashes what's lit. Eases in over the look's fade. **Store for set** keeps a value per LOW / MID / HIGH.
 - `lit:` (0-100 %) on scene layers, whole scenes and step-scene lights (step editor: Colour › Lit %).

@@ -10,6 +10,7 @@
   --ok: #33b36b;
   --warn: #d9a12b;
   --bad: #d9474d;
+  --bad-text: #ec5f64;  /* red text: 4.5:1 or better on every panel (--bad is for fills) */
   --cell-off: #191c20;
   --font: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
