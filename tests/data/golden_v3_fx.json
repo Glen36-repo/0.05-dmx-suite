@@ -77,6 +77,18 @@
   "e1da652b329d",
   "9039da3bd8df"
  ],
+ "ref|dir_wave": [
+  "77061fdca0b2",
+  "ea1accd274d2",
+  "e675f95e02a0",
+  "b37d0258e845"
+ ],
+ "ref|dir_wave_dark": [
+  "90d7637c715d",
+  "265731b61f9f",
+  "a385d3715bf2",
+  "90d7637c715d"
+ ],
  "ref|fan": [
   "49af3c5ec7c7",
   "6e551c8cf16d",
@@ -168,10 +180,10 @@
   "343f12b6a0fd"
  ],
  "ref|radial": [
-  "7d981fa5edb2",
-  "05919ad9a834",
-  "0dccaaa85f2f",
-  "cc3dc784ce0b"
+  "216240e936a0",
+  "4049974b7c92",
+  "82d218df355d",
+  "468daff4bb5b"
  ],
  "ref|rainbow": [
   "ab9f784bc57d",
@@ -214,18 +226,6 @@
   "9039da3bd8df",
   "9039da3bd8df",
   "9039da3bd8df"
- ],
- "ref|dir_wave": [
-  "77061fdca0b2",
-  "ea1accd274d2",
-  "e675f95e02a0",
-  "b37d0258e845"
- ],
- "ref|dir_wave_dark": [
-  "90d7637c715d",
-  "265731b61f9f",
-  "a385d3715bf2",
-  "90d7637c715d"
  ],
  "ref|swim": [
   "c0a167b1c3d1",
