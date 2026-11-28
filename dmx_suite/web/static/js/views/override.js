@@ -27,8 +27,21 @@ function renderPlay() {
   panelKey = current();
   const pick = $("#panel-pick");
   pick.replaceChildren(...Object.entries(panels).map(([k, p]) => el("option", { value: k, selected: k === panelKey }, p.name)));
+  pick.classList.toggle("hidden", !panelKey); // no empty dropdown
+  $("#override-release").classList.toggle("hidden", !panelKey);
   const box = $("#override");
-  if (!panelKey) return box.replaceChildren(el("p", { class: "muted", text: t("override.no_panels") }));
+  if (!panelKey) {
+    // a clear first step instead of "tick Edit panels"
+    return box.replaceChildren(el("div", { class: "empty-state" },
+      el("p", { text: t("override.empty_title") }), el("p", { class: "muted", text: t("override.empty_help") }),
+      el("button", { class: "primary big", id: "override-start", onclick: async () => {
+        const cb = $("#override-edit");
+        cb.checked = true;
+        $("#override-editor").classList.remove("hidden");
+        await openEditor();
+        $("#panel-name")?.focus();
+      } }, t("override.empty_go"))));
+  }
   box.replaceChildren(...panels[panelKey].widgets.map((w) => {
     const send = (down, value) => cmd("override", { panel: panelKey, widget: w.id, down, value });
     if (w.type === "fader") {

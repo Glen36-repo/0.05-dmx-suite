@@ -320,3 +320,73 @@ def test_layout_fields_fit_auto(ui):
     go(page, "layout")
     page.wait_for_selector("#ar-spacing")
     assert page.eval_on_selector("#ar-spacing", "e => e.clientWidth >= e.scrollWidth && e.getBoundingClientRect().width >= 60")
+
+
+# ---------------------------------------------------------------- phone and gig pass (option 2)
+
+
+@pytest.fixture
+def phone(browser, ui):
+    page, app, root, errors = ui
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True, device_scale_factor=1)
+    p = ctx.new_page()
+    p.on("pageerror", lambda e: errors.append(str(e)))
+    p.goto(page.url)
+    p.wait_for_selector("body.ready")
+    yield p, app
+    ctx.close()
+
+
+def test_phone_controls_are_finger_sized(phone):
+    p, app = phone
+    for name in ("autopilot", "override", "scenes", "shows", "live"):  # the phone's bottom bar
+        p.click(f"#menu [data-page={name}]")
+        p.wait_for_selector(f"#page-{name}.on")
+        p.wait_for_timeout(300)
+        small = _small(p)
+        assert small == [], name
+    assert p.eval_on_selector("#master", "e => e.getBoundingClientRect().height") >= 52
+
+
+def _small(p):
+    return p.evaluate("""() => [...document.querySelectorAll('section.page.on button,'
+      + ' section.page.on input:not([type=checkbox]):not([type=radio]),'
+      + ' section.page.on select, header.top button')].filter(e => e.offsetParent && !e.closest('.hidden'))
+      .filter(e => e.getBoundingClientRect().height < (e.matches('button.info') ? 32 : 40))
+      .map(e => e.id || e.textContent.trim().slice(0, 20))""")
+
+
+def test_phone_status_summary_and_now_line(phone):
+    p, app = phone
+    p.wait_for_selector("#health .health-sum")
+    assert p.is_visible("#health .health-sum") and not p.is_visible("#health .tile[data-key^='engine:']")
+    assert p.evaluate("document.documentElement.scrollWidth") <= 390
+    p.click("#health .health-sum")
+    p.wait_for_selector("#health.open .tile[data-key^='engine:']")
+    app.ctl.select_show("band", "mid")
+    p.wait_for_function("document.querySelector('#now').textContent.includes('Main band show')")
+    assert p.is_visible("#now")
+
+
+def test_live_stage_folds_and_is_remembered(ui, phone):
+    page, *_ = ui
+    p, _ = phone
+    assert not p.is_visible("#live-grid") and "Show stage" in p.inner_text("#stage-fold")  # folded on a phone
+    assert page.is_visible("#live-grid")  # shown on the laptop
+    page.click("#stage-fold")
+    assert not page.is_visible("#live-grid")
+    page.reload()
+    page.wait_for_selector("body.ready")
+    assert not page.is_visible("#live-grid") and page.get_attribute("#stage-fold", "aria-expanded") == "false"
+    page.click("#stage-fold")
+    assert page.is_visible("#live-grid")
+
+
+def test_override_empty_state_has_a_first_step(phone):
+    p, app = phone
+    p.click("#menu [data-page=override]")
+    p.wait_for_selector("#page-override.on #override-start")
+    assert not p.is_visible("#panel-pick") and not p.is_visible("#override-release")
+    p.click("#override-start")
+    p.wait_for_selector("#override-editor:not(.hidden)")
+    p.wait_for_function("document.activeElement.id === 'panel-name'")

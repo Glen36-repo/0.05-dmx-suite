@@ -4,6 +4,12 @@ Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog
 
 ## Unreleased (v6: Darkness, tempo from the drums, drum kit)
 
+### Changed (phones and live use)
+- Phones and touch tablets always get finger-sized controls (44 px; MASTER and BLACKOUT 52 px), whatever the laptop's button size.
+- Phone status strip: one chip (**All OK** or how many need attention) that opens every device; what's playing shows under MASTER.
+- Live: **Hide stage / Show stage** folds the stage view so shows, scenes and the setlist start at the top (folded by default on a phone, remembered per screen).
+- Override with no panels: a short explanation and **Make a panel**, instead of an empty dropdown.
+
 ### Changed (UI polish, 28/11/2026 review)
 - The header shows what's playing in one short line (show / set · step · song); the tempo stays in its own box, and the full line is on hover.
 - Monitor DMX grid: each value sits under its channel number and cells never get too narrow to read (fewer per row in a narrow pane).

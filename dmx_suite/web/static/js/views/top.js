@@ -73,7 +73,17 @@ function render(s) {
   // status strip: engine, outputs, MIDI, Claude, screens, then every node/receiver
   const nodes = s.nodes.filter((n) => n.mac);
   const short = (d) => (d.kind === "output" || d.kind === "midi" ? d.detail.split(" · ")[0] : d.detail);
-  $("#health").replaceChildren(
+  // phones: one summary chip first (worst state, how many need attention); tapping it shows every tile
+  const states = [...s.devices.map((d) => d.state), ...nodes.map((n) => n.state)];
+  const problems = states.filter((x) => ["bad", "warn", "offline", "weak"].includes(x)).length;
+  const worst = states.some((x) => x === "bad" || x === "offline") ? "bad" : problems ? "warn" : "ok";
+  const open = $("#health").classList.contains("open");
+  const sum = el("button", { type: "button", class: "tile health-sum", "aria-expanded": String(open),
+    onclick: () => { const h = $("#health"); h.classList.toggle("open"); sum.setAttribute("aria-expanded", String(h.classList.contains("open"))); } },
+    el("span", { class: `dot ${worst}`, "aria-hidden": "true" }),
+    el("span", { text: problems ? t("top.health_problems", { n: problems }) : t("top.health_ok") }),
+    el("span", { "aria-hidden": "true", text: open ? "▴" : "▾" }));
+  $("#health").replaceChildren(sum,
     ...s.devices.map((d) =>
       el("div", { class: "tile" + (d.kind === "claude" || PANE[d.kind] ? " link" : ""),
         title: `${d.name}: ${d.detail}` + (d.model ? ` (${d.model})` : ""), "data-key": `${d.kind}:${d.name}`,

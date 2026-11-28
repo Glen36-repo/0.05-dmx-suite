@@ -9,6 +9,13 @@
   --mini-h: 24px; --mini-px: 8px; --mini-fs: 12px; --perform-h: 44px; --section-gap: 10px; --panel-pad: 8px; }
 body.density-comfortable { --radius: 10px; --btn-h: 38px; --btn-px: 14px; --btn-fs: 15px; --gap: 8px; --icon-btn: 38px;
   --mini-h: 28px; --mini-px: 10px; --mini-fs: 13px; --section-gap: 14px; --panel-pad: 10px; }
+/* Touch: phones and touch tablets get finger-sized controls whatever the laptop's density (the setting
+   is the laptop's; a phone in a dark venue needs 44 px targets, WCAG 2.5.5). */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1100px) {
+  body.density-compact, body.density-comfortable { --radius: 10px; --btn-h: 44px; --btn-px: 14px; --btn-fs: 15px; --gap: 8px;
+    --icon-btn: 44px; --mini-h: 40px; --mini-px: 12px; --mini-fs: 14px; --perform-h: 52px; --section-gap: 14px; --panel-pad: 10px;
+    --hit-min: 32px; /* the small ⓘ buttons beside headings */ }
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
@@ -108,16 +115,24 @@ details.section[open] > summary { margin-bottom: 6px; }
   .menu button.on { box-shadow: inset 0 3px 0 var(--accent); }
   main { padding: 8px 12px 90px; }
   .top .logo { display: none; }
-  .now { display: none; }
+  /* what's playing: its own line under MASTER / BLACKOUT */
+  .top { flex-wrap: wrap; }
+  .now { display: block; order: 10; flex: 1 0 100%; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
   /* one line across the top of a phone */
   .top { gap: 6px; padding: 6px 8px; }
   .top button { white-space: nowrap; padding: 0 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .top .toggle { padding: 0 10px; }
   .top { overflow: hidden; }
   .tempo #tempo-text { display: none; }
-  .health { padding: 4px 8px; min-height: 0; }
+  .health { padding: 4px 8px; min-height: 0; overflow: visible; flex-wrap: wrap; }
   .tile .muted { display: none; }
+  /* one summary chip (worst state, how many need attention); tap it for every device */
+  .health-row .health .health-sum { display: flex; }
+  .health-row .health:not(.open) .tile:not(.health-sum) { display: none; }
+  .health.open .tile .muted { display: inline; }
+  .health.open .tile { white-space: normal; }
 }
+.health .health-sum { display: none; min-height: 32px; font-weight: 600; cursor: pointer; }
 
 /* ---------------------------------------------------------------- controls */
 .row { display: flex; gap: var(--gap); align-items: center; margin: 6px 0; }
@@ -250,6 +265,7 @@ td.hit { color: var(--ok); }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .swatches { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .sw { width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 6px; border: 2px solid var(--line); }
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1100px) { .sw { width: 40px; height: 40px; border-radius: 8px; } }
 .sw.sel { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
 .sw.none { background: var(--panel); color: var(--muted); font-size: 12px; }
 .swatches input[type=color] { width: 30px; height: 26px; padding: 0; border: none; background: none; }
@@ -437,6 +453,11 @@ button.ride-fx.excluded.sel { background: color-mix(in srgb, var(--ok) 34%, var(
 .claude-line.warn { color: var(--warn); }
 .claude-line.muted { color: var(--muted); }
 .tile.link { cursor: pointer; }
+/* Live: the stage view folds away (remembered per screen; folded by default on a phone) */
+.live-stage-bar { display: flex; justify-content: flex-end; margin: 0 0 4px; }
+#live-grid.folded { display: none; }
+.empty-state { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 0; }
+.empty-state p { margin: 0; }
 
 /* ---------------------------------------------------------------- UI tidy (after v3) */
 /* show sets: short settings side by side, short controls only as wide as they need */
@@ -471,7 +492,7 @@ body:has(#page-layout.on) main { max-width: none; }
 .lp-head .uni-tabs { border-bottom: none; margin: 0; }
 .lp-status { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60ch; }
 .lp-status.bad { color: var(--bad-text, var(--bad)); }
-.lp-actions { display: flex; gap: var(--gap); align-items: center; }
+.lp-actions { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: center; min-width: 0; max-width: 100%; }
 .dirty-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); display: inline-block; }
 .lp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 580px); gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .lp-body { grid-template-columns: minmax(0, 1fr); } }
@@ -608,6 +629,11 @@ table.mon-log tr.unmapped td { color: var(--muted); }
 .led.ok { background: var(--ok); } .led.bad { background: var(--bad); } .led.act { background: #fff; box-shadow: 0 0 6px #fff; }
 @media (max-width: 1000px) { .mon-panes { grid-template-columns: minmax(0, 1fr); } #mon-dmx { grid-row: auto; } }
 .tile.link { cursor: pointer; }
+/* Live: the stage view folds away (remembered per screen; folded by default on a phone) */
+.live-stage-bar { display: flex; justify-content: flex-end; margin: 0 0 4px; }
+#live-grid.folded { display: none; }
+.empty-state { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 0; }
+.empty-state p { margin: 0; }
 
 /* v4: button panels as aligned grids - equal buttons in rows and columns, long names cut short */
 .btn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--grid-btn-w, 132px), 1fr)); gap: var(--gap); margin: 4px 0; }

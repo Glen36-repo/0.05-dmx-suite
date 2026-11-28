@@ -1456,5 +1456,12 @@
  "a11y.song_show": "Song {n} show",
  "a11y.song_set": "Song {n} set",
  "a11y.song_scene": "Song {n} scene",
- "a11y.song_kind": "Song {n} plays a show or a scene"
+ "a11y.song_kind": "Song {n} plays a show or a scene",
+ "top.health_ok": "All OK",
+ "top.health_problems": "{n} need attention",
+ "live.stage_hide": "Hide stage",
+ "live.stage_show": "Show stage",
+ "override.empty_title": "No Override panels yet.",
+ "override.empty_help": "A panel is your own set of pads and faders laid over the show: colour, flash, solo, an effect, a GO, a fader or haze.",
+ "override.empty_go": "Make a panel"
 }
