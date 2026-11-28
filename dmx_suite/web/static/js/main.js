@@ -1,5 +1,7 @@
 // 0.05 DMX Suite UI: plain ES modules, no build step, no internet needed.
+import { initA11y } from "./a11y.js";
 import { cmd } from "./api.js";
+import { applyMotion } from "./dom.js";
 import { apply, load } from "./i18n.js";
 import { initInfo } from "./info.js";
 import * as nav from "./nav.js";
@@ -46,6 +48,8 @@ document.addEventListener("visibilitychange", wakeLock);
   for (const view of [top, liveView, autopilot, review, layout, scenes, shows, override, fixtures, heads, palettes, midi, monitor, setup, claude, files, wizard]) view.init();
   nav.init();
   initInfo();
+  initA11y();
+  applyMotion();
   await start();
   document.body.classList.add("ready");
 })();

@@ -58,6 +58,8 @@ layers:
 
 Under the "generic" profile a layer can also set `intensity` (0-1).
 
+**`lit:`** (0-100 %, on a layer or the whole scene) puts black into the layer's effect: a narrower band in a sweep, black slots in a colour cycle or palette, gaps in a gradient, and a regular pattern of black lights or pixels in a still colour. Black is colour off, never the dimmer, so it's the way to make a look darker under the 0.05 band profile. The Autopilot's Darkness scales it further for its own looks ([Darkness](auto-show.md#darkness)). In a step scene, set `lit` per light in a step (Colour tab, Lit %).
+
 ## Copy and paste a look
 
 On the Scenes page, **Copy look** (Ctrl+C) copies the layer you're editing, or, with no layer picked, the look of the first selected light. Select other lights and **Paste to selection** (Ctrl+V): the look is added as one layer per kind of light, keeping only what each can do. Position and movement only go to heads that move, gobo and colour wheel only to lights that have them, and colours go to everything.

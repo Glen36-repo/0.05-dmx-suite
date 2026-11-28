@@ -1,6 +1,7 @@
 // Monitor page (v4): watch what goes out over DMX and what comes in / goes out over MIDI. Read-only:
-// nothing here changes the output (works under gig lock); only Learn (inputs.yaml) and the MIDI test send
-// write anything, and those follow the usual locks.
+// nothing here changes the output (works under gig lock); only Learn (inputs.yaml), the MIDI test send and
+// the v5 test patterns (straight to the interface, stopped when this page is left) change anything, and
+// those follow the usual locks (gig lock: keep-alive only).
 import { api, attempt, get, toast } from "../api.js";
 import { $, $$, el, remember } from "../dom.js";
 import { watchFrames } from "../frames.js";
@@ -16,7 +17,7 @@ let names = {}; // channel -> "bar_2 red px5"
 let frame = null; // Uint8Array of what the interface sent, or null
 let lastFrame = null;
 const movedAt = new Float64Array(512); // when each channel last changed (changed-only view)
-const paused = { dmx: false, "midi-in": false, "midi-out": false };
+const paused = { dmx: false, "midi-in": false, "midi-out": false, tempo: false };
 let inSeq = 0, outSeq = 0;
 let inRows = [], outRows = [];
 const heat = new Map(); // note -> last velocity (drum pad check)
@@ -41,6 +42,8 @@ async function loadSources() {
   if (!outs.some((x) => String(x.output) === out) && out !== "engine") out = outs.length ? String(outs[0].output) : "engine";
   $("#mon-out").value = out;
   names = await get(`/api/monitor/channels?u=${uni}`).catch(() => ({}));
+  routing = r;
+  testTargets();
 }
 
 function watch() {
@@ -54,8 +57,10 @@ function watch() {
     if (frame && lastFrame) for (let i = 0; i < 512; i++) if (frame[i] !== lastFrame[i]) movedAt[i] = now;
     lastFrame = frame;
     const s = f.stats || {};
-    $("#mon-dmx-stats").textContent = t("monitor.stats", { source: f.source, fps: s.fps ?? "-", frames: s.frames ?? "-",
+    $("#mon-dmx").classList.toggle("testing", !!f.test);
+    $("#mon-dmx-stats").textContent = (f.test ? `TEST: ${f.test.name} · ` : "") + t("monitor.stats", { source: f.source, fps: s.fps ?? "-", frames: s.frames ?? "-",
       errors: s.errors ?? "-", jitter: s.jitter_ms ?? "-", last: ms(s.last_frame_age_ms) });
+    drawTiming(f);
     const flag = f.no_frames ? t("monitor.no_frames", { source: f.source, u: uni })
       : s.all_zero ? t("monitor.all_zero")
       : s.last_frame_age_ms > 2000 ? t("monitor.stale", { s: Math.round(s.last_frame_age_ms / 1000) }) : "";
@@ -63,6 +68,37 @@ function watch() {
     $("#mon-dmx-flag").classList.toggle("hidden", !flag);
     drawDmx();
   });
+}
+
+// v5: the interface's driver and measured timing beside the targets, and any failing checks with the fix
+function drawTiming(f) {
+  const tm = f.timing, ck = f.checks;
+  const line = $("#mon-dmx-timing");
+  if (!tm) { line.textContent = ""; $("#mon-dmx-checks").replaceChildren(); return; }
+  const m = tm.measured, g = tm.target;
+  const driver = t(`timing.${ck?.driver_type || (tm.backend === "d2xx" ? "d2xx" : "vcp")}`);
+  line.textContent = t("timing.line", { driver, method: tm.method_name, brk: m.break_us ?? "-", tbrk: g.break_us,
+    mab: m.mab_us ?? "-", tmab: g.mab_us, fps: m.fps ?? "-", tfps: g.fps, write: m.write_ms ?? "-", jit: m.jitter_ms ?? "-" });
+  line.classList.toggle("amber", tm.warnings.length > 0);
+  line.title = [...tm.warnings, tm.note].join("\n");
+  const key = JSON.stringify(ck);
+  if (line.dataset.k === key) return;
+  line.dataset.k = key;
+  const rows = (ck?.problems || []).map((p) => el("div", { class: "ck warn" }, el("b", { text: "⚠ " }), p));
+  const tools = [el("button", { class: "mini", onclick: checkNow }, t("checks.now"))];
+  if (ck && ck.driver_type === "d2xx" && ck.latency_ms > 1) tools.push(el("button", { class: "mini", onclick: setLatency }, t("checks.latency")));
+  $("#mon-dmx-checks").replaceChildren(...(rows.length ? rows : ck ? [el("div", { class: "ck", text: t("checks.all_pass") })] : []), ...tools);
+}
+
+async function checkNow() {
+  const r = await attempt(() => get("/api/outputs/check"));
+  if (r) { $("#mon-dmx-timing").dataset.k = ""; toast(r.outputs.map((o) => `${o.interface}: ${o.result}`).join(" · ") || "-"); }
+}
+
+async function setLatency() {
+  if (!confirm(t("checks.latency_confirm"))) return;
+  const r = await attempt(() => api("POST", "/api/outputs/latency", { output: +out, ms: 1 }));
+  if (r) toast(t("checks.latency_done", { ms: r.latency_ms }));
 }
 
 function drawDmx() {
@@ -107,6 +143,225 @@ function drawDmx() {
   });
 }
 
+// ---------------------------------------------------------------- test patterns (v5)
+
+let routing = null;
+let myTest = false; // started from this page: stopped when the page is left
+
+function testFields() {
+  const p = $("#test-pattern").value;
+  $("#test-fixture").classList.toggle("hidden", !(p === "find" || p === "ramp"));
+  $("#test-channel").classList.toggle("hidden", p !== "ramp");
+  $("#test-value").classList.toggle("hidden", !(p === "ramp" || p === "keep_alive"));
+  $("#test-dwell").classList.toggle("hidden", p !== "chase");
+  $("#test-patched-l").classList.toggle("hidden", p !== "all_full");
+  const locked = !!live.state?.gig_lock;
+  const [kind, n] = ($("#test-target").value || "").split(":");
+  const row = kind === "o" && routing ? routing.rows.find((r) => String(r.output) === n) : null;
+  $("#cycle-go").classList.toggle("hidden", !(row && row.timing));
+  $("#cycle-go").disabled = locked;
+  $("#test-go").disabled = locked && p !== "keep_alive";
+  $("#test-go").title = locked && p !== "keep_alive" ? t("test.locked") : "";
+}
+
+function testTargets() {
+  if (!routing) return;
+  const us = routing.universes.length ? routing.universes : [0];
+  const opts = [];
+  for (const u of us) {
+    opts.push(el("option", { value: `u:${u}` }, t("test.all_outputs", { u })));
+    for (const r of routing.rows) if (r.universe === u && r.output !== null && r.output !== undefined)
+      opts.push(el("option", { value: `o:${r.output}` }, t("test.one_output", { u, name: r.interface })));
+  }
+  const keep = $("#test-target").value;
+  $("#test-target").replaceChildren(...opts);
+  if (keep) $("#test-target").value = keep;
+  const fids = [...new Set(Object.values(names).map((n) => n.split(" ")[0]))];
+  const kf = $("#test-fixture").value;
+  $("#test-fixture").replaceChildren(...fids.map((f) => el("option", { value: f }, f)));
+  if (kf) $("#test-fixture").value = kf;
+}
+
+async function startTest() {
+  const p = $("#test-pattern").value;
+  const [kind, n] = $("#test-target").value.split(":");
+  const body = { pattern: p, timeout_s: +$("#test-timeout").value || 60, patched_only: $("#test-patched").checked };
+  if (kind === "o") body.output = +n; else body.universe = +n;
+  if (p === "find" || p === "ramp") body.fixture = $("#test-fixture").value;
+  if (p === "ramp") {
+    if ($("#test-channel").value) { body.channel = +$("#test-channel").value; delete body.fixture; }
+    else body.role = (prompt(t("test.channel")) || "red").trim();
+  }
+  if ((p === "ramp" || p === "keep_alive") && $("#test-value").value !== "") body.value = +$("#test-value").value;
+  if (p === "chase") body.dwell_s = +$("#test-dwell").value || 2;
+  if (await attempt(() => api("POST", "/api/test/run", body))) { myTest = true; pollTest(); }
+}
+
+async function stopTest(why = "stopped") {
+  myTest = false;
+  await api("POST", "/api/test/stop", { why }).catch(() => null);
+  pollTest();
+}
+
+async function startCycle() {
+  const [, n] = $("#test-target").value.split(":");
+  if (await attempt(() => api("POST", "/api/cycle/start", { output: +n }))) { myTest = true; pollTest(); }
+}
+
+function drawCycle(c) {
+  const running = c && c.state === "running";
+  $("#cycle-live").classList.toggle("hidden", !running);
+  if (running) {
+    $("#cycle-of").textContent = t("cycle.of", { step: c.step, of: c.of });
+    $("#cycle-step").textContent = c.label;
+  }
+  const res = !c || running ? "" : c.state === "confirmed" ? t("cycle.confirmed", { label: c.result.label })
+    : c.state === "no_response" ? t("cycle.no_response", { method: c.original.break_method, us: c.original.break_us })
+    : t("cycle.stopped");
+  $("#cycle-result").textContent = res;
+}
+
+async function pollTest() {
+  const cy = await get("/api/cycle").catch(() => null);
+  if (cy) drawCycle(cy.cycle);
+  const r = await get("/api/test").catch(() => null);
+  if (!r) return;
+  const tst = r.test;
+  $("#test-live").classList.toggle("hidden", !tst);
+  if (tst) {
+    $("#test-name").textContent = `${t("test.running")} ${tst.name}`;
+    $("#test-what").textContent = tst.now || "";
+    $("#test-left").textContent = t("test.left", { s: Math.round(tst.left_s) });
+  } else myTest = false;
+  $("#test-log").replaceChildren(...r.log.slice(-4).reverse().map((x) => el("div", { text: t("test.log", {
+    time: new Date(x.time * 1000).toLocaleTimeString("en-AU", { hour12: false }), what: x.what, pattern: x.pattern,
+    u: x.universe, out: x.output !== null ? ` output ${x.output + 1}` : "", by: x.by }) })));
+  testFields();
+}
+
+// ---------------------------------------------------------------- "Rig not responding" (v5)
+
+let ffSummary = "";
+
+function drawFaultFind(v) {
+  $("#ff").classList.remove("hidden");
+  ffSummary = v.summary || "";
+  $("#ff-where").textContent = v.stage === "steps" ? t("ff.step", { n: v.number, of: v.of }) : "";
+  $("#ff-flag").textContent = v.flag || "";
+  $("#ff-flag").classList.toggle("hidden", !v.flag);
+  $("#ff-text").textContent = v.instruction || "";
+  const label = (a) => ["yes", "no", "pass", "fail", "restart"].includes(a) ? t(`ff.a_${a}`) : a;
+  const btns = (v.answers || []).map((a) => el("button", { class: a === "pass" || a === "yes" ? "primary" : "",
+    onclick: () => ffDo({ action: "answer", answer: a }) }, label(a)));
+  if (v.test) {
+    const tb = el("button", { disabled: !v.test_allowed, title: v.test_allowed ? "" : t("ff.locked"),
+      onclick: async () => { await ffDo({ action: "test" }); myTest = true; pollTest(); } }, t("ff.test"));
+    btns.unshift(tb);
+  }
+  $("#ff-answers").replaceChildren(...btns);
+  $("#ff-history").replaceChildren(...(v.history || []).map((h) => el("li", { text: `${h.step}: ${h.result}${h.detail ? " · " + h.detail : ""}` })));
+}
+
+async function ffDo(body) {
+  const v = await attempt(() => api("POST", "/api/faultfind", body));
+  if (v) drawFaultFind(v);
+}
+
+export function openFaultFind() {
+  ffDo({ action: "start" });
+}
+
+// ---------------------------------------------------------------- tempo (v6 Part B)
+
+const LANES = ["kick", "snare", "hat", "tom", "cymbal"];
+let tempoParams = null;
+
+function css(name, fallback) { return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback; }
+
+function sized(cv) {
+  const w = cv.clientWidth || 600, h = cv.height;
+  if (cv.width !== w) cv.width = w;
+  return [cv.getContext("2d"), w, h];
+}
+
+function drawTempo(r) {
+  const st = r.status, dbg = r.debug || {};
+  $("#tempo-source").value = st.source;
+  $("#tempo-bpm").textContent = st.bpm ? t("tempo2.bpm", { bpm: st.bpm }) : t("tempo2.none");
+  $("#tempo-beat").textContent = st.bar_beat ? t("tempo2.beat", { beat: st.bar_beat }) : "";
+  $("#tempo-info").textContent = st.source === "drums" ? t("tempo2.info", { raw: st.raw_bpm ?? "-", conf: st.confidence ?? "-",
+    state: t(st.freewheel ? "tempo2.freewheel" : "tempo2.locked"), seed: st.seed_source || "-" }) : "";
+  const span = 8;
+  const [c, w, h] = sized($("#tempo-lanes"));
+  c.clearRect(0, 0, w, h);
+  const x = (tt) => w * (1 + tt / span);
+  const lh = h / LANES.length;
+  c.font = "10px sans-serif";
+  c.fillStyle = css("--muted", "#888");
+  LANES.forEach((l, i) => c.fillText(l, 2, i * lh + 11));
+  for (const g of dbg.grid || []) {
+    c.strokeStyle = css("--line", "#666");
+    c.lineWidth = g.beat === 1 ? 2 : 0.5;
+    c.beginPath(); c.moveTo(x(g.t), 0); c.lineTo(x(g.t), h); c.stroke();
+  }
+  c.fillStyle = css("--accent", "#3a8");
+  for (const o of dbg.onsets || []) {
+    const i = LANES.indexOf(o.role);
+    if (i < 0) continue;
+    c.globalAlpha = 0.4 + 0.6 * Math.min(1, o.w);
+    c.fillRect(x(o.t) - 2, i * lh + 2, 4, lh - 4);
+  }
+  c.globalAlpha = 1;
+  const hint = (ctx, w0, h0, text) => {
+    ctx.fillStyle = css("--muted", "#888"); ctx.font = "13px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(text, w0 / 2, h0 / 2 + 4); ctx.textAlign = "start";
+  };
+  if (!(dbg.onsets || []).length) hint(c, w, h, t(st.source === "drums" ? "tempo2.empty_hits" : "tempo2.empty_other"));
+  const [g2, w2, h2] = sized($("#tempo-graph"));
+  g2.clearRect(0, 0, w2, h2);
+  const hist = dbg.history || [];
+  const vals = hist.flatMap(([, raw, outb]) => [raw, outb]).filter((v) => v);
+  if (vals.length) {
+    const lo = Math.min(...vals) - 2, hi = Math.max(...vals) + 2;
+    const y = (v) => h2 - ((v - lo) / (hi - lo)) * h2;
+    const xs = (tt) => w2 * (1 + tt / 60);
+    for (const [idx, col, lw] of [[1, css("--muted", "#888"), 1], [2, css("--accent", "#3a8"), 2.5]]) {
+      g2.strokeStyle = col; g2.lineWidth = lw; g2.beginPath();
+      let started = false;
+      for (const row of hist) { if (!row[idx]) continue; const px = xs(row[0]), py = y(row[idx]); started ? g2.lineTo(px, py) : g2.moveTo(px, py); started = true; }
+      g2.stroke();
+    }
+    g2.fillStyle = css("--muted", "#888"); g2.font = "10px sans-serif";
+    g2.fillText(`${Math.round(hi)}`, 2, 10); g2.fillText(`${Math.round(lo)}`, 2, h2 - 2);
+  } else hint(g2, w2, h2, t("tempo2.empty_graph"));
+  if (r.params && JSON.stringify(r.params) !== JSON.stringify(tempoParams)) { tempoParams = r.params; drawParams(); }
+}
+
+function drawParams() {
+  const p = tempoParams;
+  const num = (k, v, path) => el("label", {}, el("span", { text: k }), el("input", { type: "number", step: "any", value: v,
+    onchange: (e) => setParam(path, +e.target.value) }));
+  const rows = Object.entries(p).filter(([k]) => k !== "weights").map(([k, v]) => num(k, v, [k]));
+  rows.push(...Object.entries(p.weights || {}).map(([k, v]) => num(`weight ${k}`, v, ["weights", k])));
+  rows.push(el("button", { class: "mini", onclick: saveParams }, t("tempo2.save")));
+  $("#tempo-params").replaceChildren(...rows);
+}
+
+async function setParam(path, v) {
+  const params = path.length === 2 ? { weights: { [path[1]]: v } } : { [path[0]]: v };
+  await attempt(() => api("POST", "/api/tempo", { action: "params", params }));
+}
+
+async function saveParams() {
+  const { weights, ...rest } = tempoParams;
+  if (await attempt(() => api("POST", "/api/tempo", { action: "params", params: { ...rest, weights }, save: true }))) toast(t("tempo2.saved"));
+}
+
+async function pollTempo() {
+  const r = await get("/api/tempo?debug=1").catch(() => null);
+  if (r && r.status) drawTempo(r);
+}
+
 function dmxCsv() {
   const rows = [["channel", "name", "value"], ...[...Array(512).keys()].map((i) => [i + 1, names[i + 1] || "", frame ? frame[i] : ""])];
   return rows.map((r) => r.join(",")).join("\n");
@@ -127,6 +382,8 @@ async function poll() {
   if (!shown()) return;
   const st = await get("/api/monitor/status").catch(() => null);
   if (st) drawPorts(st);
+  pollTest();
+  if (!paused.tempo) pollTempo();
   if (!paused["midi-in"]) {
     const rows = await get(`/api/monitor/midi?${inQuery()}`).catch(() => []);
     if (rows.length) {
@@ -260,6 +517,21 @@ export function init() {
     clearInterval(timer);
     timer = setInterval(poll, 300);
   });
-  onLeave("monitor", () => { stopFeed?.(); stopFeed = null; clearInterval(timer); });
+  $("#ff-open").onclick = openFaultFind;
+  $("#tempo-source").onchange = (e) => attempt(() => api("POST", "/api/tempo", { action: "source", source: e.target.value }));
+  $("#tempo-tap").onclick = () => api("POST", "/api/tempo", { action: "tap" }).catch(() => null);
+  $("#tempo-params-btn").onclick = () => $("#tempo-params").classList.toggle("hidden");
+  $("#ff-close").onclick = () => $("#ff").classList.add("hidden");
+  $("#ff-copy").onclick = async () => { try { await navigator.clipboard.writeText(ffSummary); toast(t("ff.copied")); } catch { prompt("", ffSummary); } };
+  $("#test-pattern").onchange = testFields;
+  $("#test-target").onchange = testFields;
+  $("#cycle-go").onclick = startCycle;
+  $("#cycle-yes").onclick = async () => { await attempt(() => api("POST", "/api/cycle/confirm", {})); pollTest(); };
+  $("#test-go").onclick = startTest;
+  $("#test-stop").onclick = () => stopTest();
+  onLeave("monitor", () => {
+    stopFeed?.(); stopFeed = null; clearInterval(timer);
+    if (myTest) stopTest("page left");
+  });
   onCatalogue(() => { if (shown()) loadSources(); });
 }

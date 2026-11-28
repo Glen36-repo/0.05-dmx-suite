@@ -254,7 +254,26 @@ function carriers(u) {
   return (routing?.rows || []).filter((r) => r.universe === u).map((r) => r.interface);
 }
 
+// a rebuilt list keeps the field being typed in (and honours a pending "Change" from Fixtures)
+let pendingAddr = null;
+function focusRowField(id, idx, select) {
+  const tr = document.querySelector(`#lp-fixtures tr[data-id="${CSS.escape(id)}"]`);
+  const inp = tr?.querySelectorAll("input")[idx];
+  if (!inp) return false;
+  inp.focus();
+  if (select) { inp.scrollIntoView({ block: "center" }); inp.select(); }
+  return true;
+}
+
 function renderFixtures() {
+  const act = document.activeElement;
+  const keep = act?.closest?.("#lp-fixtures tr") ? [act.closest("tr").dataset.id, [...act.closest("tr").querySelectorAll("input")].indexOf(act)] : null;
+  renderFixtureRows();
+  if (pendingAddr && focusRowField(pendingAddr, 1, true)) { pickFixture(pendingAddr); pendingAddr = null; }
+  else if (keep) focusRowField(keep[0], keep[1], false);
+}
+
+function renderFixtureRows() {
   if (!doc) return;
   const bad = clashPatch(doc.fixtures, doc.types);
   const sel = grid ? grid.selected : new Set();
@@ -263,11 +282,13 @@ function renderFixtures() {
     const tr = el("tr", { class: [bad.has(f.id) ? "error" : "", sel.has(f.id) ? "sel" : ""].join(" ").trim(), "data-id": f.id,
       onclick: (e) => { if (!e.target.matches("input")) pickFixture(f.id, e.shiftKey); } },
     el("td", { text: f.id }),
-    el("td", { text: doc.types[f.type]?.name || f.type, title: f.type }),
+    el("td", { text: doc.types[f.type]?.name || f.type, title: doc.types[f.type]?.name || f.type }),
     el("td", { text: n }),
     el("td", {}, el("input", { type: "number", class: "num", min: 0, max: 15, value: f.universe ?? 0,
+      "aria-label": t("layout.aria_universe", { id: f.id }),
       oninput: (e) => { f.universe = +e.target.value || 0; patchChanged(); } })),
     el("td", {}, el("input", { type: "number", class: "num", min: 1, max: 512, value: f.address ?? "",
+      "aria-label": t("layout.aria_address", { id: f.id }),
       oninput: (e) => { f.address = +e.target.value || 0; patchChanged(); } })),
     el("td", { class: "muted", text: f.address ? `${f.address}-${f.address + n - 1}` : "" }),
     el("td", { class: "muted", text: (f.groups || []).join(", ") }),
@@ -296,6 +317,14 @@ function patchChanged() {
   $("#lp-patch-save").disabled = !dirtyPatch || bad.size > 0;
   $("#lp-patch-revert").disabled = !dirtyPatch;
   renderAddresses();
+}
+
+// Fixtures › Patch sends address changes here (one place to edit addresses): open Layout with that
+// light picked and its address field ready to type in
+export function editAddress(id) {
+  if (uni !== "all" && !rowsInView().some((f) => f.id === id)) setUni("all");
+  pendingAddr = id;  // taken by the next render if the rows aren't there yet
+  if (focusRowField(id, 1, true)) { pickFixture(id); pendingAddr = null; }
 }
 
 function pickFixture(id, add) {
@@ -336,6 +365,17 @@ async function loadRouting() {
 
 const ago = (ms) => (ms === null || ms === undefined ? t("layout.never") : t("layout.ms_ago", { n: ms }));
 
+// v5: USB DMX (Open) rows: driver (VCP / D2XX), break method, measured vs target; amber when out of range
+function timingCell(r) {
+  const tm = r.timing;
+  if (!tm) return el("td", { text: "" });
+  const m = tm.measured, g = tm.target, ck = r.checks;
+  const driver = t(`timing.${ck?.driver_type || (tm.backend === "d2xx" ? "d2xx" : "vcp")}`);
+  const text = t("timing.short", { driver, method: tm.method_name, brk: m.break_us ?? "-", tbrk: g.break_us, mab: m.mab_us ?? "-", tmab: g.mab_us });
+  const warn = tm.warnings.length || (ck && ck.result !== "pass");
+  return el("td", { class: warn ? "amber" : "", text, title: [...tm.warnings, ...(ck?.problems || []), tm.note].join("\n") });
+}
+
 function renderRouting() {
   if (!routing) return;
   $("#lp-routing").replaceChildren(...routing.rows.map((r) => el("tr", { class: uni !== "all" && r.universe === uni ? "on" : "" },
@@ -343,7 +383,7 @@ function renderRouting() {
     el("td", { text: r.interface + (r.port ? ` (${r.port})` : r.mac ? ` (${r.mac})` : ""), title: r.detail || "" }),
     el("td", {}, el("span", { class: `st-dot ${r.state}` }), r.state),
     el("td", { text: r.fps ?? "-" }), el("td", { text: r.frames ?? r.packets ?? "-" }), el("td", { text: r.errors ?? "-" }),
-    el("td", { text: ago(r.last_frame_age_ms) }))));
+    el("td", { text: ago(r.last_frame_age_ms) }), timingCell(r))));
   $("#lp-routing-problems").replaceChildren(...routing.problems.map((p) => el("li", { text: p })));
   // status strip: the interface(s) carrying the universe in view
   const us = uni === "all" ? universes() : [uni];

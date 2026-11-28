@@ -79,13 +79,14 @@ ACTIONS: dict[str, set[str]] = {
     "feel_fan": set(),
     "feel_size": set(),
     "feel_shift": set(),
+    "darkness": set(),  # v6: Autopilot darkness, a CC (expression pedal) or OSC fader
     "preset": {"preset"},  # v3.5: play a preset
 }
 CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade",
-              "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift"}  # need a CC or OSC
+              "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift", "darkness"}  # need a CC or OSC
 AUTOPILOT_ACTIONS = {"autopilot", "hold", "look_next", "look_prev", "mood", "walk_on", "walk_off", "autopilot_fx",
                      "autopilot_palette", "palette_lock", "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift",
-                     "preset"}
+                     "darkness", "preset"}
 RIDE_ACTIONS = AUTOPILOT_ACTIONS  # v3 name
 # v3 action names (Ride page, busking) still load; v4 writes the new ones (show file format 6)
 ACTION_ALIASES = {"busk": "override", "ride_fx": "autopilot_fx", "ride_palette": "autopilot_palette",
@@ -108,6 +109,7 @@ class Mapping:
     port: str | None = None  # substring of the input port name; None = any port
     address: str = ""  # OSC address (type osc)
     input: str | None = None  # named input (type "input", v3)
+    from_kit: bool = False  # v6: made from the active drum kit's flash target, never written to the map file
 
     def __post_init__(self) -> None:
         self.action = canonical(self.action)
@@ -129,6 +131,29 @@ class Mapping:
             return f"{self.action} {extra}".strip()
         extra = " ".join(f"{k}={v}" for k, v in self.params.items())
         return f"{self.action} {extra}".strip() + (f" [port {self.port}]" if self.port else "")
+
+    def label(self) -> str:
+        """For people (the MIDI page): 'Flash · bars · 120 ms · colour show' rather than Python reprs."""
+        def val(v: Any) -> str:
+            if isinstance(v, (list, tuple)):
+                return ", ".join(map(str, v))
+            if isinstance(v, dict):
+                return ", ".join(f"{k} {val(x)}" for k, x in v.items())
+            return str(v)
+
+        parts = [self.action.replace("_", " ").capitalize()]
+        for k, v in self.params.items():
+            if k == "fixtures":
+                parts.append(val(v))
+            elif k == "length_ms":
+                parts.append(f"{v} ms")
+            elif k in ("set", "show", "scene", "preset", "fx", "mood", "palette", "state", "item", "bank"):
+                parts.append(val(v))
+            else:
+                parts.append(f"{k.replace('_', ' ')} {val(v)}")
+        if self.port:
+            parts.append(f"port {self.port}")
+        return " · ".join(parts)
 
     def to_dict(self) -> dict[str, Any]:
         if self.type == "input":
@@ -250,7 +275,7 @@ class MidiMap:
         return self._by_key.get((type_, channel, number, ""))
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "mappings": [m.to_dict() for m in self.mappings]}
+        return {"name": self.name, "mappings": [m.to_dict() for m in self.mappings if not m.from_kit]}
 
 
 def parse_map(data: dict) -> MidiMap:

@@ -114,7 +114,7 @@ def test_every_ui_text_key_exists():
     used = {k for k in used if not k.endswith(("_", "."))}  # prefixes of keys built at run time:
     used |= {f"live.sub_{k}" for k in ("head", "bar", "wash", "kick")} | {f"haze.{m}" for m in ("off", "manual", "pulse")}
     used |= {f"scenes.blend_{b}" for b in ("replace", "max", "add")}
-    used |= {f"tempo.{s}" for s in ("tap", "kick", "midi_clock")}
+    used |= {f"tempo.{s}" for s in ("tap", "kick", "midi_clock", "drums", "off")}
     used |= {f"shows.hold_{h}" for h in ("repeats", "hold_s", "hold_beats", "hold_bars")}
     used |= {f"shows.order_{o}" for o in ("sequence", "random")} | {f"shows.energy_{e}" for e in ("low", "mid", "high")}
     used |= {f"shows.mix_{m}" for m in ("matching", "white", "contrast")}
@@ -124,12 +124,17 @@ def test_every_ui_text_key_exists():
     used |= {f"override.haze_{a}" for a in ("off", "manual", "pulse", "boost")}
     used |= {f"wizard.{s}_{x}" for s in ("interface", "lights", "profile", "starter", "pin") for x in ("title", "help")}
     used |= {f"wizard.drv_{d}" for d in ("node", "usb_dmx_open", "usb_dmx_pro")}
+    used |= {f"timing.{d}" for d in ("vcp", "d2xx", "unknown")}  # v5: driver type in the timing line
+    used |= {f"ff.a_{a}" for a in ("yes", "no", "pass", "fail", "restart")}  # v5: fault-find answers
+    used |= {f"darkness.src_{s}" for s in ("default", "set", "slider", "cc", "claude")}  # v6: darkness source
+    used |= {"tempo2.freewheel", "tempo2.locked", "tempo2.empty_hits", "tempo2.empty_other"}  # v6: tempo state
+    used |= {f"kit.role_{r}" for r in ("kick", "snare", "hat", "tom", "cymbal", "tap", "count_in", "trigger_only")}
     # v3.1
     used |= {f"alerts.state_{s}" for s in ("active", "dismissed", "minimised", "snoozed", "muted", "cleared")}
     used |= {f"heads.stage_{k}" for k in "xyz"}
     places = ("left", "centre", "right", "front", "middle", "back", "floor", "low", "mid", "high", "ceiling")
     used |= {f"heads.place_{p}" for p in places}
-    used |= {f"midi.role_{r}" for r in ("kick", "snare", "tom", "cymbal", "count_in", "activity")}
+    used |= {f"midi.role_{r}" for r in ("kick", "snare", "tom", "cymbal", "count_in", "activity", "darkness")}
     used |= {f"midi.level_{v}" for v in ("quiet", "normal", "loud")}
     used |= {f"midi.type_{x}" for x in ("note", "program_change", "control_change", "osc")}
     used |= {f"palettes.scheme_{x}" for x in ("analogous", "complementary", "triadic", "split", "mono")}

@@ -16,7 +16,8 @@ Colour = dict[str, float]  # emitter role -> 0..1
 FORBIDDEN = {"dimmer": "scenes never set the dimmer channel; use intensity, and only where the rig's "
                        "profile doesn't make MASTER own on/off (rule 1)",
              "haze": "haze is only set by the Haze controls (rule 5)"}
-INTENSITY_RULE1 = "sets intensity, but MASTER owns on/off under this rig's profile (rule 1)"
+INTENSITY_RULE1 = ("sets intensity, but MASTER owns on/off under this rig's profile (rule 1). For black in a look, "
+                   "use lit: (colour off), never intensity or the dimmer")
 
 
 class LookError(ConfigError):
@@ -38,6 +39,7 @@ class FixtureLook:
     focus: float | None = None
     frost: float | None = None
     prism: int | None = None  # DMX value
+    unlit: frozenset[int] = frozenset()  # v6: pixels made black by lit / darkness (-1 = the whole light): drum flash skips them
 
     def is_on(self) -> bool:
         if any(v > 0 for v in self.colour.values()):

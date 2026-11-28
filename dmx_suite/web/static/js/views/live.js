@@ -1,6 +1,6 @@
 // Live page: the rig's lights, shows and sets, setlist, masters, haze.
 import { cmd } from "../api.js";
-import { $, $$, el } from "../dom.js";
+import { $, $$, el, remember } from "../dom.js";
 import { fillGrid } from "../btngrid.js";
 import { LightGrid } from "../grid.js";
 import { initHazePanel, renderHazePanel } from "../hazepanel.js";
@@ -8,6 +8,15 @@ import { t } from "../i18n.js";
 import { live, onCatalogue, onState } from "../state.js";
 
 let grid;
+
+// the stage view folds away to bring shows, scenes and the setlist up (folded by default on a phone)
+function stageFold(folded) {
+  $("#live-grid").classList.toggle("folded", folded);
+  const b = $("#stage-fold");
+  b.textContent = t(folded ? "live.stage_show" : "live.stage_hide");
+  b.setAttribute("aria-expanded", String(!folded));
+  remember.set("live.stage_folded", folded);
+}
 
 function buildCatalogue(cat) {
   grid = grid || new LightGrid($("#live-grid"));
@@ -111,6 +120,8 @@ function render(s) {
 }
 
 export function init() {
+  stageFold(remember.get("live.stage_folded", matchMedia("(max-width: 760px)").matches));
+  $("#stage-fold").onclick = () => stageFold(!$("#live-grid").classList.contains("folded"));
   $("#tap").onclick = () => cmd("tap");
   $("#bpm-set").onclick = () => { const v = +$("#bpm").value; if (v) cmd("tempo", { bpm: v }); };
   $("#setlist-go").onclick = () => cmd("setlist", { setlist: $("#setlist").value });

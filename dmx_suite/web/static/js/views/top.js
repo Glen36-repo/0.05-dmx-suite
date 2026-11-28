@@ -4,10 +4,10 @@ import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
 import { go } from "../nav.js";
 import { openClaude } from "./claude.js";
-import { focusPane } from "./monitor.js";
+import { focusPane, openFaultFind } from "./monitor.js";
 
 // status bar tiles that open a Monitor pane (v4)
-const PANE = { output: "dmx", routing: "dmx", device: "dmx", midi: "midi-in", device_new: "midi-in" };
+const PANE = { output: "dmx", routing: "dmx", device: "dmx", midi: "midi-in", device_new: "midi-in", dmx_check: "dmx", test: "test" };
 import { live, onConnection, onState } from "../state.js";
 
 let lastNewBanner = null;
@@ -44,8 +44,21 @@ function renderTempo(tp) {
   lastBeat = tp.beat;
 }
 
+// The header: what's playing, short (the tempo has its own box on the right, so it isn't repeated here)
+function nowText(s) {
+  const n = s.now;
+  if (!n) return s.describe;
+  const parts = [n.label === "static look" ? t("top.static_look") : n.label];
+  if (n.mode === "show" && n.step) {
+    parts.push(t("top.now_step", { n: n.step, scene: n.scene || "" }) + (n.time_left_s != null ? ` · ${t("top.now_left", { s: Math.round(n.time_left_s) })}` : ""));
+  }
+  if (n.setlist && n.song != null) parts.push(t("top.now_song", { n: n.song + 1, name: n.song_name || "" }));
+  return parts.join("  ·  ");
+}
+
 function render(s) {
-  $("#now").textContent = s.describe;
+  $("#now").textContent = nowText(s);
+  $("#now").title = s.describe; // the full line on hover
   renderTempo(s.tempo);
   const gated = !s.profile || s.profile.master_gate;
   $("#master").classList.toggle("hidden", !gated); // no MASTER on/off under the generic profile
@@ -60,11 +73,26 @@ function render(s) {
   // status strip: engine, outputs, MIDI, Claude, screens, then every node/receiver
   const nodes = s.nodes.filter((n) => n.mac);
   const short = (d) => (d.kind === "output" || d.kind === "midi" ? d.detail.split(" · ")[0] : d.detail);
-  $("#health").replaceChildren(
+  // phones: one summary chip first (worst state, how many need attention); tapping it shows every tile
+  const states = [...s.devices.map((d) => d.state), ...nodes.map((n) => n.state)];
+  const problems = states.filter((x) => ["bad", "warn", "offline", "weak"].includes(x)).length;
+  const worst = states.some((x) => x === "bad" || x === "offline") ? "bad" : problems ? "warn" : "ok";
+  const open = $("#health").classList.contains("open");
+  const sum = el("button", { type: "button", class: "tile health-sum", "aria-expanded": String(open),
+    onclick: () => { const h = $("#health"); h.classList.toggle("open"); sum.setAttribute("aria-expanded", String(h.classList.contains("open"))); } },
+    el("span", { class: `dot ${worst}`, "aria-hidden": "true" }),
+    el("span", { text: problems ? t("top.health_problems", { n: problems }) : t("top.health_ok") }),
+    el("span", { "aria-hidden": "true", text: open ? "▴" : "▾" }));
+  $("#health").replaceChildren(sum,
     ...s.devices.map((d) =>
       el("div", { class: "tile" + (d.kind === "claude" || PANE[d.kind] ? " link" : ""),
         title: `${d.name}: ${d.detail}` + (d.model ? ` (${d.model})` : ""), "data-key": `${d.kind}:${d.name}`,
-        onclick: d.kind === "claude" ? openClaude : PANE[d.kind] ? () => { go("monitor"); focusPane(PANE[d.kind]); } : undefined },
+        onclick: d.kind === "claude" ? openClaude : PANE[d.kind] ? () => {
+          go("monitor");
+          focusPane(PANE[d.kind]);
+          // v5: a red / amber DMX badge opens the "Rig not responding" wizard
+          if ((d.kind === "output" || d.kind === "dmx_check") && (d.state === "bad" || d.state === "warn")) openFaultFind();
+        } : undefined },
         el("span", { class: `dot ${d.state}${d.active ? " active" : ""}`, "aria-label": d.state }),
         el("span", { text: d.name }),
         el("span", { class: "muted", text: d.state === "ok" && d.kind !== "claude" ? short(d) : d.detail }))),

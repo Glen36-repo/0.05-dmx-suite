@@ -179,7 +179,7 @@ def apply(look: Look, overrides: list[Override], now: float) -> Look:
         if o.kind == "colour" and o.colour is not None:
             for fid in o.fixtures:
                 base = fixtures.get(fid, FixtureLook())
-                fixtures[fid] = replace(base, colour=dict(o.colour), pixels=None)
+                fixtures[fid] = replace(base, colour=dict(o.colour), pixels=None, unlit=frozenset())  # above darkness
         elif o.kind == "solo":
             for fid, fl in list(fixtures.items()):
                 if fid not in o.fixtures and fid not in o.keep:

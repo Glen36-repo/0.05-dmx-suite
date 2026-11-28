@@ -40,7 +40,8 @@ from typing import Any
 from ..fixtures import ConfigError
 
 TYPES = ("note", "program_change", "control_change", "osc")
-ROLES = ("kick", "snare", "tom", "cymbal", "count_in", "activity")
+ROLES = ("kick", "snare", "hat", "tom", "cymbal", "tap", "count_in", "activity", "darkness")  # v6: hat, tap
+CONTINUOUS_ROLES = ("darkness",)  # v6: a CC (expression pedal) that rides a live control
 ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 CURVE_POINTS = (("quiet", 0.25), ("normal", 0.6), ("loud", 1.0))  # calibrated velocity -> strength
 
@@ -62,6 +63,13 @@ class InputDef:
     roles: list[str] = field(default_factory=list)
     shared: bool = False
     colour: str | None = None
+    range: tuple[float, float] = (0.0, 100.0)  # v6: a continuous role's span in % (pedal heel -> toe)
+    # v6 drum kit zone (set for the active kit's inputs only)
+    kit: str | None = None  # "kit/piece/zone"
+    tempo: bool = True  # counts as a tempo onset
+    tempo_weight: float | None = None  # None: the role's weight
+    tempo_floor: int | None = None  # None: the tracker's velocity floor
+    trigger: dict[str, str] | None = None  # {scene | preset | flash_fx: name}
 
     def keys(self) -> list[Key]:
         if self.type == "osc":
@@ -127,7 +135,14 @@ class InputDef:
             d["shared"] = True
         if self.colour:
             d["colour"] = self.colour
+        if self.range != (0.0, 100.0):
+            d["range"] = [self.range[0], self.range[1]]
         return d
+
+    def level(self, value: int) -> float:
+        """A continuous role's value 0-1: the curve (calibration), then the range (heel -> toe, may be reversed)."""
+        lo, hi = self.range
+        return (lo + (hi - lo) * self.strength(value)) / 100
 
 
 @dataclass
@@ -137,6 +152,7 @@ class Device:
     port: str | None = None
     channel: int = 0
     inputs: list[str] = field(default_factory=list)
+    kit: bool = False  # v6: the active kit's inputs (written under kits:, not devices:)
 
 
 class Inputs:
@@ -145,6 +161,9 @@ class Inputs:
     def __init__(self, devices: dict[str, Device] | None = None, inputs: dict[str, InputDef] | None = None) -> None:
         self.devices: dict[str, Device] = devices or {}
         self.inputs: dict[str, InputDef] = inputs or {}
+        self.kits: dict[str, Any] = {}  # v6: kits.Kit by id (from inputs.yaml `kits:`)
+        self.active_kit: str | None = None
+        self.kits_data: dict[str, Any] = {}  # as written, for round trips
         self._index: dict[tuple[str, int, str], list[InputDef]] = {}  # (type, number or 0, address) -> inputs
         for i in self.inputs.values():
             self._add_index(i)
@@ -197,6 +216,8 @@ class Inputs:
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for d in self.devices.values():
+            if d.kit:
+                continue  # the kit's own inputs live under kits:
             dd: dict[str, Any] = {"name": d.name}
             if d.port:
                 dd["port"] = d.port
@@ -204,7 +225,12 @@ class Inputs:
                 dd["channel"] = d.channel
             dd["inputs"] = {k: self.inputs[k].to_dict(d.channel, d.port) for k in d.inputs if k in self.inputs}
             out[d.id] = dd
-        return {"devices": out}
+        res: dict[str, Any] = {"devices": out}
+        if self.kits_data:
+            res["kits"] = self.kits_data
+            if self.active_kit:
+                res["active_kit"] = self.active_kit
+        return res
 
     def summary(self) -> list[dict[str, Any]]:
         """For the UI and Claude: one row per input."""
@@ -253,7 +279,7 @@ def _numbers(d: dict[str, Any], where: str) -> list[int]:
 
 
 INPUT_KEYS = {"name", "type", "channel", "notes", "number", "numbers", "address", "port", "velocity", "curve",
-              "roles", "shared", "colour"}
+              "roles", "shared", "colour", "range"}
 
 
 def parse_input(iid: str, d: Any, device: Device) -> InputDef:
@@ -308,6 +334,15 @@ def parse_input(iid: str, d: Any, device: Device) -> InputDef:
     if not isinstance(roles, list) or any(r not in ROLES for r in roles):
         raise ConfigError(f"{where}: roles are {', '.join(ROLES)}")
     i.roles = list(dict.fromkeys(roles))
+    cont = [r for r in i.roles if r in CONTINUOUS_ROLES]
+    if cont and t not in ("control_change", "osc"):
+        raise ConfigError(f"{where}: role {cont[0]} needs a CC (control_change), e.g. an expression pedal")
+    if "range" in d:
+        r = d["range"]
+        if (not isinstance(r, list) or len(r) != 2 or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in r)
+                or not all(0 <= x <= 100 for x in r)):
+            raise ConfigError(f"{where}: range is [heel, toe] in %, 0-100 (e.g. [0, 80])")
+        i.range = (float(r[0]), float(r[1]))
     i.shared = bool(d.get("shared", False))
     if d.get("colour") is not None:
         c = str(d["colour"])
@@ -346,9 +381,9 @@ def check_clashes(inputs: dict[str, InputDef]) -> None:
 
 def parse_inputs(data: dict[str, Any] | None) -> Inputs:
     data = data or {}
-    bad = set(data) - {"devices"}
+    bad = set(data) - {"devices", "kits", "active_kit"}
     if bad:
-        raise ConfigError(f"inputs.yaml: unknown sections {sorted(bad)} (devices only)")
+        raise ConfigError(f"inputs.yaml: unknown sections {sorted(bad)} (devices, kits, active_kit)")
     devices: dict[str, Device] = {}
     inputs: dict[str, InputDef] = {}
     for did, dd in (data.get("devices") or {}).items():
@@ -371,8 +406,41 @@ def parse_inputs(data: dict[str, Any] | None) -> Inputs:
             inputs[iid] = parse_input(iid, idata, dev)
             dev.inputs.append(iid)
         devices[dev.id] = dev
+    kits, active = _kits(data, devices, inputs)
     check_clashes(inputs)
-    return Inputs(devices, inputs)
+    out = Inputs(devices, inputs)
+    out.kits, out.active_kit, out.kits_data = kits, active, dict(data.get("kits") or {})
+    return out
+
+
+def _kits(data: dict[str, Any], devices: dict[str, Device], inputs: dict[str, InputDef]) -> tuple[dict[str, Any], str | None]:
+    """v6: the kits, and the active one's zones as named inputs."""
+    from ..kits import parse_kits, zone_input
+
+    kits = parse_kits(data.get("kits"))
+    active = data.get("active_kit")
+    if active is None and kits:
+        active = next(iter(kits))
+    if active is not None and active not in kits:
+        raise ConfigError(f"active_kit {active!r}: no such kit (have {', '.join(kits) or 'none'})")
+    if active is None:
+        return kits, None
+    kit = kits[active]
+    if kit.id in devices:
+        raise ConfigError(f"kit {kit.id}: a device has the same id")
+    dev = Device(kit.id, kit.name, kit.port, kit.channel, kit=True)
+    for piece, z in kit.zones():
+        if not z.notes:
+            continue  # not learned yet
+        if z.input in inputs:
+            raise ConfigError(f"kit {kit.id} {piece.id}/{z.id}: input {z.input} is also in device {inputs[z.input].device}")
+        i = parse_input(z.input, zone_input(kit, piece, z), dev)
+        i.kit, i.tempo, i.tempo_weight, i.tempo_floor = f"{kit.id}/{piece.id}/{z.id}", z.tempo, z.weight, z.velocity_floor
+        i.trigger = dict(z.trigger) if z.trigger else None
+        inputs[z.input] = i
+        dev.inputs.append(z.input)
+    devices[dev.id] = dev
+    return kits, active
 
 
 def load_inputs(path: str | Path) -> Inputs:
@@ -430,11 +498,11 @@ GM_DRUMS: dict[int, tuple[str, str, list[str]]] = {
     39: ("clap", "Clap", ["activity"]),
     40: ("snare_rim", "Snare rim", ["snare", "activity"]),
     41: ("floor_tom_2", "Floor tom 2", ["tom", "activity"]),
-    42: ("hihat", "Hi-hat", ["activity"]),
+    42: ("hihat", "Hi-hat", ["hat", "activity"]),
     43: ("floor_tom", "Floor tom", ["tom", "activity"]),
     44: ("hihat_pedal", "Hi-hat pedal", ["count_in", "activity"]),
     45: ("tom_3", "Tom 3", ["tom", "activity"]),
-    46: ("hihat_open", "Hi-hat open", ["activity"]),
+    46: ("hihat_open", "Hi-hat open", ["hat", "activity"]),
     47: ("tom_2b", "Tom 2 (low mid)", ["tom", "activity"]),
     48: ("tom_1", "Tom 1", ["tom", "activity"]),
     49: ("crash", "Crash", ["cymbal", "activity"]),

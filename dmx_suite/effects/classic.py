@@ -8,7 +8,7 @@ import random
 from typing import Any
 
 from ..look import LookError
-from .base import SPREAD_PARAMS, Effect, Param, ParseCtx, Run, mix, seed
+from .base import SPREAD_PARAMS, Effect, Param, ParseCtx, Run, mix, seed, with_black
 
 
 def _plain(p: dict[str, Any]) -> bool:
@@ -39,13 +39,19 @@ class ColourChase(Effect):
         if "colours" not in p:
             raise LookError(f"{ctx.what}: colour_chase needs at least 2 colours")
 
+    lit_aware = True
+
     def render(self, p: dict[str, Any], run: Run) -> None:
-        cols, k = p["colours"], len(p["colours"])
         for f, off in zip(run.fids, _offsets(p, run)):
+            lit = run.lit_of(f)
+            cols = with_black(p["colours"], lit) if lit < 1.0 else p["colours"]  # black slots in the cycle
+            k = len(cols)
             phase = (run.t / p["period_s"] + off) % 1.0
             pos = phase * k
             idx, frac = int(pos) % k, pos - int(pos)
             c = mix(cols[idx], cols[(idx + 1) % k], frac) if p["fade"] else cols[idx]
+            if lit < 1.0 and not any(c.values()):
+                c = run.black(f)
             run.set_colour(f, c)
 
 

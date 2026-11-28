@@ -1,6 +1,6 @@
 // Setup page: find a light, channel tester, devices, nodes, addresses, theme, update check.
 import { api, attempt, cmd, get, toast } from "../api.js";
-import { $, $$, el } from "../dom.js";
+import { $, $$, applyMotion, el, remember } from "../dom.js";
 import { t } from "../i18n.js";
 import { onShow } from "../nav.js";
 import { live, onCatalogue, onState } from "../state.js";
@@ -143,6 +143,7 @@ async function loadThemes() {
   $("#theme").replaceChildren(...Object.entries(s.themes).map(([k, v]) =>
     el("option", { value: k, selected: k === s.settings.theme }, v.name)));
   $("#density").value = s.settings.density || "compact";
+  $("#motion").value = remember.get("motion", "auto");
 }
 
 export function init() {
@@ -162,6 +163,7 @@ export function init() {
       document.body.classList.add(`density-${d}`);
     }
   };
+  $("#motion").onchange = (e) => { remember.set("motion", e.target.value); applyMotion(e.target.value); };
   $("#update-check").onclick = async () => {
     $("#update-result").textContent = t("setup.checking");
     const r = await get("/api/update");

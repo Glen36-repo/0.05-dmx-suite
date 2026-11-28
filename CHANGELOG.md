@@ -2,6 +2,61 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v6: Darkness, tempo from the drums, drum kit)
+
+### Fixed
+- Setup wizard: pressing **Next** straight after choosing an interface saved the one ticked before (on a computer with a serial port listed first, the port instead of the simulator).
+
+### Changed (addresses, text size, motion)
+- Universes and addresses are changed in one place, the Layout page; Fixtures › Patch shows them with **Change**, which opens Layout with that light's address ready to type.
+- No text under 12 px apart from numbers in dense grids (DMX channels, the address map); stage-view names are larger.
+- **Motion** (Setup › Appearance, per screen) and the device's "reduce motion" setting stop beat pulses, activity glows and fades.
+
+### Changed (phones and live use)
+- Phones and touch tablets always get finger-sized controls (44 px; MASTER and BLACKOUT 52 px), whatever the laptop's button size.
+- Phone status strip: one chip (**All OK** or how many need attention) that opens every device; what's playing shows under MASTER.
+- Live: **Hide stage / Show stage** folds the stage view so shows, scenes and the setlist start at the top (folded by default on a phone, remembered per screen).
+- Override with no panels: a short explanation and **Make a panel**, instead of an empty dropdown.
+
+### Changed (UI polish, 28/11/2026 review)
+- The header shows what's playing in one short line (show / set · step · song); the tempo stays in its own box, and the full line is on hover.
+- Monitor DMX grid: each value sits under its channel number and cells never get too narrow to read (fewer per row in a narrow pane).
+- MIDI page: what an input does reads as words ("Flash · bars · 120 ms · colour show"), not code.
+- Layout: arrange fields fit "auto" and three-digit values; fixture types show in full on hover.
+- Red text (delete, ban, ✕, warnings) meets 4.5:1 contrast in the Neutral theme.
+- Autopilot: "Auto mood" matches LOW / MID / HIGH; the energy meter is labelled and marked in thirds.
+- Tempo pane says what to do when there's no tempo yet.
+- Every field has a name screen readers announce; checkboxes are 20 px.
+
+### Added (Part A: Darkness)
+- **Darkness** on the Autopilot page: puts black into the Autopilot's effects (narrower bands, black palette slots, gaps between colours, a regular black pattern on still colours), never a dimmer. The kick light is exempt; hand-made scenes, shows and Override are untouched; heads keep moving dark; with MASTER off a drum hit only flashes what's lit. Eases in over the look's fade. **Store for set** keeps a value per LOW / MID / HIGH.
+- `lit:` (0-100 %) on scene layers, whole scenes and step-scene lights (step editor: Colour › Lit %).
+- MIDI: the `darkness` role on a CC input (`range: [heel, toe]` %, calibration curve) and the `darkness` map action, so the FCB1010 expression pedal can ride it.
+- Claude: `set_autopilot {darkness}`, `set_set_darkness`, darkness in `autopilot_status`, `preview_look` with a darkness to see a look at.
+
+### Added (Part B: tempo from the drums)
+- Tempo source **Drums**: a beat clock (BPM, beat, bar, confidence) from every drum hit, weighted (kick, snare, hat, toms, cymbals; ghost notes ignored), seeded by a tap (FCB1010, a tap pad, the Tap button) or a count-in (4 even hits after 2 s quiet). Held steady: the median of 8 beats, moving only when the band is more than 3 % off for 4 beats (with a glide), a jump over 15 % only after 8 beats, phase nudged gently. Through fills, breakdowns and stops it freewheels at the last tempo. `kick` now means drums.
+- Input Monitor **Tempo** pane: hits by drum with the beat grid, raw vs output BPM, confidence, where the seed came from, and every tracker setting live. Sources: Drums, Tap only, MIDI clock, Off.
+- `step_beats` steps and beat-synced effects follow it; `step_s` scenes stay on timers. New input roles `hat` and `tap`.
+- Claude: `tempo_status`, `tap_tempo`, `set_tempo_source`, `set_tempo_params`.
+
+### Added (Part C: Drum Kit)
+- **Drum Kit** on the MIDI page: the drummer's kit defined once, so tempo, drum flash and trigger pads all read one map. Pieces (kick, snare, hi-hat, toms 1-4, crashes, ride, china / splash, extra pads, tap pad) with zones (head / rim / cross-stick, closed / pedal / open, bow / bell / edge). Per zone: notes (**Learn**: hit the pad), role, tempo weight, velocity floor, in tempo or not, drum flash target, and a drummer trigger (scene, preset or Flash FX). Hits light their row; notes heard that aren't in the kit are listed.
+- Start from a General MIDI kit, add / rename / remove pieces, several named kits with one active, Export / Import as YAML.
+- A show without a kit shows its drum inputs as `band_kit`; the first change saves it as a kit, moving the drum inputs and their flash mappings in (inputs.yaml and the MIDI map backed up first). Input ids stay the same, so nothing else changes.
+- Claude: `list_kits`, `get_kit`, `set_kit_piece`, `set_active_kit`, `kit_learn_status`.
+
+## Unreleased (v5: DMX output diagnostics)
+
+Brief and plan: `docs/v5-v6-brief.md`, `docs/v5-v6-plan.md`.
+
+### Added
+- USB DMX (Open): per-output break method (`auto`, `d2xx`, `serial_break`, `baud_drop`) and timings (`break_us`, `mab_us`, `fps`, `channels: 512 | patched`). FTDI's D2XX driver is used when installed (no extra package). Break, MAB, fps, write time and jitter are measured on the laptop and shown beside the targets (amber when out of range) in the routing table, Monitor and Claude's `list_outputs` / `node_health`.
+- Test patterns on the Monitor page: All full, Fixture chase, Find fixture, Channel ramp, Keep-alive, to a universe or one interface, bypassing scenes, autopilot, Override, grand master and MASTER (head limits still apply, haze and strobe stay off). Stop test, leaving the page or the timeout brings the show back. Claude: `run_test_pattern`, `stop_test_pattern`.
+- Cycle break methods: All full while each break method runs for 5 s, the step shown large; **Lights responded** saves it to the output. Claude: `test_output_methods`.
+- Interface checks at start, on plug / unplug and every minute: VCP or D2XX, FTDI latency timer, port held by another program (Daslight, QLC+, FreeStyler named), 250k 8N2, USB selective suspend, timing. Problems go to the status bar and alerts with the fix. Claude: `check_outputs`.
+- **Rig not responding** wizard on the Monitor page (and from a red / amber DMX tile): interface checks, then the auto / sound-mode question and the likely causes in order, with tests, Pass / Fail, and a copyable summary written to the log. Claude: `fault_find`.
+
 ## Unreleased (v4.1: information buttons)
 
 ### Added

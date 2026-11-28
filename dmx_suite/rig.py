@@ -339,20 +339,29 @@ def _channel(v: Any) -> int | None:
 
 
 def _tempo(d: Any) -> TempoConfig:
+    from .beat import BeatParams
+    from .tempo import SOURCE_ALIASES
+
     if d is None:
         return TempoConfig()
-    if not isinstance(d, dict) or set(d) - {"source", "kick_note", "timeout_s"}:
-        raise ConfigError("tempo: source (tap, kick, midi_clock), kick_note, timeout_s")
-    src = d.get("source", "tap")
+    beat_keys = set(BeatParams.RANGES) | {"weights"}
+    if not isinstance(d, dict) or set(d) - {"source", "kick_note", "timeout_s"} - beat_keys:
+        raise ConfigError(f"tempo: source ({', '.join(SOURCES)}), kick_note, timeout_s, and the drums tracker's "
+                          f"{', '.join(sorted(beat_keys))}")
+    src = SOURCE_ALIASES.get(d.get("source", "tap"), d.get("source", "tap"))
     if src not in SOURCES:
         raise ConfigError(f"tempo source must be one of {', '.join(SOURCES)}")
+    try:
+        beat = BeatParams().update({k: v for k, v in d.items() if k in beat_keys})
+    except ValueError as e:
+        raise ConfigError(str(e)) from None
     try:
         note = int(d.get("kick_note", 36))
     except (TypeError, ValueError) as e:
         raise ConfigError("tempo kick_note must be a MIDI note number") from e
     if not 0 <= note <= 127:
         raise ConfigError("tempo kick_note must be 0-127")
-    return TempoConfig(src, note, _secs(d.get("timeout_s", 30), "tempo timeout_s", 1))
+    return TempoConfig(src, note, _secs(d.get("timeout_s", 30), "tempo timeout_s", 1), beat)
 
 
 def _osc(d: Any) -> OscConfig:
@@ -436,6 +445,9 @@ def routing_problems(rig: Rig) -> list[str]:
     return out
 
 
+TIMING_KEYS = ("break_method", "break_us", "mab_us", "fps", "channels")
+
+
 def parse_outputs(d: Any) -> tuple[list[dict[str, Any]], list[str]]:
     """The rig's `outputs:`, checked: known driver (v3 ids read), `universe:` 0-15 for interfaces that
     carry one universe (missing -> 0, with a warning so the routing is confirmed, not guessed)."""
@@ -465,6 +477,16 @@ def parse_outputs(d: Any) -> tuple[list[dict[str, Any]], list[str]]:
             u = o["universe"]
             if isinstance(u, bool) or not isinstance(u, int) or not 0 <= u <= 15:
                 raise ConfigError(f"outputs {i + 1}: universe 0-15")
+        timing = {k: o[k] for k in TIMING_KEYS if k in o}
+        if timing:  # v5: open-style USB DMX only; missing ones take the defaults, no warning
+            if o["driver"] != "usb_dmx_open":
+                raise ConfigError(f"outputs {i + 1}: {', '.join(sorted(timing))} only apply to usb_dmx_open")
+            from .output.enttec import check_timing
+
+            try:
+                check_timing(**timing)
+            except ValueError as e:
+                raise ConfigError(f"outputs {i + 1}: {e}") from None
         out.append(o)
     return out, warn
 

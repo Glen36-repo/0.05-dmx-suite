@@ -120,6 +120,20 @@ def check_map_inputs(mp: MidiMap, inputs: Inputs) -> None:
             validate(m, inp.type)
 
 
+def add_kit_flashes(mp: MidiMap, inputs: Inputs) -> None:
+    """The active kit's flash targets as MIDI map entries (in memory; the map file doesn't hold them).
+    A pad the map file already maps keeps that mapping."""
+    from .midi.map import Mapping
+
+    kit = inputs.kits.get(inputs.active_kit or "")
+    if kit is None:
+        return
+    for _, z in kit.zones():
+        if z.flash and z.input in inputs.inputs and mp.get_input(z.input) is None:
+            params = {"length_ms": 150, "colour": "show", **z.flash}
+            mp.add(Mapping("input", 0, 0, "flash", params=params, input=z.input, from_kit=True))
+
+
 def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: str = "default") -> ShowFiles:
     root = Path(root)
     patch = _load("fixtures.yaml", load_patch, root / "fixtures.yaml")
@@ -128,6 +142,7 @@ def load_show(root: str | Path, rig: str = "full", look: str = "default", midi: 
     lk = _load(f"looks/{look}.yaml", load_look, _pick(root / "looks", look), patch)
     mp_path = _pick(root / "midi", midi)
     mp = _load(f"midi/{midi}.yaml", load_map, mp_path)
+    add_kit_flashes(mp, inputs)  # v6: the active kit owns its pads' flash targets
     _load(f"midi/{midi}.yaml", check_map_inputs, mp, inputs)
     for m in mp.mappings:  # flash targets must exist in the patch
         if m.action == "flash":

@@ -54,11 +54,12 @@ def test_clock_start_lines_up_the_beat():
 
 
 def test_lost_source_keeps_tempo_then_goes_back_to_timers():
-    t = TempoClock(0.0, TempoConfig("kick", timeout_s=10))
+    """MIDI clock only (v6: the drums source freewheels instead, test_v6_tempo)."""
+    t = TempoClock(0.0, TempoConfig("midi_clock", timeout_s=10))
     now = 0.0
-    for _ in range(6):
-        now += 0.4  # 150 BPM
-        t.kick(now)
+    for _ in range(60):
+        now += 0.4 / 24  # 150 BPM
+        t.clock_tick(now)
     assert t.bpm == pytest.approx(150, abs=1)
     e1 = t.eff(now + 5)
     assert t.bpm and not t.lost  # quiet for 5 s: still the band's tempo
@@ -94,7 +95,7 @@ def test_status_has_bpm_source_and_beat():
 def test_rig_tempo_setting(patch):
     assert parse_rig(RIG, patch).tempo.source == "tap"
     r = parse_rig({**RIG, "tempo": {"source": "kick", "kick_note": 35, "timeout_s": 12}}, patch)
-    assert (r.tempo.source, r.tempo.kick_note, r.tempo.timeout_s) == ("kick", 35, 12)
+    assert (r.tempo.source, r.tempo.kick_note, r.tempo.timeout_s) == ("drums", 35, 12)  # v6: kick means drums
     for bad in ({"source": "link"}, {"kick_note": 200}, {"timeout_s": 0}, {"bogus": 1}):
         with pytest.raises(ConfigError):
             parse_rig({**RIG, "tempo": bad}, patch)
@@ -111,12 +112,17 @@ def router_for(engine, source, mappings=()):
 
 
 def test_kick_notes_drive_the_tempo_and_still_flash(engine, clock):
+    """No named kick input: the rig's kick note feeds the drums tracker (v6), after a tap seed."""
     r, ctl = router_for(engine, "kick", [{"type": "note", "channel": 10, "number": 36, "action": "flash", "fixtures": ["bars"]}])
     midi = FakeMidiIn(r.handle_mido)
-    for _ in range(6):
+    ctl.tempo.tap(clock())
+    clock.advance(0.52)
+    ctl.tempo.tap(clock())  # seeded a little slow (115)
+    for _ in range(24):
         clock.advance(0.5)
         midi.note(36, 100, channel=10)
-    assert ctl.tempo.bpm == pytest.approx(120, abs=0.6)
+        ctl.tempo.eff(clock())
+    assert ctl.tempo.bpm == pytest.approx(120, abs=1)
     assert list(r.monitor.entries)[-1].result.startswith("flash")  # the kick still does its mapped job
 
 

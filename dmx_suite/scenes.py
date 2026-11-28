@@ -36,6 +36,7 @@ from typing import Any
 from . import effects
 from .effects import BLENDS, ParseCtx, Run, Unit, place_units
 from .effects.base import num as _num_any
+from .effects.base import static_on
 from .fixtures import EMITTERS, ConfigError, Kind, Patch
 from .layout import cell_positions, full_layout
 from .look import FORBIDDEN, Colour, FixtureLook, Look, LookError
@@ -48,7 +49,7 @@ from .versions import read_doc
 EFFECTS = {name: e.keys() for name, e in effects.REGISTRY.items()}
 MOVEMENT = {name for name, e in effects.REGISTRY.items() if e.movement}
 STATIC_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "speed", "strobe", "zoom", "focus", "frost", "prism"}
-COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats", "shift"}
+COMMON = {"fixtures", "effect", "name", "fallback", "intensity", "level", "blend", "mute", "beats", "shift", "lit"}
 
 
 # --------------------------------------------------------------------------- model
@@ -66,6 +67,7 @@ class Layer:
     mute: bool = False
     shift: float = 0.0  # phase offset, part of a cycle (Ride "shift", v3.3)
     pixel_mask: dict[str, frozenset[int]] = field(default_factory=dict)  # v4: fid -> only these pixels (0-based)
+    lit: float = 1.0  # v6: how much of the effect is lit, 0-1 (YAML `lit:` in %); the rest black (colour off)
 
     def period(self) -> float | None:
         e = effects.get(self.effect) if self.effect else None
@@ -203,7 +205,8 @@ def parse_layer(d: dict, patch: Patch, pal: Palettes, what: str) -> Layer:
         raise LookError(f"{what}: blend must be one of {', '.join(BLENDS)}")
     level = _num(d.get("level", 1.0), f"{what} level", 0, 1)
     shift = _num(d.get("shift", 0.0), f"{what} shift", 0, 1)
-    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)), shift, mask)
+    lit = _num(d.get("lit", 100), f"{what} lit (%)", 0, 100) / 100
+    return Layer(fids, name, p, d.get("name", ""), fb, level, blend, bool(d.get("mute", False)), shift, mask, lit)
 
 
 def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") -> Scene:
@@ -214,10 +217,12 @@ def parse_scene(data: dict, patch: Patch, pal: Palettes, name: str = "scene") ->
     if kind not in ("layers", "steps"):
         raise LookError(f"{name}: type is layers (the default) or steps")
     if kind == "layers":
-        bad = set(data) - {"name", "show_colour", "layers", "length_s", "type", "generated"}
+        bad = set(data) - {"name", "show_colour", "layers", "length_s", "type", "generated", "lit"}
         if bad:
             raise LookError(f"{name}: unknown keys {sorted(bad)}")
-    layers = [parse_layer(d or {}, patch, pal, f"{name} layer {i + 1}") for i, d in enumerate(data.get("layers") or [])]
+    look_lit = data.get("lit")  # v6: the whole look's lit, for layers that don't give their own
+    layers = [parse_layer({**({"lit": look_lit} if look_lit is not None and "lit" not in (d or {}) else {}), **(d or {})},
+                          patch, pal, f"{name} layer {i + 1}") for i, d in enumerate(data.get("layers") or [])]
     steps = parse_steps(data, patch, pal, name) if kind == "steps" else None
     if not layers and steps is None:
         raise LookError(f"{name}: no layers")
@@ -250,9 +255,14 @@ class ScenePlayer:
     def __init__(
         self, scene: Scene, rig: Rig, start: float, timebase: Callable[[float], float] | None = None,
         first_step: int = 0, only_step: int | None = None,
+        darkness: Callable[[float], float] | None = None, edge: float = 0.0,
     ) -> None:
         self.scene = scene
         self.rig = rig
+        # v6: Autopilot darkness (0-1 at clock time `now`): lit = the layer's lit x (1 - darkness), except
+        # exempt lights (the kick light), which keep the look's own lit. None = play as authored.
+        self.darkness = darkness
+        self.edge = edge  # soft black edges (the look's fade), 0 = hard cut
         self.timebase = timebase or (lambda now: now)  # tap tempo: effect time vs real time
         self.start = self.timebase(start)
         # haze machines are never part of a look (rule 5), nor of where an effect runs across the stage
@@ -361,13 +371,21 @@ class ScenePlayer:
         p = ly.params
         if ly.shift:
             t += ly.shift * (ly.period() or 0.0)
+        d = max(0.0, min(1.0, self.darkness(now))) if self.darkness is not None else 0.0
+        eff = effects.REGISTRY[ly.effect] if ly.effect is not None else None
         run = Run(t, fids, look, dark, self._pixels, lambda per_pixel: self._units_for(i, per_pixel),
-                  ly.blend, ly.level, f"{self.scene.name}|{i}", now, mask=ly.pixel_mask)
+                  ly.blend, ly.level, f"{self.scene.name}|{i}", now, mask=ly.pixel_mask,
+                  lit=ly.lit * (1 - d), lit_exempt=ly.lit, exempt=self.rig.exempt,
+                  edge=self.edge or (1.0 if p.get("fade") is True else 0.0), shift=ly.shift,
+                  auto_gate=eff is not None and not eff.lit_aware and not eff.movement)
         plain = ly.blend == "replace" and ly.level >= 1
+        static_lit = run.gating() and "colour" in p and (ly.effect is None or "colour" not in EFFECTS[ly.effect])
         # static attributes (also allowed alongside an effect's own settings)
         for f in fids:
             fl = self._fl(look, f)
-            if "colour" in p and (ly.effect is None or "colour" not in EFFECTS[ly.effect]):
+            if static_lit:
+                pass  # below: a regular black pattern across the lights / pixels
+            elif "colour" in p and (ly.effect is None or "colour" not in EFFECTS[ly.effect]):
                 if plain and f not in ly.pixel_mask:
                     fl.colour, fl.pixels = dict(p["colour"]), None
                 else:
@@ -392,8 +410,19 @@ class ScenePlayer:
                 fl.speed = p["speed"]
             if "intensity" in p:
                 fl.intensity = p["intensity"]
-        if ly.effect is not None:
-            effects.REGISTRY[ly.effect].render(p, run)
+        if static_lit:  # v6: a still colour with lit < 1 -> alternate / every third ... black, moving with shift
+            units = self._units_for(i, True)
+            off = round(ly.shift * len(units))
+            for un in units:
+                on = static_on(un.index, run.lit_of(un.fid), off)
+                run.put(un, p["colour"] if on else run.black(un.fid, un.pixel))
+            run.flush()
+        if eff is not None:
+            eff.render(p, run)
+        for f, px in run.unlit:  # drum flash leaves these black (MASTER off)
+            ul = look.fixtures.get(f)
+            if ul is not None:
+                ul.unlit = ul.unlit | {-1 if px is None else px}
 
 
 def static_source(look: Look) -> Callable[[float], Look]:

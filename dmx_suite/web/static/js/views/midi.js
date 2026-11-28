@@ -2,6 +2,7 @@
 import { api, attempt, get, toast } from "../api.js";
 import { $, el } from "../dom.js";
 import { t } from "../i18n.js";
+import { init as initKit } from "./kit.js";
 import { onCatalogue, onMidi, onState } from "../state.js";
 import { onShow } from "../nav.js";
 
@@ -47,7 +48,7 @@ async function loadMap() {
 // ---------------------------------------------------------------- named inputs and devices (v3.1)
 
 let inputs = { devices: [], inputs: [], profiles: [] };
-const ROLES = ["kick", "snare", "tom", "cymbal", "count_in", "activity"];
+const ROLES = ["kick", "snare", "tom", "cymbal", "count_in", "activity", "darkness"]; // darkness: a CC pedal (v6)
 const NAME = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 
 function renderInputs() {
@@ -163,6 +164,7 @@ function parseParams(text) {
 }
 
 export function init() {
+  initKit(); // v6: Drum Kit section
   const filter = $("#midi-filter");
   filter.replaceChildren(el("option", { value: "" }, t("midi.all_channels")),
     ...[...Array(16)].map((_, i) => el("option", { value: i + 1 }, t("midi.channel", { n: i + 1 }))));

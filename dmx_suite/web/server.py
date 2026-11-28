@@ -52,7 +52,9 @@ CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/st
                  "/api/routing/output", "/api/claude/haze",
                  "/api/haze/settings", "/api/devices/set",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
-                 "/api/autopilot/check", "/api/generate")
+                 "/api/autopilot/check", "/api/generate",
+                 "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness", "/api/tempo",
+                 "/api/kits")  # v5 / v6
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
@@ -366,6 +368,20 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 return self._json(200, app.layout_view())
             if path == "/api/routing":
                 return self._json(200, app.routing())
+            if path == "/api/faultfind":
+                return self._json(200, app.fault_find("status"))
+            if path == "/api/kits":  # v6: drum kits, the active one's live hits and unmapped notes
+                return self._json(200, app.kit_view())
+            if path == "/api/kits/export":
+                return self._json(200, {"kit": q.get("kit", ""), "yaml": app.export_kit(q.get("kit", ""))})
+            if path == "/api/tempo":  # v6: beat clock status (+ tracker debug for the Input Monitor)
+                return self._json(200, app.tempo_view(q.get("debug") == "1"))
+            if path == "/api/outputs/check":  # v5: USB DMX (Open) checklist, run now
+                return self._json(200, {"outputs": app.check_outputs()})
+            if path == "/api/cycle":  # v5 break-method cycle test
+                return self._json(200, {"cycle": app.cycle_view()})
+            if path == "/api/test":  # v5 test pattern running (or null) and its start / stop log
+                return self._json(200, {"test": app.engine.test_status(), "log": app.engine.test_log[-20:]})
             if path == "/api/devices/list":  # v4: devices plugged in, by USB identity / MIDI port name
                 return self._json(200, app.devices_view())
             if path == "/api/monitor/status":  # v4 Monitor page: MIDI ports, rates, energy
@@ -395,7 +411,7 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 input_rows = ins.summary()
                 for row in input_rows:
                     m = app.router.map.get_input(row["id"])
-                    row["mapped"] = m.describe() if m else None
+                    row["mapped"] = m.label() if m else None
                 devices = [{"id": d.id, "name": d.name, "port": d.port, "channel": d.channel, "inputs": d.inputs}
                            for d in ins.devices.values()]
                 return self._json(200, {"devices": devices, "inputs": input_rows, "profiles": device_profiles(app.files.root)})
@@ -424,7 +440,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/autopilot":  # status and the decision log (v3.4)
                 n = int(q.get("n", 50))
                 return self._json(200, {"status": app.autopilot.status(app.engine.clock()), "log": app.autopilot.log_since(n),
-                                        "priority": app.priority(), "config": app.autopilot.cfg})
+                                        "priority": app.priority(), "config": app.autopilot.cfg,
+                                        "darkness": app.darkness.status()})
             if path == "/api/kelvin":
                 from ..colourtheory import KELVIN_PRESETS, hex_of, kelvin
 
@@ -792,6 +809,63 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/haze/test" and method == "POST":
                 span = app.haze_test(str(body.get("mode", "")))
                 return self._json(200, {"ok": True, "seconds": span})
+            if path == "/api/test/run" and method == "POST":  # v5 test pattern (gig lock: keep-alive only)
+                return self._json(200, {"ok": True, "test": app.run_test(body, "claude" if self._is_claude() else "ui")})
+            if path == "/api/outputs/latency" and method == "POST":  # set via D2XX, after the UI asked
+                return self._json(200, {"ok": True, **app.set_output_latency(int(body.get("output", -1)),
+                                                                             int(body.get("ms", 1)))})
+            if path == "/api/kits" and method == "POST":  # v6: drum kit edits (store: gig-locked, backed up)
+                act, kid = str(body.get("action", "")), str(body.get("kit", ""))
+                if act == "save":
+                    return self._json(200, {"ok": True, **app.save_kit(kid, body.get("data") or {}, bool(body.get("activate")))})
+                if act == "piece":
+                    return self._json(200, {"ok": True, **app.set_kit_piece(kid, str(body.get("piece", "")),
+                                                                            str(body.get("zone", "head") or ""),
+                                                                            body.get("changes") or {}, bool(body.get("remove")))})
+                if act == "active":
+                    return self._json(200, {"ok": True, **app.set_active_kit(kid)})
+                if act == "new":
+                    return self._json(200, {"ok": True, **app.new_kit(kid, str(body.get("template", "gm")))})
+                if act == "import":
+                    return self._json(200, {"ok": True, **app.import_kit(str(body.get("yaml", "")), kid or None,
+                                                                         bool(body.get("activate")))})
+                if act == "learn":
+                    return self._json(200, {"ok": True, "learning": app.kit_learn(kid, str(body.get("piece", "")),
+                                                                                  str(body.get("zone", "head")),
+                                                                                  bool(body.get("add")))})
+                raise ApiError(400, "kits action: save, piece, active, new, import, learn")
+            if path == "/api/tempo" and method == "POST":  # v6: tap, source, tracker settings
+                act = str(body.get("action", ""))
+                if act == "tap":
+                    bpm = app.ctl.tap()
+                    return self._json(200, {"ok": True, "bpm": bpm, **app.tempo_view()})
+                if act == "source":
+                    return self._json(200, {"ok": True, **app.set_tempo_source(str(body.get("source", "")),
+                                                                               bool(body.get("save")))})
+                if act == "params":
+                    return self._json(200, {"ok": True, **app.set_tempo_params(body.get("params") or {},
+                                                                               bool(body.get("save")))})
+                raise ApiError(400, "tempo action: tap, source or params")
+            if path == "/api/darkness" and method == "POST":  # v6 live Darkness (slider / Claude); gig lock allows it
+                src = "claude" if self._is_claude() else str(body.get("source") or "slider")
+                return self._json(200, {"ok": True, **app.set_darkness(float(body.get("value", 0)), src)})
+            if path == "/api/darkness/set" and method == "POST":  # a set's stored darkness (saved to the rig)
+                v = body.get("value")
+                return self._json(200, {"ok": True, **app.set_set_darkness(str(body.get("set", "")),
+                                                                           None if v in (None, "") else float(v))})
+            if path == "/api/faultfind" and method == "POST":  # v5 "Rig not responding" wizard
+                return self._json(200, app.fault_find(str(body.get("action", "status")), str(body.get("answer", "")),
+                                                      body.get("fixture") or None, "claude" if self._is_claude() else "ui"))
+            if path == "/api/cycle/start" and method == "POST":
+                return self._json(200, {"ok": True, "cycle": app.start_cycle(int(body.get("output", -1)),
+                                                                            "claude" if self._is_claude() else "ui")})
+            if path == "/api/cycle/confirm" and method == "POST":  # "Lights responded"
+                return self._json(200, {"ok": True, "cycle": app.cycle_confirm()})
+            if path == "/api/cycle/save" and method == "POST":  # a step named afterwards (Claude, from chat)
+                return self._json(200, {"ok": True, "saved": app.save_cycle_step(int(body.get("output", -1)),
+                                                                                  int(body.get("step", 0)))})
+            if path == "/api/test/stop" and method == "POST":  # always allowed
+                return self._json(200, {"ok": True, "stopped": app.stop_test(str(body.get("why") or "stopped"))})
             if path == "/api/routing/output" and method == "POST":
                 r = app.set_output(int(body.get("index", -1)), body.get("set") or {})
                 return self._json(200, {"ok": True, **r})
@@ -806,8 +880,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 if not isinstance(scene, (str, dict)):
                     raise ApiError(400, "preview needs a scene name or scene data")
                 step, start = body.get("step"), body.get("play_from")
+                dk = body.get("darkness")
                 msg = app.preview_scene(scene, float(body.get("seconds", 10)), None if step is None else int(step),
-                                        None if start is None else int(start))
+                                        None if start is None else int(start), None if dk in (None, "") else float(dk))
                 return self._json(200, {"ok": True, "message": msg})
             if path in ("/api/claude/connect", "/api/claude/disconnect") and method == "POST":
                 if not self._local():  # it changes this computer's Claude settings: only from this computer

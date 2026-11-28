@@ -152,7 +152,7 @@ function renderLights() {
   for (const f of rig.excluded) rows.push([f, null]);
   $("#ride-lights").replaceChildren(...rows.map(([f, c]) => el("li", {},
     el("b", { text: f }),
-    el("select", { onchange: (e) => saveClass(f, e.target.value) },
+    el("select", { "aria-label": t("a11y.light_class", { id: f }), onchange: (e) => saveClass(f, e.target.value) },
       ...CLASSES.map((x) => el("option", { value: x, selected: x === c || undefined }, t("autopilot.class_" + x))),
       el("option", { value: "exclude", selected: c === null || undefined }, t("autopilot.class_exclude"))))));
 }
@@ -178,15 +178,36 @@ async function loadWhy() {
 
 let lastDecision = null;
 
+// v6 Darkness: the slider sends at most every 60 ms; the server eases it in over the look's fade
+let dkLast = 0, dkTimer = null, dkHeld = false;
+function sendDarkness(v) {
+  clearTimeout(dkTimer);
+  const go = () => { dkLast = performance.now(); api("POST", "/api/darkness", { value: v }).catch(() => null); };
+  if (performance.now() - dkLast > 60) go(); else dkTimer = setTimeout(go, 60);
+}
+
+function drawDarkness(dk) {
+  if (!dk) return;
+  if (!dkHeld) $("#dk-slider").value = dk.darkness;
+  $("#dk-val").textContent = `${Math.round(dk.darkness)} %`;
+  $("#dk-src").textContent = t("darkness.src_" + dk.source) + (dk.cc ? ` · ${dk.cc.describe}` : "");
+  document.querySelectorAll("#ride-darkness [data-dkset]").forEach((b) => {
+    const v = dk.set_darkness[b.dataset.dkset];
+    b.textContent = t("darkness.set_btn", { set: t("autopilot.mood_" + b.dataset.dkset), v: v === null ? t("darkness.none") : `${v} %` });
+  });
+}
+
 function update(s) {
   if (!s || !fx || !$("#page-autopilot").classList.contains("on")) return;
   const ap = s.autopilot, pick = s.ride.pick;
+  drawDarkness(ap.darkness);
   $("#ap-toggle").classList.toggle("on", ap.on);
   $("#ap-toggle").textContent = t(ap.on ? "autopilot.autopilot_on" : "autopilot.autopilot_off");
   $("#ap-hold").classList.toggle("on", ap.hold);
   document.querySelectorAll("#ride-moods [data-mood]").forEach((b) => b.classList.toggle("sel",
     b.dataset.mood === "auto" ? !ap.mood_manual : ap.mood_manual && ap.mood === b.dataset.mood));
   $("#ap-energy").style.width = Math.round(ap.energy * 100) + "%";
+  $("#ap-energy").parentElement.setAttribute("aria-valuenow", Math.round(ap.energy * 100));
   $("#ap-state").textContent = [t("autopilot.mood_now", { mood: t("autopilot.mood_" + ap.mood) }),
     ap.paused ? t("autopilot.paused") : ap.between ? t("autopilot.between") : ap.next_change_s != null ? t("autopilot.next_in", { s: Math.round(ap.next_change_s) }) : "",
     t("autopilot.priority_" + s.priority.top)].filter(Boolean).join(" · ");
@@ -244,6 +265,14 @@ export function init() {
     grid.build(cat);
   });
   onState(update);
+  const dk = $("#dk-slider");
+  dk.addEventListener("pointerdown", (e) => { if (learning) { e.preventDefault(); act("darkness", {}); return; } dkHeld = true; });
+  dk.addEventListener("pointerup", () => { dkHeld = false; });
+  dk.addEventListener("input", () => sendDarkness(+dk.value));
+  document.querySelectorAll("#ride-darkness [data-dkset]").forEach((b) => (b.onclick = async () => {
+    const r = await attempt(() => api("POST", "/api/darkness/set", { set: b.dataset.dkset, value: +dk.value }));
+    if (r) toast(t("darkness.stored", { set: t("autopilot.mood_" + b.dataset.dkset), v: +dk.value }));
+  }));
   $("#ride-exclude").onclick = () => setExcluding(!excluding);
   onLeave("autopilot", () => { if (excluding) setExcluding(false); });
   onShow("autopilot", load);

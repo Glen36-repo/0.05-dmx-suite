@@ -39,3 +39,14 @@ export const remember = {
     } catch {}
   },
 };
+
+// Motion on this screen (Setup › Appearance): auto follows the device's "reduce motion"; reduce / full override it
+export function applyMotion(m = remember.get("motion", "auto")) {
+  document.body.classList.toggle("reduce-motion", m === "reduce");
+  document.body.classList.toggle("motion-full", m === "full");
+}
+
+export function reducedMotion() {
+  const m = remember.get("motion", "auto");
+  return m === "reduce" || (m === "auto" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+}

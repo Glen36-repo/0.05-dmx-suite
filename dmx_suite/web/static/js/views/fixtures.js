@@ -4,7 +4,8 @@
 import { api, attempt, cmd, get, toast } from "../api.js";
 import { $, $$, el } from "../dom.js";
 import { t } from "../i18n.js";
-import { onShow } from "../nav.js";
+import { go, onShow } from "../nav.js";
+import { editAddress } from "./layout.js";
 import { autoPatch, clashes as clashPatch, footprintOf } from "../patch.js";
 import { live, onCatalogue, refreshCatalogue } from "../state.js";
 
@@ -53,8 +54,12 @@ function renderPatch() {
   $("#fx-patch").replaceChildren(...rows.map((f, i) => el("tr", { class: bad.has(f.id) ? "error" : "" },
     el("td", {}, el("input", { value: f.id, class: "narrow", oninput: (e) => { f.id = e.target.value.trim(); dirty(); } })),
     el("td", {}, select(typeNames, f.type, (v) => { f.type = v; renderPatch(); })),
-    el("td", {}, num(f.universe ?? 0, (v) => { f.universe = v ?? 0; renderPatch(); }, { min: 0, max: 15 })),
-    el("td", {}, num(f.address, (v) => { f.address = v; renderPatch(); }, { min: 1, max: 512 })),
+    // addresses and universes are edited in one place, Layout (address map, live values, clash checks)
+    el("td", { class: "num-cell", text: String(f.universe ?? 0) }),
+    el("td", { class: "num-cell" }, el("span", { text: f.address ? String(f.address) : "-" }), " ",
+      el("button", { class: "mini link-btn", "data-addr": f.id, title: t("fixtures.addr_on_layout"),
+        "aria-label": t("fixtures.addr_change_aria", { id: f.id }),
+        onclick: () => { go("layout"); editAddress(f.id); } }, t("fixtures.addr_change"))),
     el("td", { class: "muted", text: f.address ? `${f.address}-${f.address + footprint(f.type) - 1}` : "" }),
     el("td", {}, el("input", { value: (f.groups || []).join(", "), placeholder: t("fixtures.groups_placeholder"),
       oninput: (e) => { const g = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); if (g.length) f.groups = g; else delete f.groups; dirty(); } })),
@@ -305,7 +310,7 @@ function renderRig() {
       field(t("fixtures.haze_boost"), pct(rig.haze, "boost_level", 100))),
     el("h3", { text: t("fixtures.tempo") }),
     el("div", { class: "form" },
-      field(t("fixtures.tempo_source"), select(["tap", "kick", "midi_clock"].map((s) => [s, t("tempo." + s)]), rig.tempo.source || "tap", (v) => { rig.tempo.source = v; rigDirty(); })),
+      field(t("fixtures.tempo_source"), select(["drums", "tap", "midi_clock", "off"].map((s) => [s, t("tempo." + s)]), rig.tempo.source === "kick" ? "drums" : rig.tempo.source || "tap", (v) => { rig.tempo.source = v; rigDirty(); })),
       field(t("fixtures.kick_note"), num(rig.tempo.kick_note ?? 36, (v) => { rig.tempo.kick_note = v ?? 36; rigDirty(); }, { min: 0, max: 127 })),
       field(t("fixtures.tempo_timeout"), secs(rig.tempo, "timeout_s", 30))),
     el("h3", { text: t("fixtures.outputs") }),

@@ -288,13 +288,19 @@ def test_setup_claude_section_folds(ui):
 
 
 def test_fixtures_clash_bar_only_when_clashing(ui):
+    """Addresses are edited on Layout only (28/11/2026); the clash bar shows there."""
     page, *_ = ui
     go(page, "fixtures")
     page.wait_for_selector("#fx-patch tr")
     assert not page.is_visible("#fx-clash")
-    page.fill("#fx-patch tr >> nth=1 >> input >> nth=2", "1")  # mh_b on mh_a's address
-    page.locator("#fx-patch tr >> nth=1 >> input >> nth=2").dispatch_event("change")
-    page.wait_for_selector("#fx-clash", state="visible")
+    assert page.locator("#fx-patch input[type=number]").count() == 0  # no address fields here
+    go(page, "layout")
+    page.wait_for_selector("#lp-fixtures tr[data-id=mh_b]")
+    assert not page.is_visible("#lp-clash")
+    field = page.locator("#lp-fixtures tr[data-id=mh_b] input >> nth=1")
+    field.fill("1")  # mh_b on mh_a's address
+    field.dispatch_event("input")
+    page.wait_for_selector("#lp-clash", state="visible")
 
 
 # ------------------------------------------------------------------ scene builder (v2 R3)
@@ -611,10 +617,6 @@ def test_add_lights_auto_patch_and_save(ui):
     page.click("#fx-add")
     assert page.locator("#fx-patch tr").count() == n + 2
     assert page.inner_text("#fx-clash") == ""  # placed on free addresses
-    page.locator("#fx-patch tr").nth(n).locator("input[type=number]").nth(1).fill("1")  # onto the first light
-    page.locator("#fx-patch tr").nth(n).locator("input[type=number]").nth(1).dispatch_event("input")
-    page.wait_for_selector("#fx-patch tr.error")
-    assert page.is_disabled("#fx-patch-save")
     page.click("#fx-auto")
     page.wait_for_function("!document.querySelector('#fx-patch tr.error')")
     page.click("#fx-patch-save")

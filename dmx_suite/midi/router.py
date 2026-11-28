@@ -166,8 +166,9 @@ class MidiRouter:
         if m.type == "other":
             return "ignored", []
         tempo = self.shows.tempo if self.shows is not None else None
-        if tempo is not None and tempo.source == "kick" and self._is_kick(m, port):
-            tempo.kick(self.engine.clock())  # and on to whatever the kick is mapped to
+        if (tempo is not None and tempo.source == "drums" and not self.inputs.has_role("kick")
+                and m.type == "note" and m.pressed and m.number == tempo.config.kick_note):
+            tempo.hit(["kick"], m.value, self.engine.clock())  # no named kick: the rig's kick note (v3)
         named = self._named(m, port)
         names = [i.name for i in named]
         # learn takes any CC or OSC value (a pedal or fader may start low), note-ons and program changes

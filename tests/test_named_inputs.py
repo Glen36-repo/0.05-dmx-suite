@@ -227,10 +227,16 @@ def test_kick_role_drives_tempo_from_any_device(engine, tmp_path):
     ctl = ShowController(e, files)
     r = MidiRouter(e, files.midimap, MidiMonitor(), ctl, ins)
     m = FakeMidiIn(r.handle_mido)
-    for _ in range(5):
+    ctl.tempo.tap(clock_t[0])
+    ctl.tempo.tap(clock_t[0] + 0.52)  # v6: the drums tracker starts from a tap (115)
+    clock_t[0] += 0.52
+    # what app._input_hit does for role hits:
+    r.input_listeners.append(lambda inp, msg, now: ctl.tempo.hit(inp.roles, msg.value, now) if msg.pressed else None)
+    for _ in range(24):
         m.note(48, 100, channel=2)
         m.note(36, 100, channel=10)  # the drum kick note: no kick role here, ignored
         clock_t[0] += 0.5
+        ctl.tempo.eff(clock_t[0])
     assert ctl.tempo.bpm == pytest.approx(120, abs=1)
 
 

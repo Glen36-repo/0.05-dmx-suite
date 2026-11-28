@@ -68,10 +68,24 @@ class App:
             flash=lambda kind: self.flash_fx(kind, True, "show", length_ms=500),
             ratings=self.look_ratings, presets=self.preset_picks)
         self.router.ride = self.ride_action
+        from .darkness import Darkness
+
+        self.darkness = Darkness(self.engine.clock, lambda: self.autopilot.st.mood)  # v6
+        self.darkness.configure(files.rig.autopilot)
         self.ctl.on_manual = self._manual_pick
         self.ctl.on_setlist = self._setlist_walk
         self.ctl.on_song_auto = self._song_auto
         self.gig_lock = False
+        self.cycle: Any = None  # v5 break-method cycle test (dmxcheck.MethodCycle)
+        self.output_health: dict[int, dict[str, Any]] = {}  # v5: FTDI / port checks per Open DMX output
+        self._health_wake = threading.Event()
+        self._health_thread: threading.Thread | None = None
+        self.health_probe: Any = None  # tests: a fake output.ftdi.Probe
+        self._faultfind: Any = None  # v5 fault-find wizard (faultfind.FaultFinder)
+        from collections import deque as _deque
+
+        self.kit_hits: Any = _deque(maxlen=200)  # v6: (wall time, input id, velocity) of kit pad hits
+        self.kit_learning: dict[str, Any] | None = None  # v6: {kit, piece, zone, armed, result}
         self.project: Any = None  # package.DmsProject when running a .dms show file
         self.on_restart: Any = None  # restart the app on another show file (set by the cli)
         self.store = ShowStore(files.root, self._store_locked)
@@ -405,12 +419,15 @@ class App:
                 d.on_connect = self.setup_node
         with self.engine.lock:
             old, self.engine.drivers = self.engine.drivers, new
+            self.engine.hint_drivers()
         for d in old:
             try:
                 d.close()
             except Exception:  # noqa: BLE001 - an unplugged port may not close cleanly
                 log.debug("closing an old output failed", exc_info=True)
         self.engine.output()  # the new outputs get a frame now, not on the next tick
+        self.output_health = {}
+        self._health_wake.set()
         return [f"outputs rebuilt: {len(new)} live"]
 
     def replace_device(self, missing: str, use: str) -> dict[str, Any]:
@@ -518,7 +535,8 @@ class App:
                              "interface": cfg.get("alias") or st["name"], "driver": cfg.get("driver", d.name),
                              "port": cfg.get("port") or getattr(d, "port", None), "device": cfg.get("device"),
                              "state": st["state"], "detail": st["detail"],
-                             "packets": st_d.get("packets", st_d.get("frames")), "errors": st_d.get("errors", 0), **w})
+                             "packets": st_d.get("packets", st_d.get("frames")), "errors": st_d.get("errors", 0),
+                             "timing": st_d.get("timing"), "checks": self._health_summary(i), **w})
         for n in self.nodes():
             if n.get("mac"):
                 rows.append({"universe": n.get("universe"), "output": None, "kind": "node",
@@ -618,8 +636,12 @@ class App:
         d = drivers[idx]
         frame = d.wire.frame(universe) if d.carries(universe) else None
         st = d.state()
-        return {"universe": universe, "out": idx, "source": (d.cfg or {}).get("alias") or st["name"],
+        tst = self.engine.test_status()
+        testing = tst is not None and tst["universe"] == universe and tst["output"] in (None, idx)
+        return {"universe": universe, "out": idx, "test": tst if testing else None,
+                "source": (d.cfg or {}).get("alias") or st["name"],
                 "carries": d.carries(universe), "frame": base64.b64encode(frame).decode() if frame is not None else None,
+                "checks": self._health_summary(idx), "timing": d.status().get("timing"),
                 "no_frames": frame is None, "stats": {**d.wire.stats(universe), "errors": d.status().get("errors", 0),
                                                        "state": st["state"], "detail": st["detail"]}}
 
@@ -636,15 +658,157 @@ class App:
             index = len(outs) - 1
         if not 0 <= index < len(outs):
             raise ValueError(f"no output {index}; the rig has {len(outs)} (index from 0, -1 adds one)")
-        bad = set(changes) - {"driver", "port", "universe", "alias", "device", "host", "universes"}
+        from .rig import TIMING_KEYS
+
+        bad = set(changes) - {"driver", "port", "universe", "alias", "device", "host", "universes", *TIMING_KEYS}
         if bad:
-            raise ValueError(f"an output takes driver, port, universe, alias, device (not {sorted(bad)})")
+            raise ValueError(f"an output takes driver, port, universe, alias, device, {', '.join(TIMING_KEYS)} "
+                             f"(not {sorted(bad)})")
         outs[index] = {**outs[index], **{k: v for k, v in changes.items() if v is not None}}
         parse_outputs(outs)  # checked before writing
         data["outputs"] = outs
         bid = self.store.put("rig", rig_name, data, f"output {index + 1} on rig {rig_name}")
         notes = self.reload()
         return {"backup": bid, "notes": notes, "outputs": outs}
+
+    # ------------------------------------------------------------------ test patterns (v5)
+
+    def run_test(self, args: dict[str, Any], by: str = "ui") -> dict[str, Any]:
+        """Start a test pattern from the Monitor page / Claude. Gig lock allows keep-alive only."""
+        from .testpattern import TIMEOUT_S, TestPattern
+
+        pattern = str(args.get("pattern", ""))
+        if pattern != "keep_alive":
+            self.require_unlocked("a test pattern other than keep-alive")
+
+        def num(k: str, cast: Any = int) -> Any:
+            v = args.get(k)
+            return None if v in (None, "") else cast(v)
+
+        out = num("output")
+        tp = TestPattern(pattern, universe=num("universe") or 0, output=out, fixture=args.get("fixture") or None,
+                         channel=num("channel"), value=num("value"), dwell_s=num("dwell_s", float) or 2.0,
+                         timeout_s=num("timeout_s", float) or TIMEOUT_S, patched_only=bool(args.get("patched_only")),
+                         by=by, extra={"role": args.get("role")} if args.get("role") else {})
+        return self.engine.run_test(tp)
+
+    def stop_test(self, why: str = "stopped") -> bool:
+        if self.cycle is not None and self.cycle.state == "running":
+            self.cycle.stop()
+        return self.engine.stop_test(why)
+
+    # cycle test (v5 item 1): break methods in turn, "Lights responded" saves the one that worked
+
+    def start_cycle(self, index: int, by: str = "ui", step_s: float | None = None) -> dict[str, Any]:
+        from .dmxcheck import STEP_S, MethodCycle
+
+        self.require_unlocked("the break-method cycle test")
+        if self.cycle is not None and self.cycle.state == "running":
+            self.cycle.stop()
+        self.cycle = MethodCycle(self.engine, index, self.set_output, step_s or STEP_S, by).start()
+        return self.cycle.view()
+
+    def cycle_view(self) -> dict[str, Any] | None:
+        return self.cycle.view() if self.cycle is not None else None
+
+    def cycle_confirm(self) -> dict[str, Any]:
+        if self.cycle is None:
+            raise ValueError("no cycle test has run")
+        self.require_unlocked("saving a break method")
+        return self.cycle.confirm()
+
+    def save_cycle_step(self, index: int, step: int) -> dict[str, Any]:
+        """Save step `step` (1-based, as listed by the last cycle on this output) without re-running it."""
+        from .dmxcheck import cycle_steps
+
+        drv = dict(self._open_outputs()).get(index)
+        if drv is None:
+            raise ValueError("not a USB DMX (Open) output")
+        steps = self.cycle.steps if self.cycle is not None and self.cycle.index == index else cycle_steps(drv)
+        if not 1 <= step <= len(steps):
+            raise ValueError(f"step 1-{len(steps)}")
+        s = steps[step - 1]
+        self.set_output(index, {"break_method": s["break_method"], "break_us": s["break_us"]})
+        return {k: s[k] for k in ("step", "label", "break_method", "break_us")}
+
+    # ------------------------------------------------------------------ output health checks (v5 item 2)
+
+    def _open_outputs(self) -> list[tuple[int, Any]]:
+        from .output.enttec import EnttecOpenDriver
+
+        return [(i, d) for i, d in enumerate(self.engine.drivers) if isinstance(d, EnttecOpenDriver)]
+
+    def check_outputs(self) -> list[dict[str, Any]]:
+        """Run the checklist on every USB DMX (Open) output now (also kept for the status bar)."""
+        from .output.ftdi import check_interface
+
+        out: dict[int, dict[str, Any]] = {}
+        for i, d in self._open_outputs():
+            cfg = d.cfg or {}
+            info = None
+            if self.registry is not None:
+                info = (self.registry.get(cfg["device"]) if cfg.get("device") else None) or next(
+                    (x for x in self.registry.all() if x.get("port") == d.port), None)
+            r = check_interface(d.port, info, d, self.health_probe)
+            r.update({"output": i, "interface": cfg.get("alias") or info and info.get("name") or "USB DMX (Open)",
+                      "universe": d.universe, "checked": time.time()})
+            out[i] = r
+        self.output_health = out
+        return [out[i] for i in sorted(out)]
+
+    def start_health_checks(self, every_s: float = 60.0) -> None:
+        """Check at start, on hot-plug (device registry), after outputs change, and every minute."""
+        if self._health_thread is not None:
+            return
+        if self.registry is not None:
+            self.registry.on_change.append(lambda d, what: self._health_wake.set())
+
+        def run() -> None:
+            while True:
+                try:
+                    self.check_outputs()
+                except Exception:  # noqa: BLE001 - a check must never take anything down
+                    log.debug("output checks failed", exc_info=True)
+                self._health_wake.wait(every_s)
+                self._health_wake.clear()
+                time.sleep(1.0)  # let a new port settle / the new driver open
+
+        self._health_thread = threading.Thread(target=run, name="output-checks", daemon=True)
+        self._health_thread.start()
+
+    def _health_summary(self, index: int) -> dict[str, Any] | None:
+        h = self.output_health.get(index)
+        if h is None:
+            return None
+        return {"result": h["result"], "driver_type": h["driver_type"], "latency_ms": h["latency_ms"],
+                "d2xx_available": h["d2xx_available"],
+                "problems": [f"{c['name']}: {c['detail']}" for c in h["checks"] if c["result"] in ("fail", "warn")]}
+
+    def fault_find(self, action: str, answer: str = "", fixture: str | None = None, by: str = "ui") -> dict[str, Any]:
+        """The "Rig not responding" wizard (v5 item 3): start, answer, test, status."""
+        from .faultfind import FaultFinder
+
+        if self._faultfind is None:
+            self._faultfind = FaultFinder(self)
+        ff = self._faultfind
+        if action == "start":
+            return ff.start(by)
+        if action == "answer":
+            return ff.answer(answer, fixture)
+        if action == "test":
+            return {**ff.view(), **ff.run_test()}
+        if action == "status":
+            return ff.view()
+        raise ValueError("fault_find action: start, answer, test or status")
+
+    def set_output_latency(self, index: int, ms: int = 1) -> dict[str, Any]:
+        self.require_unlocked("changing the latency timer")
+        drv = dict(self._open_outputs()).get(index)
+        if drv is None:
+            raise ValueError("not a USB DMX (Open) output")
+        got = drv.set_latency(ms)
+        self._health_wake.set()
+        return {"output": index, "latency_ms": got}
 
     def routing_problems_cached(self) -> list[str]:
         from .rig import routing_problems
@@ -698,6 +862,21 @@ class App:
             if unis and st.get("state") != "sim":  # which universe(s) it carries, at the front
                 st["detail"] = f"U{','.join(map(str, unis))} · {st['detail']}"
             out.append(st)
+        for h in list(self.output_health.values()):
+            bad = [c for c in h["checks"] if c["result"] in ("fail", "warn")]
+            if bad:
+                worst = next((c for c in bad if c["result"] == "fail"), bad[0])
+                more = f" (+{len(bad) - 1})" if len(bad) > 1 else ""
+                out.append({"kind": "dmx_check", "name": f"{h['interface']} checks",
+                            "state": "bad" if worst["result"] == "fail" else "warn",
+                            "detail": f"{worst['name']}: {worst['detail']}{more}"
+                                      + (f". Fix: {worst['fix']}" if worst["fix"] else ""),
+                            "output": h["output"]})
+        tst = self.engine.test_status()
+        if tst is not None:
+            where = f"output {tst['output'] + 1}" if tst["output"] is not None else f"U{tst['universe']}"
+            out.append({"kind": "test", "name": "TEST", "state": "warn",
+                        "detail": f"{tst['name']} on {where}, {tst['left_s']:.0f} s left (Monitor: Stop test)"})
         rp = self.routing_problems_cached()
         if rp:
             more = f" (+{len(rp) - 1})" if len(rp) > 1 else ""
@@ -819,6 +998,7 @@ class App:
             self.engine.swap_rig(new.rig, new.look)
             self.autopilot.cfg = new.rig.autopilot
             self.autopilot.energy.cfg = new.rig.autopilot
+            self.darkness.configure(new.rig.autopilot)
             self._loaded_sig = sig
             self.files = new
             self.ctl.files = new
@@ -880,9 +1060,21 @@ class App:
         return out
 
     def _input_hit(self, inp: Any, m: Any, now: float) -> None:
+        if "darkness" in inp.roles and m.type in ("control_change", "osc"):  # v6: expression pedal rides darkness
+            v = m.level if getattr(m, "level", None) is not None else m.value / 127
+            lvl = inp.level(round(v * 127))
+            self.darkness.cc = {"input": inp.id, "describe": inp.describe(), "range": list(inp.range)}
+            self.darkness.set(lvl, "cc")
+            return
         if m.pressed:
+            if m.type == "note" and inp.kit:
+                self.kit_hits.append((time.time(), inp.id, m.value))
             if m.type == "note" and inp.roles:
                 self.bus.add(inp.id, inp.roles, inp.strength(m.value), now)
+                # v6: the drums tempo (tap pads, count-in too), with the kit zone's weight / floor / tempo flag
+                self.ctl.tempo.hit(inp.roles, m.value, now, inp.tempo_weight, inp.tempo_floor, inp.tempo)
+            if m.type == "note" and inp.trigger:
+                self._kit_trigger(inp.trigger)
             self.ctl.step_input(inp.id)
 
     # ------------------------------------------------------------------ FX banks, ride, Flash FX (v3.3)
@@ -933,8 +1125,10 @@ class App:
         self.ride_pick = pick
         label = " + ".join(x for x in (pick.move, pick.colour, pick.drum) if x) + f" · {pick.palette}"
         prefix = "Autopilot" if by == "autopilot" else "Autopilot look"
-        self.ctl.select_ride(f"{prefix}: {label}", ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff),
-                             sc, fade, manual=by != "autopilot")
+        self.darkness.fade = pick.ride.fade  # soft black edges and easing follow the look's fade
+        player = ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff,
+                             darkness=self.darkness, edge=pick.ride.fade)  # v6: darkness for Autopilot looks only
+        self.ctl.select_ride(f"{prefix}: {label}", player, sc, fade, manual=by != "autopilot")
         return {"ok": True, "playing": label, "issues": issues, "scene": data}
 
     # ------------------------------------------------------------------ autopilot and Ride controls (v3.4)
@@ -1179,6 +1373,261 @@ class App:
         top = next((k for k, on in levels if on), "show")
         return {"levels": [k for k, on in levels if on], "top": top}
 
+    # ------------------------------------------------------------------ drum kits (v6 Part C)
+
+    def _kit_trigger(self, trig: dict[str, str]) -> None:
+        """A drummer trigger pad: its scene / preset / Flash FX, separate from the FCB1010."""
+        try:
+            if "scene" in trig:
+                self.ctl.select_scene(trig["scene"])
+            elif "preset" in trig:
+                self.play_preset(trig["preset"])
+            elif "flash_fx" in trig:
+                self.flash_fx(trig["flash_fx"], True, "show", length_ms=500)
+        except Exception as e:  # noqa: BLE001 - a bad trigger must never stop the show
+            log.warning("kit trigger %s failed: %s", trig, e)
+
+    def _kits_now(self) -> tuple[dict[str, Any], str | None, bool]:
+        """(kits by id, active id, derived) - a show without kits gets band_kit as a view of its drum inputs."""
+        from .kits import derive_kit
+
+        ins = self.files.inputs
+        if ins.kits:
+            return ins.kits, ins.active_kit, False
+        flashes = {m.input: {k: v for k, v in m.params.items() if k in ("fixtures", "colour", "length_ms", "min_level")}
+                   for m in self.files.midimap.mappings if m.type == "input" and m.action == "flash" and m.input}
+        kit = derive_kit(self.store.read("inputs"), flashes)
+        return ({kit.id: kit} if kit else {}), (kit.id if kit else None), True
+
+    def kit_view(self) -> dict[str, Any]:
+        from .kits import KIT_ROLES
+
+        kits, active, derived = self._kits_now()
+        now = time.time()
+        live = {}
+        for t_, iid, vel in list(self.kit_hits):
+            if now - t_ < 2.0:
+                live[iid] = {"age_ms": round((now - t_) * 1000), "velocity": vel}
+        kit = kits.get(active or "")
+        ch = kit.channel if kit else 0
+        known = {n for k in ([kit] if kit else []) for _, z in k.zones() for n in z.notes}
+        unmapped: dict[int, dict[str, Any]] = {}
+        for e in self.monitor.query(300):
+            if e.type in ("note", "note_on") and e.value > 0 and (ch in (0, e.channel)) and e.result == "unmapped" \
+                    and e.number not in known and now - e.time < 60:
+                unmapped[e.number] = {"note": e.number, "name": e.note, "velocity": e.value, "age_s": round(now - e.time, 1)}
+        return {"active": active, "derived": derived, "kits": {k: v.to_dict() for k, v in kits.items()},
+                "live": live, "unmapped": sorted(unmapped.values(), key=lambda x: x["age_s"]),
+                "learning": self.kit_learning, "roles": list(KIT_ROLES)}
+
+    def save_kit(self, kid: str, data: dict[str, Any], activate: bool = False, note: str = "") -> dict[str, Any]:
+        """Write a kit. The first kit save of a show turns the drum-input view into a real kit (migration):
+        drum inputs move into it, their flash mappings leave the MIDI map, both files backed up first."""
+        from .kits import migrate, parse_kit
+
+        kit = parse_kit(kid, data)
+        ins = self.store.read("inputs")
+        midi = self.names[2]
+        if not ins.get("kits"):  # first time: migrate (store.apply backs up inputs.yaml and the MIDI map)
+            mp = self.store.read("midi", midi)
+            kits, _, _ = self._kits_now()
+            view = kits.get("band_kit")
+            if view is not None and view.id != kid:  # the show's drum inputs become band_kit (active), then this
+                new_ins, new_mp = migrate(ins, mp, view)
+                new_ins["kits"][kid] = kit.to_dict()
+                if activate:
+                    new_ins["active_kit"] = kid
+            else:  # the kit carries its own flash targets (the view filled them in); the view's inputs go too
+                new_ins, new_mp = migrate(ins, mp, kit, also=view)
+            if activate or not ins.get("active_kit"):
+                new_ins["active_kit"] = kid
+            pi, pm = self.store.path("inputs", ""), self.store.path("midi", midi)
+            bid = self.store.apply({pi: self.store.text_for(pi, new_ins), pm: self.store.text_for(pm, new_mp)},
+                                   note or f"drum kit {kid} (from the drum inputs; MIDI map backed up)")
+        else:
+            ins["kits"] = {**ins["kits"], kid: kit.to_dict()}
+            if activate:
+                ins["active_kit"] = kid
+            bid = self.store.put("inputs", "", ins, note or f"drum kit {kid}")
+        notes = self.reload()
+        return {"backup": bid, "notes": notes, **self.kit_view()}
+
+    def _kit_data(self, kid: str) -> dict[str, Any]:
+        kits, _, _ = self._kits_now()
+        if kid not in kits:
+            raise ValueError(f"no kit {kid!r} (have {', '.join(kits) or 'none'})")
+        return kits[kid].to_dict()
+
+    def set_kit_piece(self, kid: str, piece: str, zone: str = "head", changes: dict[str, Any] | None = None,
+                      remove: bool = False) -> dict[str, Any]:
+        """Add / change / remove one piece's zone (notes, role, weight, velocity_floor, tempo, flash, trigger,
+        name; piece_name renames the piece). remove with zone "" removes the whole piece."""
+        data = self._kit_data(kid)
+        pieces = data.setdefault("pieces", {})
+        ch = dict(changes or {})
+        if remove:
+            if piece not in pieces:
+                raise ValueError(f"no piece {piece!r}")
+            if zone:
+                pieces[piece]["zones"].pop(zone, None)
+                if not pieces[piece]["zones"]:
+                    del pieces[piece]
+            else:
+                del pieces[piece]
+            return self.save_kit(kid, data, note=f"drum kit {kid}: remove {piece}{'/' + zone if zone else ''}")
+        p = pieces.setdefault(piece, {"name": ch.get("piece_name") or piece.replace("_", " ").title(), "zones": {}})
+        if ch.get("piece_name"):
+            p["name"] = ch.pop("piece_name")
+        ch.pop("piece_name", None)
+        z = dict(p["zones"].get(zone) or {"notes": [], "role": "trigger_only"})
+        for k, v in ch.items():
+            if v is None or v == "":
+                z.pop(k, None)
+            else:
+                z[k] = v
+        p["zones"][zone] = z
+        return self.save_kit(kid, data, note=f"drum kit {kid}: {piece}/{zone}")
+
+    def set_active_kit(self, kid: str) -> dict[str, Any]:
+        kits, _, derived = self._kits_now()
+        if kid not in kits:
+            raise ValueError(f"no kit {kid!r}")
+        if derived:
+            return self.save_kit(kid, kits[kid].to_dict(), activate=True)
+        ins = self.store.read("inputs")
+        ins["active_kit"] = kid
+        bid = self.store.put("inputs", "", ins, f"active drum kit {kid}")
+        notes = self.reload()
+        return {"backup": bid, "notes": notes, **self.kit_view()}
+
+    def new_kit(self, kid: str, template: str = "gm") -> dict[str, Any]:
+        from .kits import ID, gm_kit
+
+        if not ID.match(kid):
+            raise ValueError("kit ids use lower case letters, digits, _ or -")
+        kits, _, _ = self._kits_now()
+        if kid in kits:
+            raise ValueError(f"there's already a kit {kid!r}")
+        if template != "gm":
+            raise ValueError("template: gm (General MIDI)")
+        return self.save_kit(kid, gm_kit(kid).to_dict())
+
+    def export_kit(self, kid: str) -> str:
+        from .yamlio import plain_dump
+
+        return plain_dump({"kit": kid, **self._kit_data(kid)})
+
+    def import_kit(self, text: str, kid: str | None = None, activate: bool = False) -> dict[str, Any]:
+        import yaml as _yaml
+
+        try:
+            d = _yaml.safe_load(text)
+        except _yaml.YAMLError as e:
+            raise ValueError(f"not valid YAML: {e}") from e
+        if not isinstance(d, dict):
+            raise ValueError("a kit is a mapping: kit, name, channel, pieces")
+        kid = kid or str(d.pop("kit", "") or "imported_kit")
+        d.pop("kit", None)
+        return self.save_kit(kid, d, activate, note=f"import drum kit {kid}")
+
+    def kit_learn(self, kid: str, piece: str, zone: str = "head", add: bool = False) -> dict[str, Any]:
+        """Arm learn: the next pad hit becomes this piece's zone note (add=True adds a note)."""
+        self.require_unlocked("drum kit learn")
+        self._kit_data(kid)
+        self.kit_learning = {"kit": kid, "piece": piece, "zone": zone, "armed": True, "result": None}
+        state = self.kit_learning
+
+        def learned(msg: dict[str, Any]) -> None:
+            if msg.get("type") != "note":
+                state.update(armed=False, result="that wasn't a note: arm it again and hit the pad")
+                return
+            try:
+                data = self._kit_data(kid)
+                p = data.setdefault("pieces", {}).setdefault(piece, {"name": piece.replace("_", " ").title(), "zones": {}})
+                z = dict(p["zones"].get(zone) or {"role": "trigger_only"})
+                z["notes"] = list(dict.fromkeys([*(z.get("notes") or [] if add else []), msg["number"]]))
+                p["zones"][zone] = z
+                # the same note in another zone of this kit moves here
+                for opid, op in data["pieces"].items():
+                    for ozid, oz in op["zones"].items():
+                        if (opid, ozid) != (piece, zone) and msg["number"] in (oz.get("notes") or []):
+                            oz["notes"] = [n for n in oz["notes"] if n != msg["number"]]
+                with self.store.acting("ui"):
+                    self.save_kit(kid, data, note=f"learn {kid} {piece}/{zone}: note {msg['number']}")
+                state.update(armed=False, result=f"note {msg['number']} (ch {msg['channel']})")
+            except Exception as e:  # noqa: BLE001 - say so on the page
+                state.update(armed=False, result=f"not saved: {e}")
+
+        self.router.learn_input(f"kit {kid} {piece}/{zone}", learned)
+        return dict(state)
+
+    # ------------------------------------------------------------------ tempo from the drums (v6 Part B)
+
+    def tempo_view(self, debug: bool = False) -> dict[str, Any]:
+        tc, now = self.ctl.tempo, self.engine.clock()
+        out: dict[str, Any] = {"status": tc.status(now), "params": tc.config.beat.to_dict()}
+        if debug:
+            out["debug"] = tc.tracker.debug(now)
+        return out
+
+    def _save_tempo(self, block: dict[str, Any], what: str) -> str:
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        data["tempo"] = {**(data.get("tempo") or {}), **block}
+        bid = self.store.put("rig", rig_name, data, f"tempo: {what} on rig {rig_name}")
+        self.reload()
+        return bid
+
+    def set_tempo_source(self, source: str, save: bool = False) -> dict[str, Any]:
+        """drums / tap / midi_clock / off, live (a live control: allowed under gig lock); save writes the rig."""
+        self.ctl.tempo.set_source(source, self.engine.clock())
+        out = self.tempo_view()
+        if save:
+            out["backup"] = self._save_tempo({"source": self.ctl.tempo.source}, f"source {source}")
+        return out
+
+    def set_tempo_params(self, changes: dict[str, Any], save: bool = False) -> dict[str, Any]:
+        """Tune the drums tracker live (deadband, hold, jump, lock range, window, weights, floor, confidence ...)."""
+        p = self.ctl.tempo.set_params(changes or {})
+        out = self.tempo_view()
+        if save:
+            out["backup"] = self._save_tempo({k: getattr(p, k) for k in (changes or {})}, "tracker settings")
+        return out
+
+    # ------------------------------------------------------------------ Autopilot darkness (v6)
+
+    def set_darkness(self, value: float, source: str = "slider") -> dict[str, Any]:
+        """Live darkness 0-100 %: eased in over the look's fade; holds until the next set (mood) change.
+        A performance control, so allowed under gig lock."""
+        v = float(value)
+        if not 0 <= v <= 100:
+            raise ValueError("darkness 0-100 (%)")
+        self.darkness.set(v / 100, source)
+        return self.darkness.status()
+
+    def set_set_darkness(self, which: str, value: float | None) -> dict[str, Any]:
+        """A set's stored darkness (LOW / MID / HIGH), loaded on that set; None clears it. Saved to the rig."""
+        from .autopilot import MOODS
+
+        which = str(which).lower()
+        if which not in MOODS:
+            raise ValueError("set is low, mid or high")
+        if value is not None and not 0 <= float(value) <= 100:
+            raise ValueError("darkness 0-100 (%)")
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        ap = dict(data.get("autopilot") or {})
+        sd = dict(ap.get("set_darkness") or {})
+        if value is None:
+            sd.pop(which, None)
+        else:
+            sd[which] = round(float(value), 1)
+        ap["set_darkness"] = sd
+        data["autopilot"] = ap
+        bid = self.store.put("rig", rig_name, data, f"autopilot: {which} darkness on rig {rig_name}")
+        self.reload()
+        return {"backup": bid, **self.darkness.status()}
+
     def ride_action(self, action: str, p: dict[str, Any], level: float | None = None) -> str:
         """Autopilot page controls (v3 Ride page), from the page, MIDI or OSC."""
         from .fxbanks import BY_ID, RANGES
@@ -1214,6 +1663,10 @@ class App:
         if action == "preset":
             self.play_preset(str(p.get("preset")))
             return f"preset {p.get('preset')}"
+        if action == "darkness":  # v6: live, eased; the look carries on (no re-play)
+            v = level if level is not None else float(p.get("value", 0)) / 100
+            got = self.darkness.set(v, "cc" if level is not None else str(p.get("source") or "slider"))
+            return f"darkness {round(got * 100)}%"
         from .midi.map import canonical
 
         action = canonical(action)  # v3 names (ride_fx, ride_speed ...) still work
@@ -1528,7 +1981,7 @@ class App:
     # ------------------------------------------------------------------ preview
 
     def preview_scene(self, scene: str | dict, seconds: float = 10, step: int | None = None,
-                      play_from: int | None = None) -> str:
+                      play_from: int | None = None, darkness: float | None = None) -> str:
         """Play a scene for a while. step: hold that step (0-based); play_from: run the steps from there."""
         self.require_unlocked("preview")
         if isinstance(scene, str):
@@ -1541,9 +1994,13 @@ class App:
             if sc.uses_intensity and self.engine.rig.profile.master_gate:
                 raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
         first = step if step is not None else (play_from or 0)
+        dk = None if darkness is None else max(0.0, min(1.0, float(darkness) / 100))
         self.engine.preview(ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff,
-                                        first_step=first, only_step=step), seconds, sc)
+                                        first_step=first, only_step=step,
+                                        darkness=None if dk is None else (lambda now: dk)), seconds, sc)
         msg = f"previewing {sc.name} for {seconds:.0f} s, then back to {self.ctl.describe()}"
+        if dk is not None:
+            msg += f" (at darkness {round(dk * 100)} %; the live value is unchanged)"
         if self.engine.rig.profile.master_gate and not self.engine.master:
             msg += " (MASTER is off, so the rig stays dark)"
         return msg
@@ -1791,6 +2248,7 @@ class App:
             "now": n.__dict__,
             "describe": self.ctl.describe(),
             "preview_s": e.previewing,
+            "test": e.test_status(),
             "setup": {"find": e.find, "channels": [{"universe": u, "channel": c, "value": v}
                                                    for (u, c), v in e.channel_test.items()]},
             "fixtures": self.fixture_view(),
@@ -1798,7 +2256,7 @@ class App:
             "node_setup": self.node_setup,
             "alerts": self.alerts[-5:],
             "alert_center": self.alerts_view(),
-            "autopilot": self.autopilot.status(e.clock()),
+            "autopilot": {**self.autopilot.status(e.clock()), "darkness": self.darkness.status(e.clock())},
             "ride": {"pick": self.ride_pick.to_dict(), "palette_lock": self.palette_lock},
             "priority": self.priority(),
             "learning": self.router.learning,

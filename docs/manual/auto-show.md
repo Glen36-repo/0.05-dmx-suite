@@ -122,6 +122,29 @@ Each item says what it needs (heads, colour lights, pixels). Only what the rig c
 - each can be set for everything and per bank (move, colour, drum) on top
 - a **palette** (Warm, Cool, Fire, Ice, Neon, White, Band colours or your own) can be locked so the autopilot keeps it
 
+## Darkness
+
+**Darkness** (Autopilot page, under the Feel controls) makes the show darker by putting **black into the effects**, not by dimming. At 0 the looks play as programmed. As it goes up, sweeps get narrower lit bands, colour cycles and palettes get black slots (50 % = colour, black, colour, black), gradients and rainbows get gaps between colours, and still colour looks get a regular pattern of black lights or pixels (alternate, every third ...) that moves with the look's shift. At 100 % the rig is black.
+
+- **Black is colour off.** Dimmers stay where they were, MASTER still owns on/off, the haze is untouched, and there's no glow: black is 0.
+- The **kick light** is exempt and always plays its look.
+- Only the **Autopilot's** looks: hand-made scenes and shows play as made. **Override** sits above it and ignores it.
+- **Moving heads** keep moving while black.
+- With MASTER off a **drum hit** flashes what the pattern has lit; black slots stay black.
+- The edge between lit and black is as soft as the look's **fade** (0 = a hard cut), and every change eases in over the same fade, so a pedal sweep never steps.
+- **Store for set** saves the slider's value for LOW, MID or HIGH; changing set loads its value. A slider or pedal move holds until the next set change.
+- **Pedal:** give an expression pedal CC the `darkness` role on the MIDI page (or map the `darkness` action to it). See [MIDI](midi-osc.md).
+
+Each layer of a look can carry its own `lit:` (0-100 %, default 100), and the autopilot renders `lit x (1 - darkness)`: a look at 60 % with Darkness at 50 % plays 30 % lit.
+
+In the rig file:
+
+```yaml
+autopilot:
+  darkness: 0                 # % at start
+  set_darkness: {low: 60, mid: 30, high: 0}
+```
+
 ## Look quality rules
 
 The rules for a good-looking show are data, in `quality.yaml` in the show (only what you change; Claude can read and tune them):

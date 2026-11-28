@@ -51,7 +51,7 @@ MOVES = ("dark", "lit")
 STEP_KEYS = {"name", "set", "step_s", "step_beats", "fade_s", "move"}
 SCENE_KEYS = {"type", "step_s", "step_beats", "fade_s", "playback", "advance", "move", "dark_s", "steps"}
 SET_KEYS = {"colour", "pixels", "position", "gobo", "colour_wheel", "strobe", "zoom", "focus", "frost", "prism", "speed",
-            "intensity"}
+            "intensity", "lit"}  # v6 lit: % of the colour lit, the rest a regular black pattern
 
 
 @dataclass

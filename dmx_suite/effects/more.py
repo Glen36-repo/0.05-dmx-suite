@@ -8,7 +8,7 @@ import random
 from typing import Any
 
 from ..look import LookError
-from .base import SPREAD_PARAMS, WAVEFORMS, Effect, Param, ParseCtx, Run, hue, mix, seed, wave
+from .base import SPREAD_PARAMS, WAVEFORMS, Effect, Param, ParseCtx, Run, gapped, hue, mix, seed, wave
 
 
 class Rainbow(Effect):
@@ -23,9 +23,19 @@ class Rainbow(Effect):
         *SPREAD_PARAMS,
     ]
 
+    lit_aware = True
+    SEGMENTS = 6  # with lit < 1: red, yellow, green, cyan, blue, magenta with black gaps between
+
     def render(self, p: dict[str, Any], run: Run) -> None:
         for un in run.units(True):
-            run.put(un, hue(run.t / p["period_s"] - p["spread"] * un.u, p["saturation"]))
+            x = run.t / p["period_s"] - p["spread"] * un.u
+            lit = run.lit_of(un.fid)
+            if lit >= 1.0:
+                run.put(un, hue(x, p["saturation"]))
+                continue
+            seg = gapped(x, self.SEGMENTS, lit)
+            run.put(un, run.black(un.fid, un.pixel) if seg is None
+                    else hue((seg[0] + seg[1]) / self.SEGMENTS, p["saturation"]))
         run.flush()
 
 

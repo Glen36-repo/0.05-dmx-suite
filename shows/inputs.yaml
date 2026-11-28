@@ -39,7 +39,7 @@ devices:
       tom_2: {name: Tom 2, type: note, notes: [47], roles: [tom, activity]}
       tom_3: {name: Tom 3, type: note, notes: [45], roles: [tom, activity]}
       floor_tom: {name: Floor tom, type: note, notes: [43], roles: [tom, activity]}
-      hihat: {name: Hi-hat, type: note, notes: [42, 46], roles: [activity]}
+      hihat: {name: Hi-hat, type: note, notes: [42, 46], roles: [hat, activity]}
       hihat_pedal: {name: Hi-hat pedal, type: note, notes: [44], roles: [count_in, activity]}
       crash: {name: Crash, type: note, notes: [49], roles: [cymbal, activity]}
       ride: {name: Ride, type: note, notes: [51], roles: [cymbal, activity]}

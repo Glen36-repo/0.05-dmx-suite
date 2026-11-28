@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -96,6 +97,41 @@ FAULT-FINDING (v4): "software running, rig dark": list_outputs, then monitor_dmx
   really sent: no frames / all zero / values per channel with names), then check MASTER, blackout, grand
   master. "Pedal does nothing": monitor_midi (each event, the named input it matched, what it did or
   'unmapped'); fix the input with save_input.
+DRUM KIT (v6): the drummer's kit defined once in inputs.yaml `kits:` (one active): pieces (kick, snare,
+  hi-hat, toms, cymbals, extra pads, tap pad) with zones (head / rim / x_stick, closed / pedal / open, bow /
+  bell / edge), each a named input with notes, role (kick, snare, hat, tom, cymbal, tap, count_in,
+  trigger_only), tempo weight, velocity floor, tempo y/n, drum flash target (fixtures / colour / length_ms:
+  the kit owns them, not the MIDI map) and an optional drummer trigger (scene / preset / flash_fx). Tempo,
+  drum flash and autopilot energy all read it. list_kits / get_kit (with unmapped notes heard), set_kit_piece,
+  set_active_kit, kit_learn_status (arm a zone, the next hit is its note). A show without kits shows
+  band_kit as a view of its drum inputs; the first change writes it (inputs and flash mappings move in,
+  backed up).
+TEMPO FROM THE DRUMS (v6): the band plays without a click, so the module's MIDI clock isn't used. Source
+  `drums` (set_tempo_source; v3 `kick` = drums) tracks every drum hit weighted (kick 1, snare 1, hat 0.5,
+  tom 0.6, cymbal 0.4; ghost notes under the velocity floor ignored), seeded by a tap (tap_tempo, FCB tap,
+  a tap-role pad) or a count-in (4 even hits on a count_in pad after 2 s quiet), searching only +-15 % of
+  the seed (no half / double time lock). Output: median of 8 beats, moves only when > 3 % off for 4 beats
+  (then glides), a > 15 % change only after 8 beats (re-seed); phase nudged <= 10 % a beat. Low confidence
+  (fills, breakdowns, drums stopped) = freewheel at the last tempo, never timers. tempo_status: BPM, beat,
+  bar, confidence, freewheel, seed source. set_tempo_params tunes it live (save to keep). step_beats steps
+  and beat-synced effects follow it; step_s scenes stay on timers. Source off: last BPM (120 if none).
+DARKNESS AND LIT (v6): darkness puts BLACK INTO THE AUTOPILOT'S EFFECTS, it is not a dimmer. Under the 0.05
+  band profile black is always colour off (RGB/W/A/UV 0), never intensity or the dimmer; MASTER keeps on/off;
+  no glow. A layer's `lit:` (0-100 %, also on a whole scene) shapes its own black: narrower bands in sweeps
+  and chases, black slots in palettes and colour cycles (50 % = colour, black ...), gaps between gradient /
+  rainbow segments, a regular black pattern on still colours (moves with shift). Autopilot looks render
+  lit x (1 - darkness); hand-made scenes and shows play as authored; Override ignores it; the kick light is
+  exempt; heads keep moving dark; drum flash (MASTER off) leaves black slots black. set_autopilot {darkness}
+  sets it live (eased over the look's fade; holds until the next LOW / MID / HIGH change), set_set_darkness
+  stores a set's value, autopilot_status shows it with its source and CC, preview_look takes darkness.
+DMX DIAGNOSTICS (v5): "rig dark, lights in auto / sound mode, frames counting" = no valid DMX reaches
+  them. fault_find (start, then answer) walks the same steps as the Monitor page wizard. check_outputs:
+  USB DMX (Open) checklist (VCP / D2XX, latency timer > 1 ms, port held by Daslight / QLC+ / FreeStyler,
+  250k 8N2, USB selective suspend, measured timing) with fixes. test_output_methods: cycle break methods
+  (d2xx, serial_break, baud_drop, long break) with All full; the band taps Lights responded, or tell it
+  save_step. run_test_pattern / stop_test_pattern: all_full, chase, find, ramp, keep_alive straight to the
+  interface (bypasses MASTER and masters; head limits apply; haze always 0). set_output takes break_method,
+  break_us, mab_us, fps, channels. Measured timing is host-side: the wire can't be verified on an Open DMX.
 HAZE SETTINGS (v4): set_haze / save_haze_settings tune the haze controller only (level, pulse_level,
   pulse_on_s, pulse_every_s, boost_level, boost_s, boost_cooldown_s, max_on_s, rest_s, auto_off_min,
   default_mode, presets [{name, mode, level}]). Scenes and shows still never set haze (rule 5).
@@ -331,17 +367,90 @@ class DmxTools:
         data = _yaml(yaml_text, "quality rules")
         return self._write("PUT", "/api/store/quality/", {"data": data}, lambda: self.local.put("quality", "", data))
 
-    def preview_look(self, pick_yaml: str, seconds: float = 10) -> str:
+    def preview_look(self, pick_yaml: str, seconds: float = 10, darkness: float | None = None) -> str:
         """Compose an FX pick for this rig, say what the quality rules think, and play it for a while."""
         pick = _yaml(pick_yaml, "pick")
         r = self._live("POST", "/api/autopilot/check", {"pick": pick, "mood": pick.get("mood", "mid")})
-        msg = self._live("POST", "/api/preview", {"scene_data": r["scene"], "seconds": seconds})["message"]
+        body: dict[str, Any] = {"scene_data": r["scene"], "seconds": seconds}
+        if darkness is not None:
+            body["darkness"] = darkness
+        msg = self._live("POST", "/api/preview", body)["message"]
         issues = r["issues"]
         return msg + (". Quality: " + "; ".join(issues) if issues else ". Quality: fine")
 
     def autopilot_status(self, n: int = 20) -> str:
         r = self._live("GET", f"/api/autopilot?n={int(n)}")
-        return _dump(r)
+        return _dump(r)  # includes darkness: {darkness, now, source, set_darkness, cc}
+
+    def list_kits(self) -> str:
+        r = self._live("GET", "/api/kits")
+        rows = {k: {"name": v["name"], "channel": v.get("channel"), "pieces": len(v.get("pieces") or {})}
+                for k, v in r["kits"].items()}
+        note = "band_kit is a view of the drum inputs until the first kit change saves it" if r["derived"] else ""
+        return _dump({"active": r["active"], "kits": rows, **({"note": note} if note else {})})
+
+    def get_kit(self, kit: str = "") -> str:
+        r = self._live("GET", "/api/kits")
+        kid = kit or r["active"]
+        if kid not in r["kits"]:
+            raise StoreError(f"no kit {kid!r}")
+        return _dump({"kit": kid, "active": kid == r["active"], **r["kits"][kid], "unmapped_notes": r["unmapped"]})
+
+    def set_kit_piece(self, kit: str, piece: str, zone: str = "head", notes: str = "", role: str = "",
+                      weight: float | None = None, velocity_floor: int | None = None, tempo: bool | None = None,
+                      flash_yaml: str = "", trigger_yaml: str = "", name: str = "", piece_name: str = "",
+                      remove: bool = False) -> str:
+        changes: dict[str, Any] = {}
+        if notes:
+            changes["notes"] = [int(x) for x in str(notes).replace(",", " ").split()]
+        for k, v in (("role", role), ("weight", weight), ("velocity_floor", velocity_floor), ("tempo", tempo),
+                     ("name", name), ("piece_name", piece_name)):
+            if v not in ("", None):
+                changes[k] = v
+        if flash_yaml:
+            changes["flash"] = _yaml(flash_yaml, "flash") if flash_yaml.strip() not in ("none", "off") else None
+        if trigger_yaml:
+            changes["trigger"] = _yaml(trigger_yaml, "trigger") if trigger_yaml.strip() not in ("none", "off") else None
+        body = {"action": "piece", "kit": kit, "piece": piece, "zone": zone, "changes": changes, "remove": remove}
+        r = self._live("POST", "/api/kits", body)
+        return f"saved (backup {r['backup']})"
+
+    def set_active_kit(self, kit: str) -> str:
+        r = self._live("POST", "/api/kits", {"action": "active", "kit": kit})
+        return f"active kit {r['active']} (backup {r['backup']})"
+
+    def kit_learn_status(self, kit: str = "", piece: str = "", zone: str = "head", arm: bool = False,
+                         add: bool = False) -> str:
+        if arm:
+            r = self._live("POST", "/api/kits", {"action": "learn", "kit": kit, "piece": piece, "zone": zone, "add": add})
+            return _dump({**r["learning"], "note": "ask the drummer to hit that pad (zone) once"})
+        r = self._live("GET", "/api/kits")
+        return _dump(r["learning"] or {"armed": False, "note": "nothing armed"})
+
+    def tempo_status(self) -> str:
+        r = self._live("GET", "/api/tempo")
+        return _dump({**r["status"], "params": r["params"]})
+
+    def tap_tempo(self) -> str:
+        r = self._live("POST", "/api/tempo", {"action": "tap"})
+        return f"tap: {r['bpm']:.1f} BPM" if r.get("bpm") else "tap noted (one more tap sets the tempo)"
+
+    def set_tempo_source(self, source: str, save: bool = False) -> str:
+        r = self._live("POST", "/api/tempo", {"action": "source", "source": source, "save": save})
+        return _dump({**r["status"], **({"saved": r["backup"]} if save else {})})
+
+    def set_tempo_params(self, params_yaml: str, save: bool = False) -> str:
+        changes = _yaml(params_yaml, "tempo settings")
+        r = self._live("POST", "/api/tempo", {"action": "params", "params": changes, "save": save})
+        return _dump({"params": r["params"], **({"saved": r["backup"]} if save else {})})
+
+    def set_autopilot(self, darkness: float) -> str:
+        r = self._live("POST", "/api/darkness", {"value": darkness})
+        return f"darkness {r['darkness']:g} % (eases in over the look's fade; holds until the next set change)"
+
+    def set_set_darkness(self, set: str, value: float | None) -> str:
+        r = self._live("POST", "/api/darkness/set", {"set": set, "value": value})
+        return f"saved (backup {r['backup']}): {set} darkness {'cleared' if value is None else f'{value:g} %'}"
 
     def save_autopilot_settings(self, rig: str, yaml_text: str) -> str:
         data = _yaml(yaml_text, "autopilot settings")
@@ -415,16 +524,66 @@ class DmxTools:
                           "note": "the engine isn't running: no live stats"})
 
     def set_output(self, index: int, driver: str = "", port: str = "", universe: int | None = None, mac: str = "",
-                   alias: str = "") -> str:
+                   alias: str = "", break_method: str = "", break_us: float | None = None, mab_us: float | None = None,
+                   fps: float | None = None, channels: str = "") -> str:
         if mac:  # a wireless node: its universe is set on the node itself
             if universe is None:
                 raise StoreError("a node needs universe")
             return self.assign_node(mac, alias or mac, universe)
-        given = (("driver", driver), ("port", port), ("universe", universe), ("alias", alias))
+        ch: int | str | None = int(channels) if channels.isdigit() else (channels or None)
+        given = (("driver", driver), ("port", port), ("universe", universe), ("alias", alias),
+                 ("break_method", break_method), ("break_us", break_us), ("mab_us", mab_us), ("fps", fps), ("channels", ch))
         changes = {k: v for k, v in given if v not in ("", None)}
         r = self._live("POST", "/api/routing/output", {"index": index, "set": changes})
         notes = "; ".join(r.get("notes") or [])  # outputs are rebuilt live
         return f"saved (backup {r['backup']})" + (f". {notes}" if notes else "")
+
+    def run_test_pattern(self, pattern: str, universe: int | None = None, output: int | None = None, fixture: str = "",
+                         channel: int | None = None, value: int | None = None, dwell_s: float | None = None,
+                         timeout_s: float | None = None, patched_only: bool = False, role: str = "") -> str:
+        body = {"pattern": pattern, "universe": universe, "output": output, "fixture": fixture, "channel": channel,
+                "value": value, "dwell_s": dwell_s, "timeout_s": timeout_s, "patched_only": patched_only, "role": role}
+        r = self._live("POST", "/api/test/run", {k: v for k, v in body.items() if v not in (None, "")})
+        return _dump({"running": r["test"], "note": "stop it with stop_test_pattern (or it stops itself at timeout_s)"})
+
+    def fault_find(self, action: str = "start", answer: str = "", fixture: str = "") -> str:
+        r = self._live("POST", "/api/faultfind", {"action": action, "answer": answer, "fixture": fixture})
+        keep = ("stage", "step", "number", "of", "instruction", "answers", "test", "test_allowed", "flag", "outcome",
+                "running", "cycle")
+        out = {k: r[k] for k in keep if r.get(k) not in (None, "", [])}
+        if r.get("stage") == "done":
+            out["summary"] = r["summary"]
+        return _dump(out)
+
+    def check_outputs(self) -> str:
+        r = self._live("GET", "/api/outputs/check")["outputs"]
+        if not r:
+            return "no USB DMX (Open) outputs in this rig: the checks are for FTDI interfaces"
+        return _dump(r)
+
+    def test_output_methods(self, output: int, save_step: int = 0) -> str:
+        """Run the break-method cycle on an Open DMX output and wait for it; or save_step N afterwards."""
+        if save_step:
+            r = self._live("POST", "/api/cycle/save", {"output": output, "step": save_step})
+            return _dump({"saved": r["saved"]})
+        c = self._live("POST", "/api/cycle/start", {"output": output})["cycle"]
+        end = time.monotonic() + c["step_s"] * c["of"] + 15
+        last = None
+        while time.monotonic() < end:
+            time.sleep(0.5)
+            c = self._live("GET", "/api/cycle")["cycle"]
+            last = c
+            if c["state"] != "running":
+                break
+        out = {k: last[k] for k in ("state", "result", "steps", "original")} if last else c
+        if out.get("state") == "no_response":
+            out["note"] = ("no step was confirmed: the output is back as it was. If the band saw one work, "
+                           "call again with save_step = its number (1-based, from steps).")
+        return _dump(out)
+
+    def stop_test_pattern(self) -> str:
+        r = self._live("POST", "/api/test/stop", {"why": "stopped by Claude"})
+        return "stopped: normal output is back" if r["stopped"] else "no test pattern was running"
 
     def monitor_dmx(self, universe: int = 0, output: str = "", channels: str = "") -> str:
         """What one interface really sent on a universe: stats and channel values with names."""
@@ -532,7 +691,9 @@ class DmxTools:
 
     def node_health(self) -> str:
         s = self._live("GET", "/api/state")
-        return _dump({"nodes": s["nodes"], "recent_alerts": s["alerts"]})
+        outs = [{k: r.get(k) for k in ("output", "universe", "interface", "port", "state", "detail", "timing")}
+                for r in self._live("GET", "/api/routing")["rows"] if r.get("timing")]
+        return _dump({"nodes": s["nodes"], "usb_dmx": outs, "recent_alerts": s["alerts"]})
 
     # ------------------------------------------------------------------ validate (dry run)
 

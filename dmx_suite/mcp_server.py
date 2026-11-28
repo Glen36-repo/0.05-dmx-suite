@@ -80,11 +80,12 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.list_fx()
 
     @tool
-    def preview_look(pick_yaml: str, seconds: float = 10) -> str:
+    def preview_look(pick_yaml: str, seconds: float = 10, darkness: float | None = None) -> str:
         """Try an auto-show look on the rig: '{move: pan_sweep, colour: colour_chase, drum: kick_pump,
         palette: cool, feel: {speed: 1, fan: 0.5, size: 0.5}, mood: mid}'. Says what the look quality rules
-        think. Not during gig lock. Haze is never part of a look."""
-        return t.preview_look(pick_yaml, seconds)
+        think. darkness (0-100 %): see the look at that Darkness without touching the live value. Not during
+        gig lock. Haze is never part of a look."""
+        return t.preview_look(pick_yaml, seconds, darkness)
 
     @tool
     def get_quality_rules() -> str:
@@ -100,8 +101,83 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     @tool
     def autopilot_status(n: int = 20) -> str:
         """What the autopilot is doing and why: on/off, mood, energy, next change, control priority, and
-        the last n decisions (time, energy, mood, look, trigger, reason). Engine must be running."""
+        the last n decisions (time, energy, mood, look, trigger, reason), and Darkness: current %, its source
+        (default / set / slider / cc / claude), each set's stored value and the CC mapped to it. Engine must
+        be running."""
         return t.autopilot_status(n)
+
+    @tool
+    def list_kits() -> str:
+        """Drum kits in inputs.yaml: which is active, each kit's name, channel and number of pieces."""
+        return t.list_kits()
+
+    @tool
+    def get_kit(kit: str = "") -> str:
+        """One drum kit (default the active one): pieces, zones (input id, notes, role, weight, velocity floor,
+        tempo, flash target, trigger), and notes heard on the kit's channel that aren't mapped (missed zones)."""
+        return t.get_kit(kit)
+
+    @tool
+    def set_kit_piece(kit: str, piece: str, zone: str = "head", notes: str = "", role: str = "",
+                      weight: float | None = None, velocity_floor: int | None = None, tempo: bool | None = None,
+                      flash_yaml: str = "", trigger_yaml: str = "", name: str = "", piece_name: str = "",
+                      remove: bool = False) -> str:
+        """Add or change one piece's zone of a kit: notes ('38 40'), role (kick, snare, hat, tom, cymbal, tap,
+        count_in, trigger_only), tempo weight 0-2, velocity_floor, tempo (include in tempo), flash_yaml
+        ('{fixtures: [bars], colour: show, length_ms: 120}' or 'none'), trigger_yaml ('{scene: blue_wave}',
+        '{preset: x}', '{flash_fx: x}' or 'none'), name, piece_name. remove=True removes the zone (zone ''
+        = the whole piece). Saved and backed up; not under gig lock."""
+        return t.set_kit_piece(kit, piece, zone, notes, role, weight, velocity_floor, tempo, flash_yaml, trigger_yaml,
+                               name, piece_name, remove)
+
+    @tool
+    def set_active_kit(kit: str) -> str:
+        """Make this kit the one tempo, drum flash and triggers use."""
+        return t.set_active_kit(kit)
+
+    @tool
+    def kit_learn_status(kit: str = "", piece: str = "", zone: str = "head", arm: bool = False, add: bool = False) -> str:
+        """Remote learn: arm=True arms kit / piece / zone so the drummer's next hit becomes its note (add=True
+        adds a note instead of replacing); without arm, says what's armed and what was learned."""
+        return t.kit_learn_status(kit, piece, zone, arm, add)
+
+    @tool
+    def tempo_status() -> str:
+        """The beat clock: BPM, beat in the bar, bar, confidence, freewheel (fills / drums stopped), source
+        (drums / tap / midi_clock / off), where the seed came from, and the tracker settings."""
+        return t.tempo_status()
+
+    @tool
+    def tap_tempo() -> str:
+        """One tap on the beat (two or more set the tempo; following the drums, a tap seeds the tracker)."""
+        return t.tap_tempo()
+
+    @tool
+    def set_tempo_source(source: str, save: bool = False) -> str:
+        """Where the tempo comes from: drums (the drummer's playing, seeded by a tap or count-in), tap (taps
+        only), midi_clock, off (keep the tempo as it is). Live; save=True writes it to the rig."""
+        return t.set_tempo_source(source, save)
+
+    @tool
+    def set_tempo_params(params_yaml: str, save: bool = False) -> str:
+        """Tune the drums tracker live, e.g. '{deadband_pct: 3, hold_beats: 4, jump_pct: 15, jump_hold_beats: 8,
+        lock_pct: 15, window_s: 6, velocity_floor: 30, confidence: 0.4, weights: {hat: 0.3}}'. Also merge_ms,
+        glide_beats, median_beats, phase_nudge, count_in_silence_s, count_in_hits. save=True writes the rig."""
+        return t.set_tempo_params(params_yaml, save)
+
+    @tool
+    def set_autopilot(darkness: float) -> str:
+        """Autopilot Darkness 0-100 %: black put into the Autopilot's effects (narrower bands, black palette
+        slots, gaps), never a dimmer; the kick light is exempt; hand-made scenes and Override aren't touched.
+        Eases in over the look's fade; holds until the next LOW / MID / HIGH set change. Allowed under gig lock
+        (a live control)."""
+        return t.set_autopilot(darkness)
+
+    @tool
+    def set_set_darkness(set: str, value: float | None = None) -> str:
+        """Store the darkness (0-100 %) a set loads: set = low, mid or high; value None clears it. Saved to the
+        rig's autopilot block (set_darkness). Not under gig lock."""
+        return t.set_set_darkness(set, value)
 
     @tool
     def save_autopilot_settings(rig: str, yaml_text: str) -> str:
@@ -316,16 +392,67 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         """The routing table: which universe goes out which interface (USB DMX, Art-Net/sACN, the 0.05 node
         link, each wireless node), with state, fps, frames, errors, last frame age and whether the last frame
         sent was all zeros. Plus routing problems (a universe with lights but no output, an output with no
-        lights, an output with no universe: given). Use it first when the software runs but the rig is dark."""
+        lights, an output with no universe: given). Open DMX rows add `timing`: break method, target and
+        measured break / MAB / fps / write time / jitter, and warnings. Use it first when the software runs
+        but the rig is dark."""
         return t.list_outputs()
 
     @tool
     def set_output(index: int, driver: str = "", port: str = "", universe: int | None = None, mac: str = "",
-                   alias: str = "") -> str:
+                   alias: str = "", break_method: str = "", break_us: float | None = None, mab_us: float | None = None,
+                   fps: float | None = None, channels: str = "") -> str:
         """Change output `index` (from list_outputs; -1 adds one): driver (usb_dmx_open, usb_dmx_pro, node,
         artnet, sacn), port (COM3), universe (0-15), alias (e.g. Stage DMX). With mac: set a wireless node's
-        universe instead. Not during gig lock. Applied live: the outputs are rebuilt between frames."""
-        return t.set_output(index, driver, port, universe, mac, alias)
+        universe instead. Open DMX (usb_dmx_open) timing: break_method (auto, d2xx, serial_break, baud_drop),
+        break_us 88-1000 (176), mab_us 8-100 (12), fps 1-44 (40), channels 24-512 or 'patched' (512).
+        Not during gig lock. Applied live: the outputs are rebuilt between frames."""
+        return t.set_output(index, driver, port, universe, mac, alias, break_method, break_us, mab_us, fps, channels)
+
+    @tool
+    def run_test_pattern(pattern: str, universe: int | None = None, output: int | None = None, fixture: str = "",
+                         channel: int | None = None, value: int | None = None, dwell_s: float | None = None,
+                         timeout_s: float | None = None, patched_only: bool = False, role: str = "") -> str:
+        """DMX test pattern straight to a universe (or one interface: output = index from list_outputs),
+        bypassing scenes, autopilot, Override, grand master and MASTER. Head limits still apply; haze stays 0.
+        pattern: all_full (lights at full, strobe off; patched_only leaves unpatched channels 0), chase (one
+        light at a time, dwell_s, default 2), find (fixture flashes at 1 Hz, heads nod), ramp (channel 1-512, or
+        fixture + role e.g. red: 0-255-0, or held at value), keep_alive (fixed frame at value, default 0: do the
+        lights stay in DMX mode?). Stops after timeout_s (default 60). Gig lock: keep_alive only. Tell the
+        band before lighting the rig."""
+        return t.run_test_pattern(pattern, universe, output, fixture, channel, value, dwell_s, timeout_s,
+                                  patched_only, role)
+
+    @tool
+    def fault_find(action: str = "start", answer: str = "", fixture: str = "") -> str:
+        """"Rig not responding" guided fault-find, the same steps as the Monitor page wizard, so you can walk
+        Glen through it in chat. action: start (runs the interface checks; stops on a fail with its fix),
+        answer (answer = yes / no to "lights in auto / sound mode?", a fixture id when asked which light is
+        dark, pass / fail for each step, or restart), test (starts the current step's test pattern or cycle
+        test; tell the band first), status. Each reply: the instruction, allowed answers, the test, and at
+        the end the outcome and a summary (also logged). Pass = that fixed it; fail = next likely cause."""
+        return t.fault_find(action, answer, fixture)
+
+    @tool
+    def check_outputs() -> str:
+        """Checklist per USB DMX (Open) interface, run now: driver (VCP COM port vs D2XX), FTDI latency timer
+        (amber over 1 ms), port opened exclusively (red when another program - Daslight, QLC+, FreeStyler -
+        holds it), 250k 8N2, USB selective suspend, measured timing. Each check pass / warn / fail / unknown
+        with fix text. Use it early when the rig is dark but frames are counting."""
+        return t.check_outputs()
+
+    @tool
+    def test_output_methods(output: int, save_step: int = 0) -> str:
+        """Break-method cycle test on a USB DMX (Open) output (index from list_outputs): runs "all full" on it
+        while it steps through each break method (D2XX if installed, serial break, baud drop, long 500 µs
+        break), 5 s each. Tell the band first and ask them to tap "Lights responded" on the Monitor page when
+        the lights come on; returns the confirmed step (saved to the rig) or none (output put back). If they
+        tell you the step in chat instead, call again with save_step = its number. Not under gig lock."""
+        return t.test_output_methods(output, save_step)
+
+    @tool
+    def stop_test_pattern() -> str:
+        """Stop the running test pattern; the show's output is back on the next frame."""
+        return t.stop_test_pattern()
 
     @tool
     def monitor_dmx(universe: int = 0, output: str = "", channels: str = "") -> str:
@@ -367,7 +494,8 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
 
     @tool
     def node_health() -> str:
-        """0.05 nodes and receivers: state, signal, packet loss, last data, recent drop-outs."""
+        """0.05 nodes and receivers: state, signal, packet loss, last data, recent drop-outs. Plus each USB DMX
+        (Open) interface's break method, target and measured timings."""
         return t.node_health()
 
     @tool

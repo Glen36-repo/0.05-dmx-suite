@@ -19,6 +19,7 @@ Every step can be skipped. Run it again any time from the Setup page.
 - **Add lights** of a type (several at once); they go on the next free addresses.
 - **Auto-patch** gives every light the next free addresses in list order.
 - Addresses that overlap or run past 512 are marked red, and the patch can't be saved until they're fixed.
+- Universes and start addresses are shown here but changed in one place, the **Layout** page (address map, live values, clash checks): **Change** beside an address opens Layout with that light's address ready to type.
 - **Find** lights just that one light so you can see which it is.
 - ✕ removes a light from the patch and from every rig. If a scene names it directly, you're told which; change the scene first.
 
