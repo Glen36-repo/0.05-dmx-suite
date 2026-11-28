@@ -697,7 +697,8 @@ def rig_exclude_fx(app, want=None, page=None):
 
     for _ in range(80):
         data = _yaml.safe_load((app.files.root / "rigs" / f"{app.names[0]}.yaml").read_text(encoding="utf-8"))
-        got = (data.get("auto") or {}).get("exclude_fx") or []
+        fx = (data.get("autopilot") or {}).get("fx") or {}  # v8: priority 0
+        got = sorted(k for k, v in fx.items() if v.get("priority") == 0)
         if want is None or got == want:
             return got
         page.wait_for_timeout(25)

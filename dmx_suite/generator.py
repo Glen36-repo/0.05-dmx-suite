@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .classify import AutoRig
-from .fxbanks import BY_ID, Item, Pick, RideSettings, available, compose
+from .fxbanks import Item, Pick, RideSettings, available, compose
 from .quality import Quality
 
 STYLES: dict[str, dict[str, Any]] = {
@@ -157,7 +157,7 @@ class Generator:
             p = self.pick(mood, style, palette, prev, seen)
             seen.add(p.key())
             prev = p
-            label = " + ".join(BY_ID[x].label for x in (p.move, p.colour) if x and x in BY_ID)
+            label = " + ".join(it.label for x in (p.move, p.colour) if x and (it := self.ctx.ar.item(x)) is not None)
             name = f"{prefix.replace('_', ' ').title()} {i + 1}: {label}"
             out[f"{slug(prefix)}_{i + 1}"] = self.scene(p, name, mood, style)
         return out

@@ -1163,12 +1163,13 @@ class App:
         how the lights are classified, the palettes and the quality rules."""
         from .classify import auto_rig
         from .colourtheory import hex_of
-        from .fxbanks import FLASH_ITEMS, ITEMS, can_run
+        from .fxbanks import can_run
 
         ar = auto_rig(self.engine.rig)
         return {"rig": ar.summary(), "items": [{**i.to_json(), "available": can_run(i, ar), "excluded": i.id in ar.excluded_fx}
-                                               for i in [*ITEMS, *FLASH_ITEMS]],
+                                               for i in ar.all_items()],
                 "palettes": {k: {"name": v["name"], "tags": v["tags"], "excluded": k in ar.excluded_palettes,
+                                 "priority": ar.palette_priority.get(k, 3),
                                  "swatches": [hex_of(c) for c in v["resolved"]][:6]}
                              for k, v in self.files.palettes.sets.items()},
                 "pick": self.ride_pick.to_dict(), "quality": self.quality().r}
@@ -1418,42 +1419,162 @@ class App:
         return [p.to_dict() for p in self.generator(seed, autopilot=True).more_like(self.ride_pick, n)]
 
     def exclude_fx(self, item: str, excluded: bool) -> dict[str, Any]:
-        """Leave an FX type out of the autopilot's picks (or put it back), saved in the rig file. It can
-        still be played by hand. Allowed under gig lock (a type misbehaving mid-gig), like "Use this instead"."""
-        from .fxbanks import BY_ID
+        """Leave an FX type out of the autopilot's picks (or put it back): v8 priority 0, saved in the rig
+        file; putting it back restores the priority it had. It can still be played by hand. Allowed under
+        gig lock (a type misbehaving mid-gig), like "Use this instead"."""
+        from . import fxoverrides as fo
 
-        it = BY_ID.get(item)
+        it = self.rig_auto().item(item)
         if it is None or it.bank == "flash":
             raise ValueError(f"no autopilot FX type {item!r}")
-        return self._auto_exclude("exclude_fx", item, it.label, excluded)
+        verb = "leave out" if excluded else "put back"
+        out = self._edit_fx(item, lambda ov: fo.exclude(ov, excluded), f"autopilot: {verb} {it.label}", recovery=True)
+        return {**out, "excluded": sorted(self.rig_auto().excluded_fx)}
 
     def exclude_palette(self, palette: str, excluded: bool) -> dict[str, Any]:
         """v7 palette bank: leave a palette out of the autopilot's picks (or put it back). A tap still plays it."""
+        from . import fxoverrides as fo
+
         sets = self.files.palettes.sets
         if palette not in sets:
             raise ValueError(f"no palette {palette!r}")
-        return self._auto_exclude("exclude_palettes", palette, f"palette {sets[palette]['name']}", excluded)
+        verb = "leave out" if excluded else "put back"
+        out = self._edit_fx(palette, lambda ov: fo.exclude(ov, excluded), f"autopilot: {verb} palette {sets[palette]['name']}",
+                            recovery=True, block="palette_settings")
+        return {**out, "excluded": sorted(self.rig_auto().excluded_palettes)}
 
-    def _auto_exclude(self, key: str, item: str, label: str, excluded: bool) -> dict[str, Any]:
+    def rig_auto(self) -> Any:
+        from .classify import auto_rig
+
+        return auto_rig(self.engine.rig)
+
+    def _edit_fx(self, key: str, fn: Any, note: str, *, recovery: bool = False, block: str | None = None) -> dict[str, Any]:
+        """Change one entry of the rig's `autopilot: fx / variants / palette_settings` (v8), checked and backed
+        up. `fn` gets the entry's overrides (a copy) and returns the new ones ({} = back to defaults)."""
+        from .autopilot import parse_config
+        from .fixtures import ConfigError
+
         rig_name = self.names[0]
         data = self.store.read("rig", rig_name)
-        auto = dict(data.get("auto") or {})
-        now = [x for x in auto.get(key) or [] if x != item]
-        if excluded:
-            now.append(item)
-        if now:
-            auto[key] = now
+        ap = dict(data.get("autopilot") or {})
+        if block is None:
+            block = "variants" if key in (ap.get("variants") or {}) else "fx"
+        entries = dict(ap.get(block) or {})
+        new = fn(dict(entries.get(key) or {}))
+        if new is None or (not new and block != "variants"):
+            entries.pop(key, None)
         else:
-            auto.pop(key, None)
-        if auto:
-            data["auto"] = auto
+            entries[key] = new
+        if entries:
+            ap[block] = entries
         else:
-            data.pop("auto", None)
-        verb = "leave out" if excluded else "put back"
-        with self.store.recovery():  # mid-gig: like "Use this instead", allowed under gig lock
-            bid = self.store.put("rig", rig_name, data, f"autopilot: {verb} {label} on rig {rig_name}")
+            ap.pop(block, None)
+        try:
+            parse_config(ap)
+        except ConfigError as e:
+            raise ValueError(str(e)) from e
+        if ap:
+            data["autopilot"] = ap
+        else:
+            data.pop("autopilot", None)
+        if recovery:
+            with self.store.recovery():
+                bid = self.store.put("rig", rig_name, data, f"{note} on rig {rig_name}")
+        else:
+            bid = self.store.put("rig", rig_name, data, f"{note} on rig {rig_name}")
         self.reload()
-        return {"ok": True, "backup": bid, "excluded": now}
+        return {"ok": True, "backup": bid}
+
+    def fx_item(self, item: str) -> dict[str, Any]:
+        """One FX tile for the settings panel (v8): its settings now, the defaults and the editable params."""
+        from . import fxoverrides as fo
+        from .fxbanks import BY_ID
+
+        ar = self.rig_auto()
+        it = ar.item(item)
+        if it is None:
+            raise ValueError(f"no FX type {item!r}")
+        ap = self.engine.rig.autopilot or {}
+        ov = dict((ap.get("variants") or {}).get(item) or (ap.get("fx") or {}).get(item) or {})
+        base = BY_ID[it.of or it.id]
+        params = []
+        for p in fo.editable_params(it):
+            j = p.to_json()
+            if p.key in base.layer:
+                j["default"] = base.layer[p.key]
+            if p.key in it.layer:
+                j["value"] = it.layer[p.key]
+            params.append(j)
+        return {**it.to_json(), "overrides": ov, "params": params, "variant": it.of is not None,
+                "default_moods": list(base.moods)}
+
+    def save_fx(self, item: str, overrides: dict[str, Any] | None) -> dict[str, Any]:
+        """The settings panel's Save (None / {} = Reset to defaults). Refused under gig lock (the store's lock)."""
+        from . import fxoverrides as fo
+
+        it = self.rig_auto().item(item)
+        if it is None or it.bank == "flash":
+            raise ValueError(f"no autopilot FX type {item!r}")
+        ov = dict(overrides or {})
+        if it.of is not None:  # a variant keeps its of / name
+            cur = (self.engine.rig.autopilot.get("variants") or {}).get(item) or {}
+            keep = {k: cur[k] for k in ("of", "name") if k in cur}
+            ov = {**keep, **{k: v for k, v in ov.items() if k not in ("of",)}}
+        bad = set(ov) - set(fo.VARIANT_KEYS if it.of else fo.KEYS)
+        if bad:
+            raise ValueError(f"FX settings are {', '.join(fo.KEYS)}")
+        what = "reset" if not overrides else "settings"
+        return {**self._edit_fx(item, lambda _: ov, f"autopilot: {it.label} {what}"), "item": self.fx_item(item)}
+
+    def set_fx_priority(self, item: str, priority: int | None = None, palette: bool = False) -> dict[str, Any]:
+        """The priority badge (v8): a given priority 0-5, or None = the next one (1 -> 5 -> 1)."""
+        from . import fxoverrides as fo
+
+        if palette:
+            if item not in self.files.palettes.sets:
+                raise ValueError(f"no palette {item!r}")
+            cur = self.rig_auto().palette_priority.get(item, fo.DEFAULT_PRIORITY)
+            label = f"palette {self.files.palettes.sets[item]['name']}"
+        else:
+            it = self.rig_auto().item(item)
+            if it is None or it.bank == "flash":
+                raise ValueError(f"no autopilot FX type {item!r}")
+            cur, label = it.priority, it.label
+        new = fo.next_badge(cur) if priority is None else int(priority)
+        if not 0 <= new <= 5:
+            raise ValueError("priority: 0-5 (0 = excluded)")
+        fn = (lambda ov: fo.exclude(ov, True)) if new == 0 else (lambda ov: fo.set_priority(ov, new))
+        out = self._edit_fx(item, fn, f"autopilot: {label} priority {new}",
+                            block="palette_settings" if palette else None)
+        return {**out, "priority": new}
+
+    def duplicate_fx(self, item: str, name: str | None = None) -> dict[str, Any]:
+        """Duplicate (v8): a copy of the FX as its own tile with the same settings, picked as its own type."""
+        from . import fxoverrides as fo
+
+        it = self.rig_auto().item(item)
+        if it is None or it.bank == "flash":
+            raise ValueError(f"no autopilot FX type {item!r}")
+        ap = self.engine.rig.autopilot or {}
+        of = it.of or it.id
+        cur = dict((ap.get("variants") or {}).get(item) or (ap.get("fx") or {}).get(item) or {})
+        cur.pop("name", None)
+        cur.pop("of", None)
+        taken = set(self.rig_auto().items) | set(ap.get("variants") or {})
+        vid = fo.new_variant_id(of, taken)
+        label = (name or "").strip() or fo.variant_name(self.rig_auto().item(of).label, vid)
+        out = self._edit_fx(vid, lambda _: {"of": of, "name": label, **cur}, f"autopilot: duplicate {it.label} as {label}",
+                            block="variants")
+        return {**out, "id": vid, "item": self.fx_item(vid)}
+
+    def delete_fx(self, item: str) -> dict[str, Any]:
+        """Delete a variant (originals can't be deleted, only excluded)."""
+        it = self.rig_auto().item(item)
+        if it is None:
+            raise ValueError(f"no FX type {item!r}")
+        if it.of is None:
+            raise ValueError(f"{it.label} is a built-in FX type: it can't be deleted, only excluded (priority 0)")
+        return {**self._edit_fx(item, lambda _: None, f"autopilot: delete {it.label}", block="variants"), "deleted": item}
 
     def priority(self) -> dict[str, Any]:
         """Live control priority, highest first, and which level is in charge now."""
@@ -1766,7 +1887,7 @@ class App:
 
     def ride_action(self, action: str, p: dict[str, Any], level: float | None = None) -> str:
         """Autopilot page controls (v3 Ride page), from the page, MIDI or OSC."""
-        from .fxbanks import BY_ID, RANGES
+        from .fxbanks import RANGES
 
         now = self.engine.clock()
         ap = self.autopilot
@@ -1809,7 +1930,8 @@ class App:
         pick = self.ride_pick
         if action == "autopilot_fx":
             bank, item = p.get("bank"), p.get("item")
-            if bank not in ("move", "colour", "drum") or (item and item not in BY_ID):
+            it = self.rig_auto().item(item) if item else None
+            if bank not in ("move", "colour", "drum") or (item and (it is None or it.bank != bank)):
                 raise ValueError("autopilot_fx needs bank move/colour/drum and an FX item")
             setattr(pick, bank, item or None)
         elif action == "autopilot_palette":

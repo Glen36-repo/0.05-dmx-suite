@@ -1019,10 +1019,11 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                     raise ApiError(400, str(e)) from e
                 return self._json(200, {"ok": True, "result": msg})
             if path == "/api/ride/check" and method == "POST":  # a pick as a scene + quality notes, nothing played
-                from ..fxbanks import BY_ID, Pick
+                from ..fxbanks import Pick
 
                 pick = Pick.from_dict(body.get("pick") or {})
-                bad = [x for x in (pick.move, pick.colour, pick.drum) if x and x not in BY_ID]
+                ar = app.rig_auto()
+                bad = [x for x in (pick.move, pick.colour, pick.drum) if x and ar.item(x) is None]
                 if bad:
                     raise ApiError(400, f"unknown FX item(s): {', '.join(bad)}")
                 _, scene = app.compose(pick)
@@ -1167,9 +1168,7 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             elif parts == ["auto"] and method == "POST":  # classification overrides for the running rig (v3.3)
                 rig_name = str(b.get("rig") or app.names[0])
                 data = s.read("rig", rig_name)
-                keep_fx = (data.get("auto") or {}).get("exclude_fx")  # the Autopilot page's excluded types stay
-                auto = {k: v for k, v in (("classes", b.get("classes") or {}), ("exclude", b.get("exclude") or []),
-                                          ("exclude_fx", b.get("exclude_fx", keep_fx) or [])) if v}
+                auto = {k: v for k, v in (("classes", b.get("classes") or {}), ("exclude", b.get("exclude") or [])) if v}
                 if auto:
                     data["auto"] = auto
                 else:

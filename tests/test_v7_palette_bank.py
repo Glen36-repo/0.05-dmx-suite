@@ -1,22 +1,24 @@
 # ruff: noqa: F811 - pytest fixtures imported from other tests are used as arguments
-"""v7 A2 palette bank: palettes the autopilot never picks, saved per rig in `auto: exclude_palettes`,
+"""v7 A2 palette bank: palettes the autopilot never picks, saved per rig (v8: priority 0 under
+`autopilot: palette_settings`),
 still playable by hand, allowed under gig lock; MIDI, API and Claude actions."""
 
 import pytest
 import yaml
 from test_autopilot import app  # noqa: F401 - pytest fixture
-from test_exclude_fx import picks, rig_auto
+from test_exclude_fx import excluded, picks
 from test_v6_darkness import running  # noqa: F401 - pytest fixture
 
-from dmx_suite.classify import parse_auto
+from dmx_suite.autopilot import parse_config
 from dmx_suite.fixtures import ConfigError
 from dmx_suite.midi.map import AUTOPILOT_ACTIONS, parse_map, validate
 
 
 def test_config(app):
-    assert parse_auto({"exclude_palettes": ["ice", "ice", "fire"]}, app.files.patch).exclude_palettes == ["ice", "fire"]
-    with pytest.raises(ConfigError, match="list of palette names"):
-        parse_auto({"exclude_palettes": "ice"}, app.files.patch)
+    cfg = parse_config({"palette_settings": {"ice": {"priority": 0}, "fire": {"priority": 5}}})
+    assert cfg["palette_settings"] == {"ice": {"priority": 0}, "fire": {"priority": 5}}
+    with pytest.raises(ConfigError, match="palette_settings ice: settings are"):
+        parse_config({"palette_settings": {"ice": {"params": {}}}})
 
 
 def test_excluded_palettes_are_never_picked(app):
@@ -24,7 +26,7 @@ def test_excluded_palettes_are_never_picked(app):
     out = pals[: len(pals) // 2]
     for k in out:
         app.exclude_palette(k, True)
-    assert set(rig_auto(app)["exclude_palettes"]) == set(out)  # saved in the rig file
+    assert set(excluded(app, "palette_settings")) == set(out)  # saved in the rig file
     got = picks(app, n=170)  # 510 changes
     assert not {p.palette for p in got} & set(out)
     cat = app.fx_catalogue()["palettes"]
@@ -35,7 +37,7 @@ def test_excluded_palettes_are_never_picked(app):
 def test_put_back_and_all_excluded(app):
     app.exclude_palette("fire", True)
     app.exclude_palette("fire", False)
-    assert "exclude_palettes" not in rig_auto(app)
+    assert not excluded(app, "palette_settings")
     for k in app.files.palettes.sets:
         app.exclude_palette(k, True)
     assert picks(app, n=3)  # everything left out: the exclusions are ignored rather than playing nothing
@@ -58,7 +60,7 @@ def test_allowed_under_gig_lock(app):
         app.exclude_palette("neon", True)
     finally:
         app.set_gig_lock(False)
-    assert rig_auto(app)["exclude_palettes"] == ["neon"]
+    assert excluded(app, "palette_settings") == ["neon"]
 
 
 def test_midi_action_toggles(app):
@@ -84,7 +86,8 @@ def test_api_and_claude(running):
     assert status == 200 and body["excluded"] == ["fire"]
     t = DmxTools(shows=root, url=url, token=claude)
     assert "left out" in t.exclude_palette("ice")
-    assert yaml.safe_load((root / "rigs" / "full.yaml").read_text())["auto"]["exclude_palettes"] == ["fire", "ice"]
+    ps = yaml.safe_load((root / "rigs" / "full.yaml").read_text())["autopilot"]["palette_settings"]
+    assert sorted(k for k, v in ps.items() if v["priority"] == 0) == ["fire", "ice"]
     assert "back in" in t.exclude_palette("fire", False)
     assert "autopilot_palette ok" in t.play_palette("ice")
     assert app.ride_pick.palette == "ice"

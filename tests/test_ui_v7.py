@@ -100,7 +100,9 @@ def rig_auto_key(app, key, want=None, page=None):
     got = []
     for _ in range(80):
         data = yaml.safe_load((app.files.root / "rigs" / f"{app.names[0]}.yaml").read_text(encoding="utf-8"))
-        got = (data.get("auto") or {}).get(key) or []
+        block = {"exclude_palettes": "palette_settings", "exclude_fx": "fx"}[key]  # v8: priority 0
+        entries = (data.get("autopilot") or {}).get(block) or {}
+        got = sorted(k for k, v in entries.items() if v.get("priority") == 0)
         if want is None or got == want:
             return got
         page.wait_for_timeout(25)

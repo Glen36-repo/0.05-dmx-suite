@@ -42,6 +42,9 @@ Rig config (all optional):
       walk_off: {colour: static, palette: warm}
       palettes: [warm, cool, band]          # only these (default: by mood tag)
       seed: gig-1
+      fx: {fan: {priority: 4, darkness: exempt}}           # v8: per FX type settings (fxoverrides.py)
+      variants: {fan_v1: {of: fan, name: Fan slow}}         # v8: duplicates
+      palette_settings: {ice: {priority: 0}}               # v8: palette tiles (0 = excluded)
 """
 
 from __future__ import annotations
@@ -102,6 +105,10 @@ DEFAULTS: dict[str, Any] = {
         "palette": {"every_looks": 1.5, "spread": 25, "locked": False},
         "darkness": {"every_looks": 0.5, "spread": 25, "locked": False},
     },
+    # v8 FX settings panel (fxoverrides.py): per FX type, duplicates, palette tiles
+    "fx": {},
+    "variants": {},
+    "palette_settings": {},
 }
 LAYERS: tuple[str, ...] = ("move", "colour", "palette", "darkness")  # v7; the drum FX item rides with colour
 PICK_LAYERS = ("move", "colour", "palette")
@@ -142,6 +149,10 @@ def parse_config(d: Any) -> dict[str, Any]:
             fixed[k] = {**base, **v}
         d = {**d, "layers": {**DEFAULTS["layers"], **fixed}}
     out = merge(DEFAULTS, d)
+    from .fxoverrides import parse as parse_fx
+
+    out["fx"], out["variants"], out["palette_settings"] = parse_fx(d.get("fx"), d.get("variants"),
+                                                                   d.get("palette_settings"))
     if lay is not None:
         out["layers"] = copy.deepcopy(d["layers"])
     # a scene replaces the default look (a generated look still merges over it, as in v6)
@@ -880,6 +891,6 @@ class Autopilot:
 
 
 def _item(x: str) -> Any:
-    from .fxbanks import BY_ID
+    from .fxbanks import lookup
 
-    return BY_ID.get(x)
+    return lookup(x)

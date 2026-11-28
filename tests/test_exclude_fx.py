@@ -1,18 +1,29 @@
 # ruff: noqa: F811 - pytest fixtures imported from test_autopilot are used as arguments
-"""Excluded FX types (v4.1): types the autopilot never picks, saved per rig in `auto: exclude_fx`, still
-playable by hand, allowed under gig lock; re-roll and "more like this" skip them too."""
+"""Excluded FX types (v4.1): types the autopilot never picks, saved per rig (v8: priority 0 under
+`autopilot: fx`), still playable by hand, allowed under gig lock; re-roll and "more like this" skip them too."""
 
 import pytest
 import yaml
 from test_autopilot import app  # noqa: F401 - pytest fixture
 
+from dmx_suite.autopilot import parse_config
 from dmx_suite.classify import parse_auto
 from dmx_suite.fixtures import ConfigError
 from dmx_suite.fxbanks import Pick, available
 
 
+def rig_file(app):
+    return yaml.safe_load((app.files.root / "rigs" / f"{app.names[0]}.yaml").read_text(encoding="utf-8"))
+
+
 def rig_auto(app):
-    return yaml.safe_load((app.files.root / "rigs" / f"{app.names[0]}.yaml").read_text(encoding="utf-8")).get("auto") or {}
+    return rig_file(app).get("auto") or {}
+
+
+def excluded(app, block="fx"):
+    """What the rig file has at priority 0 (v8)."""
+    entries = (rig_file(app).get("autopilot") or {}).get(block) or {}
+    return sorted(k for k, v in entries.items() if v.get("priority") == 0)
 
 
 def picks(app, moods=("low", "mid", "high"), n=25):
@@ -28,15 +39,16 @@ def picks(app, moods=("low", "mid", "high"), n=25):
 
 
 def test_config_accepts_known_types_only(app):
-    patch = app.files.patch
-    assert parse_auto({"exclude_fx": ["static", "police", "pan_sweep", "kick_pump"]}, patch).exclude_fx == \
-        ["static", "police", "pan_sweep", "kick_pump"]
+    cfg = parse_config({"fx": {k: {"priority": 0} for k in ("static", "police", "pan_sweep", "kick_pump")}})
+    assert sorted(cfg["fx"]) == ["kick_pump", "pan_sweep", "police", "static"]
     with pytest.raises(ConfigError, match="unknown FX type 'nope'"):
-        parse_auto({"exclude_fx": ["nope"]}, patch)
+        parse_config({"fx": {"nope": {"priority": 0}}})
     with pytest.raises(ConfigError, match="Flash FX"):
-        parse_auto({"exclude_fx": ["strobe"]}, patch)  # played by hand only
-    with pytest.raises(ConfigError, match="a list"):
-        parse_auto({"exclude_fx": "static"}, patch)
+        parse_config({"fx": {"strobe": {"priority": 0}}})  # played by hand only
+    with pytest.raises(ConfigError, match="0-5"):
+        parse_config({"fx": {"static": {"priority": 6}}})
+    with pytest.raises(ConfigError, match="priority 0 under autopilot"):  # format 7 keys are upgraded, not read
+        parse_auto({"exclude_fx": ["static"]}, app.files.patch)
 
 
 def test_excluded_types_are_never_picked(app):
@@ -46,7 +58,7 @@ def test_excluded_types_are_never_picked(app):
     out_c, out_m = colours[: len(colours) // 2], moves[: len(moves) // 2]
     for k in out_c + out_m + ["kick_pump"]:
         app.exclude_fx(k, True)
-    assert set(rig_auto(app)["exclude_fx"]) == set(out_c + out_m + ["kick_pump"])  # saved in the rig file
+    assert set(excluded(app)) == set(out_c + out_m + ["kick_pump"])  # saved in the rig file
     got = picks(app)
     assert not {p.colour for p in got} & set(out_c)
     assert not {p.move for p in got} & set(out_m)
@@ -58,7 +70,7 @@ def test_excluded_types_are_never_picked(app):
 def test_put_back_and_nothing_left(app):
     app.exclude_fx("static", True)
     app.exclude_fx("static", False)
-    assert "exclude_fx" not in rig_auto(app)  # nothing left: the key goes
+    assert "fx" not in (rig_file(app).get("autopilot") or {})  # nothing left: the key goes
     ar = app.autopilot.rig_auto()
     for i in available(ar, "colour"):  # every colour type out: the autopilot still plays something
         app.exclude_fx(i.id, True)
@@ -89,7 +101,7 @@ def test_reroll_and_more_skip_excluded(app):
 def test_allowed_under_gig_lock(app):
     app.set_gig_lock(True)
     app.exclude_fx("police", True)
-    assert rig_auto(app)["exclude_fx"] == ["police"]
+    assert excluded(app) == ["police"]
 
 
 def test_saving_light_classes_keeps_excluded_types(app):
@@ -109,7 +121,8 @@ def test_saving_light_classes_keeps_excluded_types(app):
             assert r.status == 200
     finally:
         web.stop()
-    assert rig_auto(app) == {"exclude": ["wash_l"], "exclude_fx": ["police"]}
+    assert rig_auto(app) == {"exclude": ["wash_l"]}
+    assert excluded(app) == ["police"]
 
 
 def test_unknown_type_refused(app):

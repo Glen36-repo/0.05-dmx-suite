@@ -7,8 +7,8 @@
     blackout     every light dark while held / for the length (not the BLACKOUT button: haze runs on)
     freeze       hold the look as it is now
     flash_decay  a white hit that fades out
-    chase_hit    one quick chase across the rig
-    split_hit    the left or right half
+
+v8: Chase hit and Rig split hit are gone; maps that used them were moved to colour_hit (format 8).
 
 They only touch colour (and freeze also holds head positions): no dimmer, so MASTER still owns
 on/off (rule 1); never haze (rule 5); never the MASTER-exempt lights such as the kick light
@@ -25,7 +25,7 @@ from typing import Any
 from .busk import Override
 from .look import Colour, FixtureLook, Look
 
-KINDS = ("blinder", "colour_hit", "strobe", "blackout", "freeze", "flash_decay", "chase_hit", "split_hit")
+KINDS = ("blinder", "colour_hit", "strobe", "blackout", "freeze", "flash_decay")
 WHITE: Colour = {"red": 1.0, "green": 1.0, "blue": 1.0, "white": 1.0}
 
 
@@ -37,7 +37,6 @@ def make(kind: str, lights: list[str], start: float, colour: Colour | None = Non
         raise ValueError(f"flash FX is one of {', '.join(KINDS)}")
     col = dict(colour or WHITE)
     order = list(lights)
-    left_set = set(left or order[: len(order) // 2])
 
     def paint(look: Look, ids: list[str], c: Colour) -> Look:
         fx = dict(look.fixtures)
@@ -70,19 +69,7 @@ def make(kind: str, lights: list[str], start: float, colour: Colour | None = Non
                 if f in frozen.fixtures:
                     fx[f] = frozen.fixtures[f]
             return Look(fixtures=fx, show_colour=look.show_colour)
-        if kind == "chase_hit":
-            n = max(1, len(order))
-            pos = t / max(0.05, length_s) * n
-            fx = dict(look.fixtures)
-            for i, f in enumerate(order):
-                k = max(0.0, 1 - abs(i - pos) / 1.5)
-                if k > 0:
-                    base = fx.get(f, FixtureLook())
-                    fx[f] = replace(base, colour=scaled(col, k), pixels=None)
-            return Look(fixtures=fx, show_colour=look.show_colour)
-        # split_hit
-        ids = [f for f in order if (f in left_set) == (side == "left")]
-        return paint(look, ids, scaled(col, 1 - t / max(0.05, length_s) * 0.6))
+        return look
 
     return fn
 

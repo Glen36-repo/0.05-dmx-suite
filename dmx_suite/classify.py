@@ -16,8 +16,9 @@ Override per rig config (`auto:` in the rig file):
     auto:
       classes: {uk_a: head, wash_3: strobe}     # the class to treat a light as
       exclude: [smoke_2, wash_4]                # leave out of the auto show
-      exclude_fx: [static, police]              # FX types the autopilot never picks (still playable by hand)
-      exclude_palettes: [ice]                   # v7: palettes it never picks (a tap still plays one)
+
+v8 (format 8): FX types and palettes the autopilot never picks are priority 0 in `autopilot: fx` /
+`palette_settings` (fxoverrides.py); format 7's `exclude_fx` / `exclude_palettes` are moved there.
 """
 
 from __future__ import annotations
@@ -52,8 +53,6 @@ def natural_class(fx: Fixture) -> str | None:
 class AutoConfig:
     classes: dict[str, str] = field(default_factory=dict)  # fixture id -> class (override)
     exclude: list[str] = field(default_factory=list)
-    exclude_fx: list[str] = field(default_factory=list)  # FX bank item ids the autopilot leaves out
-    exclude_palettes: list[str] = field(default_factory=list)  # v7: palettes the autopilot never picks
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {}
@@ -61,19 +60,15 @@ class AutoConfig:
             d["classes"] = dict(self.classes)
         if self.exclude:
             d["exclude"] = list(self.exclude)
-        if self.exclude_fx:
-            d["exclude_fx"] = list(self.exclude_fx)
-        if self.exclude_palettes:
-            d["exclude_palettes"] = list(self.exclude_palettes)
         return d
 
 
 def parse_auto(d: Any, patch: Patch) -> AutoConfig:
     if d is None:
         return AutoConfig()
-    if not isinstance(d, dict) or set(d) - {"classes", "exclude", "exclude_fx", "exclude_palettes"}:
-        raise ConfigError("auto: classes {light: class}, exclude [lights], exclude_fx [FX types] and "
-                          "exclude_palettes [palettes]")
+    if not isinstance(d, dict) or set(d) - {"classes", "exclude"}:
+        raise ConfigError("auto: classes {light: class} and exclude [lights] (v8: FX types and palettes are left "
+                          "out with priority 0 under autopilot: fx / palette_settings)")
     classes = d.get("classes") or {}
     if not isinstance(classes, dict):
         raise ConfigError("auto classes: {light: class}")
@@ -95,22 +90,7 @@ def parse_auto(d: Any, patch: Patch) -> AutoConfig:
     for fid in excl:
         if fid not in patch.fixtures:
             raise ConfigError(f"auto exclude: unknown fixture {fid!r}")
-    xfx = d.get("exclude_fx") or []
-    if not isinstance(xfx, list):
-        raise ConfigError("auto exclude_fx: a list of FX types")
-    from .fxbanks import BY_ID  # fxbanks imports this module
-
-    for k in xfx:
-        item = BY_ID.get(str(k))
-        if item is None:
-            raise ConfigError(f"auto exclude_fx: unknown FX type {k!r}")
-        if item.bank == "flash":
-            raise ConfigError(f"auto exclude_fx: {k} is a Flash FX (played by hand, never by the autopilot)")
-    xpal = d.get("exclude_palettes") or []  # v7; a palette deleted later is just ignored
-    if not isinstance(xpal, list) or not all(isinstance(x, str) and x for x in xpal):
-        raise ConfigError("auto exclude_palettes: a list of palette names")
-    return AutoConfig({str(k): str(v) for k, v in classes.items()}, [str(x) for x in excl],
-                      list(dict.fromkeys(str(x) for x in xfx)), list(dict.fromkeys(xpal)))
+    return AutoConfig({str(k): str(v) for k, v in classes.items()}, [str(x) for x in excl])
 
 
 @dataclass
@@ -124,8 +104,25 @@ class AutoRig:
     right: list[str]
     pixels: int = 0  # pixel cells across the pixel lights
     has_layout: bool = False
-    excluded_fx: frozenset[str] = frozenset()  # FX types the autopilot leaves out (auto: exclude_fx)
-    excluded_palettes: frozenset[str] = frozenset()  # v7: auto: exclude_palettes
+    excluded_fx: frozenset[str] = frozenset()  # FX types the autopilot leaves out (v8: priority 0)
+    excluded_palettes: frozenset[str] = frozenset()  # palettes it leaves out (v8: palette_settings priority 0)
+    items: dict[str, Any] = field(default_factory=dict)  # v8: bank items with this rig's settings + variants
+    palette_priority: dict[str, int] = field(default_factory=dict)  # v8: palette tiles not at the default 3
+
+    def item(self, id_: str | None) -> Any:
+        """A bank item as this rig runs it (overrides applied; variants too). None if unknown."""
+        if not id_:
+            return None
+        if id_ in self.items:
+            return self.items[id_]
+        from .fxbanks import BY_ID
+
+        return BY_ID.get(id_)
+
+    def all_items(self) -> list[Any]:
+        from .fxbanks import FLASH_ITEMS, ITEMS
+
+        return list(self.items.values()) if self.items else [*ITEMS, *FLASH_ITEMS]
 
     def ids(self, *classes: str) -> list[str]:
         out: list[str] = []
@@ -172,5 +169,11 @@ def auto_rig(rig: Any) -> AutoRig:
     right = [f for f in placed if f not in left]
     pixels = sum(rig.patch.fixtures[f].type.pixels for f in classes["pixel"])
     # full_layout always places every light
-    return AutoRig(classes, of, excluded, left, right, pixels, True, frozenset(cfg.exclude_fx),
-                   frozenset(cfg.exclude_palettes))
+    from .fxoverrides import rig_items
+
+    ap = getattr(rig, "autopilot", None) or {}
+    items = rig_items(ap)
+    pal_prio = {k: int(v["priority"]) for k, v in (ap.get("palette_settings") or {}).items() if "priority" in v}
+    return AutoRig(classes, of, excluded, left, right, pixels, True,
+                   frozenset(k for k, i in items.items() if i.priority == 0 and i.bank != "flash"),
+                   frozenset(k for k, v in pal_prio.items() if v == 0), items, pal_prio)

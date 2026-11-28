@@ -37,11 +37,19 @@ class Item:
     speed: str = "mid"  # still | slow | mid | fast
     moods: tuple[str, ...] = MOODS
     targets: str = "colour"  # which lights: colour | pixel | heads | all
+    # v8 per-rig settings (fxoverrides.py); the bank items carry the defaults
+    priority: int = 3  # 0-5 pick weight, 0 = excluded
+    darkness: Any = "follow"  # follow | exempt | 0-1 (Reduced)
+    min_s: float | None = None
+    max_s: float | None = None
+    of: str | None = None  # a variant: the item it copies (shares no-repeat with it)
+    overridden: bool = False
 
     def to_json(self) -> dict[str, Any]:
         return {"id": self.id, "bank": self.bank, "label": self.label, "needs": self.needs, "busy": self.busy,
                 "speed": self.speed, "moods": list(self.moods), "targets": self.targets,
-                "effect": self.layer.get("effect")}
+                "effect": self.layer.get("effect"), "priority": self.priority, "darkness": self.darkness,
+                "min_s": self.min_s, "max_s": self.max_s, "of": self.of, "overridden": self.overridden}
 
 
 def _m(id_: str, label: str, pattern: str, busy: float, speed: str, moods: tuple[str, ...], period: float,
@@ -107,10 +115,11 @@ ITEMS: list[Item] = [
        {"colour": 4, "layout": 1}),
     _c("bars", "Bars", {"effect": "bars", "colour": "$colour", "background": "$colour2"}, 0.55, "mid", ("mid", "high"),
        {"colour": 4, "layout": 1}),
-    _c("sweep", "Directional sweep", {"effect": "dir_sweep", "colour": "$colour", "background": "$colour2",
-                                      "period_s": 2.5, "width": 0.3}, 0.5, "mid", ("mid", "high"), {"colour": 3, "layout": 1}),
-    _c("sweep_dark", "Sweep, dark between", {"effect": "dir_sweep", "colour": "$colour", "period_s": 3, "width": 0.3,
-                                             "gap": 0.4}, 0.55, "mid", ("mid", "high"), {"colour": 3, "layout": 1}),
+    _c("dir_wave", "Directional wave", {"effect": "dir_sweep", "colour": "$colour", "background": "$colour2",
+                                        "period_s": 2.5, "width": 0.3}, 0.5, "mid", ("mid", "high"), {"colour": 3, "layout": 1}),
+    _c("dir_wave_dark", "Directional wave, dark between",
+       {"effect": "dir_sweep", "colour": "$colour", "period_s": 3, "width": 0.3, "gap": 0.4}, 0.55, "mid", ("mid", "high"),
+       {"colour": 3, "layout": 1}),
     _c("random_flash", "Random flash", {"effect": "random_flash", "colour": "$colour", "rate_hz": 6, "count": 2,
                                         "tail_s": 0.8}, 0.65, "fast", ("mid", "high"), {"colour": 3}),
     _c("fire", "Fire", {"effect": "fire"}, 0.45, "mid", ("mid", "high")),
@@ -134,10 +143,22 @@ ITEMS: list[Item] = [
 FLASH_ITEMS: list[Item] = [
     Item(k, "flash", label, {"flash": k}, {"colour": 1} if k not in ("blackout", "freeze") else {}, busy, "fast", MOODS, "all")
     for k, label, busy in (("blinder", "Blinder", 1.0), ("colour_hit", "Colour hit", 0.8), ("strobe", "Strobe", 1.0),
-                           ("blackout", "Blackout", 0.6), ("freeze", "Freeze", 0.2), ("flash_decay", "Flash and decay", 0.8),
-                           ("chase_hit", "Chase hit", 0.8), ("split_hit", "Rig split hit", 0.7))
+                           ("blackout", "Blackout", 0.6), ("freeze", "Freeze", 0.2), ("flash_decay", "Flash and decay", 0.8))
 ]
 BY_ID: dict[str, Item] = {i.id: i for i in [*ITEMS, *FLASH_ITEMS]}
+
+
+def lookup(x: str | None) -> Item | None:
+    """A bank item by id; a variant id (`fan_v2`, v8) gives its original (same busy, speed and needs) for
+    the quality rules when the rig's settings aren't to hand (AutoRig.item has the variant itself)."""
+    if not x:
+        return None
+    if x in BY_ID:
+        return BY_ID[x]
+    from .fxoverrides import VARIANT_ID
+
+    m = VARIANT_ID.match(x)
+    return BY_ID.get(m["of"]) if m else None
 
 
 def can_run(item: Item, ar: AutoRig) -> bool:
@@ -157,7 +178,7 @@ def can_run(item: Item, ar: AutoRig) -> bool:
 def available(ar: AutoRig, bank: str | None = None, mood: str | None = None, *,
               skip_excluded: bool = False) -> list[Item]:
     """What this rig can run; `skip_excluded` also leaves out the types excluded for the autopilot."""
-    return [i for i in [*ITEMS, *FLASH_ITEMS] if can_run(i, ar) and (bank is None or i.bank == bank)
+    return [i for i in ar.all_items() if can_run(i, ar) and (bank is None or i.bank == bank)
             and (mood is None or mood in i.moods) and not (skip_excluded and i.id in ar.excluded_fx)]
 
 
@@ -291,7 +312,7 @@ def compose(pick: Pick, ar: AutoRig, palette_colours: list[Any], name: str = "Au
     cols = list(palette_colours) or ["white"]
     layers: list[dict[str, Any]] = []
     colour_ids = ar.colour_lights
-    ci = BY_ID.get(pick.colour) if pick.colour else None
+    ci = ar.item(pick.colour)
     if ci is not None and ci.bank == "colour" and can_run(ci, ar) and colour_ids:
         ride = combine(pick.ride, pick.bank_ride.get("colour"))
         lay = {k: _fill(v, cols) for k, v in copy.deepcopy(ci.layer).items()}
@@ -315,12 +336,12 @@ def compose(pick: Pick, ar: AutoRig, palette_colours: list[Any], name: str = "Au
     for c in ("strobe", "effect"):  # whites and effect lights: follow the first colour
         if ar.classes.get(c):
             layers.append({"fixtures": list(ar.classes[c]), "colour": cols[0] if c == "effect" else "white", "level": 0.6})
-    mi = BY_ID.get(pick.move) if pick.move else None
+    mi = ar.item(pick.move)
     heads = ar.classes.get("head", [])
     if mi is not None and mi.bank == "move" and can_run(mi, ar) and heads:
         ride = combine(pick.ride, pick.bank_ride.get("move"))
         layers.append({"fixtures": list(heads), **_apply_ride(copy.deepcopy(mi.layer), mi, ride)})
-    di = BY_ID.get(pick.drum) if pick.drum else None
+    di = ar.item(pick.drum)
     if di is not None and di.bank == "drum" and can_run(di, ar) and colour_ids:
         ride = combine(pick.ride, pick.bank_ride.get("drum"))
         lay = {k: _fill(v, cols) for k, v in copy.deepcopy(di.layer).items()}

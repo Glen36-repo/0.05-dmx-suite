@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from .colourtheory import hue_distance, muddy, scheme_of, to_hsv
-from .fxbanks import BY_ID, Item, Pick
+from .fxbanks import BY_ID, Item, Pick, lookup
 
 SPEEDS = ("slow", "mid", "fast")
 
@@ -82,11 +82,11 @@ class Quality:
     def busy(self, item: Item | None) -> float:
         if item is None:
             return 0.0
-        return float(self.r["busy"].get(item.id, item.busy))
+        return float(self.r["busy"].get(item.id, self.r["busy"].get(item.of or item.id, item.busy)))
 
     def combo_issues(self, pick: Pick, mood: str) -> list[str]:
         """Why this combination breaks the rules (empty = fine)."""
-        items: list[Item] = [i for x in (pick.move, pick.colour, pick.drum) if x and (i := BY_ID.get(x)) is not None]
+        items: list[Item] = [i for x in (pick.move, pick.colour, pick.drum) if x and (i := lookup(x)) is not None]
         out = []
         total = sum(self.busy(i) for i in items)
         if total > self.r["max_busy"] + 1e-9:
@@ -98,7 +98,7 @@ class Quality:
         for i in items:
             if i.bank in ("move", "colour") and i.speed != "still" and i.speed not in allowed:
                 out.append(f"{i.id} is {i.speed}: too {'slow' if SPEEDS.index(i.speed) < 1 else 'fast'} for {mood}")
-        mv, cv = BY_ID.get(pick.move or ""), BY_ID.get(pick.colour or "")
+        mv, cv = lookup(pick.move), lookup(pick.colour)
         if (mv and cv and "still" not in (mv.speed, cv.speed)
                 and abs(SPEEDS.index(mv.speed) - SPEEDS.index(cv.speed)) > self.r["speed_gap"]):
             out.append(f"movement ({mv.speed}) and colour ({cv.speed}) speeds don't match")

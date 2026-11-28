@@ -385,7 +385,7 @@ def emit(app, fid):
     return [app.engine.frames[fx.universe][fx.slot(c)] for c in fx.type.channels if c.role in EMITTERS]
 
 
-FLASH_KINDS = ["blinder", "colour_hit", "strobe", "blackout", "freeze", "flash_decay", "chase_hit", "split_hit"]
+FLASH_KINDS = ["blinder", "colour_hit", "strobe", "blackout", "freeze", "flash_decay"]  # v8: chase / split hit gone
 
 
 @pytest.mark.parametrize("kind", FLASH_KINDS)
@@ -511,8 +511,7 @@ def test_drum_bus_fed_from_named_inputs(app):
 
 
 def test_flash_items_listed():
-    assert {i.id for i in FLASH_ITEMS} == {"blinder", "colour_hit", "strobe", "blackout", "freeze", "flash_decay",
-                                           "chase_hit", "split_hit"}
+    assert {i.id for i in FLASH_ITEMS} == {"blinder", "colour_hit", "strobe", "blackout", "freeze", "flash_decay"}
 
 
 # ------------------------------------------------------------------ v7 A1: the kick light follows the look

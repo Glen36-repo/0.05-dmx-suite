@@ -22,7 +22,7 @@ import yaml
 
 from .fixtures import ConfigError
 
-FORMAT = 7
+FORMAT = 8
 
 # show folder layout: single files, then one folder per kind
 FILES = {"fixtures.yaml": "fixtures", "palettes.yaml": "palettes", "panels.yaml": "panels", "inputs.yaml": "inputs",
@@ -162,12 +162,109 @@ def _inputs_6_to_7(d: dict[str, Any]) -> dict[str, Any]:
     return d
 
 
+# Format 7 -> 8 (v8): the FX settings panel. Rig `auto: exclude_fx / exclude_palettes` become priority 0
+# under `autopilot: fx / palette_settings`. Bank ids `sweep` / `sweep_dark` are Directional wave now
+# (`dir_wave` / `dir_wave_dark`) wherever a look names them. Chase hit and Rig split hit are gone:
+# mappings and kit triggers that fired them fire Colour hit, with a note.
+
+def _renamed(v: Any) -> Any:
+    from .fxoverrides import RENAMED
+
+    return RENAMED.get(v, v) if isinstance(v, str) else v
+
+
+def _pick_8(p: Any) -> Any:
+    if isinstance(p, dict):
+        for k in ("move", "colour", "drum"):
+            if k in p:
+                p[k] = _renamed(p[k])
+    return p
+
+
+def _rig_7_to_8(d: dict[str, Any]) -> dict[str, Any]:
+    from .fxoverrides import from_exclude_lists
+
+    auto = d.get("auto")
+    ap = d.get("autopilot")
+    if isinstance(ap, dict):
+        for k in ("walk_on", "walk_off"):
+            _pick_8(ap.get(k))
+        if isinstance(ap.get("between"), dict):
+            _pick_8(ap["between"].get("look"))
+    if isinstance(auto, dict) and (auto.get("exclude_fx") or auto.get("exclude_palettes")
+                                   or "exclude_fx" in auto or "exclude_palettes" in auto):
+        auto, ap2 = from_exclude_lists(auto, ap if isinstance(ap, dict) else {})
+        if auto:
+            d["auto"] = auto
+        else:
+            d.pop("auto", None)
+        if ap2:
+            d["autopilot"] = ap2
+    return d
+
+
+def _presets_7_to_8(d: dict[str, Any]) -> dict[str, Any]:
+    for v in (d.get("presets") or {}).values():
+        if isinstance(v, dict):
+            _pick_8(v.get("pick"))
+    return d
+
+
+def _ratings_7_to_8(d: dict[str, Any]) -> dict[str, Any]:
+    looks = d.get("looks")
+    if isinstance(looks, dict):
+        out: dict[Any, Any] = {}
+        for k, v in looks.items():
+            if isinstance(k, str) and "|" in k:
+                k = "|".join(_renamed(x) for x in k.split("|"))
+            out[k] = v
+        d["looks"] = out
+    return d
+
+
+def _flash_kind_8(kind: Any, where: str) -> Any:
+    from .fxoverrides import FLASH_REMOVED
+
+    if kind in FLASH_REMOVED:
+        import logging
+
+        logging.getLogger(__name__).warning("%s: %s is now Colour hit (Chase hit and Rig split hit were removed in v8)",
+                                            where, "Chase hit" if kind == "chase_hit" else "Rig split hit")
+        return FLASH_REMOVED[kind]
+    return kind
+
+
+def _midi_7_to_8(d: dict[str, Any]) -> dict[str, Any]:
+    for m in d.get("mappings") or []:
+        if not isinstance(m, dict):
+            continue
+        where = f"MIDI map {m.get('input') or m.get('note') or m.get('address') or m.get('action')}"
+        if m.get("action") == "flash_fx" and "fx" in m:
+            m["fx"] = _flash_kind_8(m["fx"], where)
+            if m["fx"] == "colour_hit":
+                m.pop("side", None)
+        if m.get("action") == "autopilot_fx" and "item" in m:
+            m["item"] = _renamed(m["item"])
+    return d
+
+
+def _inputs_7_to_8(d: dict[str, Any]) -> dict[str, Any]:
+    for kid, kit in (d.get("kits") or {}).items():
+        for pid, piece in ((kit or {}).get("pieces") or {}).items() if isinstance(kit, dict) else ():
+            for zid, zone in ((piece or {}).get("zones") or {}).items() if isinstance(piece, dict) else ():
+                t = zone.get("trigger") if isinstance(zone, dict) else None
+                if isinstance(t, dict) and "flash_fx" in t:
+                    t["flash_fx"] = _flash_kind_8(t["flash_fx"], f"kit {kid} {pid} {zid}")
+    return d
+
+
 STEPS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {
-    "rig": {1: _rig_1_to_2, 2: _rig_2_to_3, 5: _rig_5_to_6, 6: _rig_6_to_7},
+    "rig": {1: _rig_1_to_2, 2: _rig_2_to_3, 5: _rig_5_to_6, 6: _rig_6_to_7, 7: _rig_7_to_8},
     "fixtures": {3: _fixtures_3_to_4},
-    "presets": {5: _presets_5_to_6},
-    "midi": {5: _midi_5_to_6, 6: _midi_6_to_7},
-    "inputs": {6: _inputs_6_to_7},
+    "presets": {5: _presets_5_to_6, 7: _presets_7_to_8},
+    "ratings": {7: _ratings_7_to_8},
+    "midi": {5: _midi_5_to_6, 6: _midi_6_to_7, 7: _midi_7_to_8},
+    "inputs": {6: _inputs_6_to_7, 7: _inputs_7_to_8},
 }
 
 

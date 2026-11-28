@@ -1,5 +1,5 @@
 # Heads wander independently (moving dark), bars red, washes off.
-version: 7
+version: 8
 name: Red movers
 show_colour: red
 layers:

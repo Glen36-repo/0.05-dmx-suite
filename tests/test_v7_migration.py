@@ -30,8 +30,8 @@ def v6_folder(tmp_path: Path) -> Path:
     return root
 
 
-def test_format_is_7():
-    assert FORMAT == 7
+def test_format_is_7_or_later():
+    assert FORMAT >= 7  # v8: 8
 
 
 def test_rig_step_moves_between_keys():
@@ -84,7 +84,7 @@ def test_v6_folder_loads_and_upgrades_with_comments(tmp_path):
     assert (root / ".backups" / bid / "rigs" / "full.yaml").exists()
     text = (root / "rigs" / "full.yaml").read_text(encoding="utf-8")
     rig = yaml.safe_load(text)
-    assert rig["version"] == 7
+    assert rig["version"] == FORMAT
     assert rig["autopilot"]["between"] == {"gap_s": 6, "count_in": 3, "look": {"colour": "static", "palette": "warm",
                                                                                 "move": "kit"}}
     assert "gap_s" not in rig["autopilot"] or "between" in rig["autopilot"]
