@@ -505,6 +505,13 @@
       <h2><span data-i18n="autopilot.controls"></span> <button type="button" class="info" data-info="autopilot.feel" aria-expanded="false">ⓘ</button></h2>
       <div class="tabs" id="ride-tabs" role="tablist"></div>
       <div class="ride-faders" id="ride-faders"></div>
+      <div class="darkness" id="ride-darkness">
+        <label class="darkness-fader"><span><span data-i18n="darkness.title"></span> <button type="button" class="info" data-info="darkness" aria-expanded="false">ⓘ</button>
+          <b id="dk-val"></b> <span class="muted" id="dk-src"></span></span>
+          <input type="range" class="perform" id="dk-slider" min="0" max="100" step="1" value="0" data-i18n-title="darkness.title"></label>
+        <div class="row wrap"><span class="muted" data-i18n="darkness.store"></span>
+          <button class="mini" data-dkset="low"></button><button class="mini" data-dkset="mid"></button><button class="mini" data-dkset="high"></button></div>
+      </div>
       <h2><span data-i18n="autopilot.presets"></span> <button type="button" class="info" data-info="autopilot.presets" aria-expanded="false">ⓘ</button></h2>
       <div class="row wrap ride-presets" id="ride-presets"></div>
       <div class="row wrap">

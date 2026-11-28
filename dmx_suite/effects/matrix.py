@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .base import DIRECTIONS, MAPPINGS, WAVEFORMS, Effect, Param, Run, mix, wave
+from .base import DIRECTIONS, MAPPINGS, WAVEFORMS, Effect, Param, Run, gapped, mix, scale, wave, window
 
 SPATIAL = [
     Param("mapping", "choice", "spatial", choices=MAPPINGS,
@@ -41,10 +41,22 @@ class LinearWave(Effect):
         *SPATIAL,
     ]
 
+    lit_aware = True
+
+    @staticmethod
+    def peak(p: dict[str, Any]) -> float:
+        """Where in a cycle the wave is brightest (the lit band's centre when lit < 1)."""
+        return {"sine": 0.5, "triangle": 0.5, "saw": 0.875, "pulse": 0.0}.get(p["waveform"], p["width"] / 2)
+
     def render(self, p: dict[str, Any], run: Run) -> None:
+        gate, pk = run.gating(), self.peak(p)
         for un in run.units(True):
-            level = wave(p["waveform"], run.t / p["period_s"] - p["count"] * un.u, p["width"])
-            run.put(un, mix(p["background"], p["colour"], level))
+            x = run.t / p["period_s"] - p["count"] * un.u
+            c = mix(p["background"], p["colour"], wave(p["waveform"], x, p["width"]))
+            if gate:  # lit: the band is `lit` of each cycle round the peak, the rest black
+                g = window(x - pk, run.lit_of(un.fid), run.edge)
+                c = scale(c, g) if g > 0 else run.black(un.fid, un.pixel)
+            run.put(un, c)
         run.flush()
 
 
@@ -80,9 +92,19 @@ class Gradient(Effect):
 
             raise LookError(f"{ctx.what}: gradient needs at least 2 colours")
 
+    lit_aware = True
+
     def render(self, p: dict[str, Any], run: Run) -> None:
+        cols, k = p["colours"], len(p["colours"])
         for un in run.units(True):
-            run.put(un, _cycle(p["colours"], p["count"] * un.u - run.t / p["period_s"]))
+            pos = p["count"] * un.u - run.t / p["period_s"]
+            lit = run.lit_of(un.fid)
+            if lit >= 1.0:
+                run.put(un, _cycle(cols, pos))
+                continue
+            seg = gapped(pos, k, lit)  # gaps of black between the colour segments
+            run.put(un, run.black(un.fid, un.pixel) if seg is None
+                    else mix(cols[seg[0]], cols[(seg[0] + 1) % k], seg[1]))
         run.flush()
 
 

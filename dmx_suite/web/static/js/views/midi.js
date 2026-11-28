@@ -47,7 +47,7 @@ async function loadMap() {
 // ---------------------------------------------------------------- named inputs and devices (v3.1)
 
 let inputs = { devices: [], inputs: [], profiles: [] };
-const ROLES = ["kick", "snare", "tom", "cymbal", "count_in", "activity"];
+const ROLES = ["kick", "snare", "tom", "cymbal", "count_in", "activity", "darkness"]; // darkness: a CC pedal (v6)
 const NAME = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 
 function renderInputs() {

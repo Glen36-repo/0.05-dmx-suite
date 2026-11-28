@@ -74,6 +74,8 @@ DEFAULTS: dict[str, Any] = {
     "walk_off": {"colour": "static", "palette": "warm", "feel": {"fade": 1.0}},
     "palettes": [],
     "seed": "",
+    "darkness": 0,  # v6: % black put into the Autopilot's effects (not a dimmer)
+    "set_darkness": {},  # v6: per set {low, mid, high} %, loaded on a set (mood) change
 }
 TARGET_BUSY = {"low": 0.3, "mid": 0.75, "high": 1.15}
 
@@ -96,6 +98,13 @@ def parse_config(d: Any) -> dict[str, Any]:
             v = out[k].get(m)
             if not isinstance(v, (int, float)) or v < 0 or (k == "moods" and v < 2):
                 raise ConfigError(f"autopilot {k} {m}: seconds ({'2 or more' if k == 'moods' else '0 or more'})")
+    dk = out["darkness"]
+    if isinstance(dk, bool) or not isinstance(dk, (int, float)) or not 0 <= dk <= 100:
+        raise ConfigError("autopilot darkness: 0-100 (%)")
+    sd = out["set_darkness"]
+    if not isinstance(sd, dict) or set(sd) - set(MOODS) or any(
+            v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100) for v in sd.values()):
+        raise ConfigError("autopilot set_darkness: {low, mid, high} each 0-100 (%)")
     if not 0 <= float(out["variation"]) <= 0.9:
         raise ConfigError("autopilot variation: 0-0.9")
     if not isinstance(out["no_repeat"], int) or not 0 <= out["no_repeat"] <= 50:

@@ -79,13 +79,14 @@ ACTIONS: dict[str, set[str]] = {
     "feel_fan": set(),
     "feel_size": set(),
     "feel_shift": set(),
+    "darkness": set(),  # v6: Autopilot darkness, a CC (expression pedal) or OSC fader
     "preset": {"preset"},  # v3.5: play a preset
 }
 CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade",
-              "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift"}  # need a CC or OSC
+              "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift", "darkness"}  # need a CC or OSC
 AUTOPILOT_ACTIONS = {"autopilot", "hold", "look_next", "look_prev", "mood", "walk_on", "walk_off", "autopilot_fx",
                      "autopilot_palette", "palette_lock", "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift",
-                     "preset"}
+                     "darkness", "preset"}
 RIDE_ACTIONS = AUTOPILOT_ACTIONS  # v3 name
 # v3 action names (Ride page, busking) still load; v4 writes the new ones (show file format 6)
 ACTION_ALIASES = {"busk": "override", "ride_fx": "autopilot_fx", "ride_palette": "autopilot_palette",

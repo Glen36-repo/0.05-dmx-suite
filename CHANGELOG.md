@@ -2,6 +2,14 @@
 
 Notable changes, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased (v6: Darkness, tempo from the drums, drum kit)
+
+### Added (Part A: Darkness)
+- **Darkness** on the Autopilot page: puts black into the Autopilot's effects (narrower bands, black palette slots, gaps between colours, a regular black pattern on still colours), never a dimmer. The kick light is exempt; hand-made scenes, shows and Override are untouched; heads keep moving dark; with MASTER off a drum hit only flashes what's lit. Eases in over the look's fade. **Store for set** keeps a value per LOW / MID / HIGH.
+- `lit:` (0-100 %) on scene layers, whole scenes and step-scene lights (step editor: Colour › Lit %).
+- MIDI: the `darkness` role on a CC input (`range: [heel, toe]` %, calibration curve) and the `darkness` map action, so the FCB1010 expression pedal can ride it.
+- Claude: `set_autopilot {darkness}`, `set_set_darkness`, darkness in `autopilot_status`, `preview_look` with a darkness to see a look at.
+
 ## Unreleased (v5: DMX output diagnostics)
 
 Brief and plan: `docs/v5-v6-brief.md`, `docs/v5-v6-plan.md`.

@@ -224,6 +224,73 @@ def place_units(units: list[Unit], p: dict[str, Any], seed_text: str) -> None:
         un.u = min(max(v, 0.0), 1.0)
 
 
+# --------------------------------------------------------------------------- lit (v6: black in the effect)
+# `lit` 0-1 is how much of an effect is lit; the rest is black (colour off, never dimmer: rule 1 / 4).
+# 1 = as programmed. Each colour effect shapes its own black (narrower bands, black palette slots,
+# gaps between gradient segments); effects that don't get a regular pattern of black lights / pixels.
+
+BLACK: dict[str, float] = {}
+
+
+def window(pos: float, lit: float, edge: float = 0.0) -> float:
+    """Gate 0-1 for a point `pos` (0-1 round a cycle, measured from the lit band's centre): lit within
+    `lit` / 2 either side, black beyond, a linear soft edge `edge` (0-1 of the band) between."""
+    if lit >= 1.0:
+        return 1.0
+    if lit <= 0.0:
+        return 0.0
+    d = abs(((pos + 0.5) % 1.0) - 0.5)  # distance from the centre, 0-0.5
+    half = lit / 2
+    e = max(0.0, min(1.0, edge)) * min(lit, 1 - lit) / 2
+    if e <= 0:
+        return 1.0 if d < half else 0.0
+    return max(0.0, min(1.0, (half + e - d) / (2 * e)))
+
+
+def with_black(cols: list[Any], lit: float) -> list[Any]:
+    """A palette with black slots spread evenly through it: 50 % = colour, black, colour, black. No two
+    blacks in a row unless lit is under 50 %."""
+    if lit >= 1.0 or not cols:
+        return list(cols)
+    k = len(cols)
+    if lit <= 0.0:
+        return [BLACK]
+    n = min(k * 32, max(k + 1, round(k / lit)))
+    out: list[Any] = []
+    used = 0
+    for i in range(n):  # k colours spread evenly over n slots, starting with a colour
+        if (i * k) % n < k:
+            out.append(cols[used % k])
+            used += 1
+        else:
+            out.append(BLACK)
+    return out
+
+
+def gapped(x: float, k: int, lit: float) -> tuple[int, float] | None:
+    """`x` 0-1 round k colour segments, each squeezed into `lit` of its slot with black after it: the
+    segment and where in it (0-1), or None in a gap. Total black = (1 - lit) of the span."""
+    v = (x % 1.0) * k
+    i = int(v) % k
+    f = v - int(v)
+    if lit >= 1.0:
+        return i, f
+    if f >= lit:
+        return None
+    return i, f / lit
+
+
+def static_on(index: int, lit: float, offset: int = 0) -> bool:
+    """A regular pattern of lit / black units with `lit` of them lit (50 % alternate, 33 % every third
+    ...); `offset` slides it (the look's shift)."""
+    if lit >= 1.0:
+        return True
+    if lit <= 0.0:
+        return False
+    i = index + offset
+    return math.floor((i + 1) * lit) > math.floor(i * lit)
+
+
 # --------------------------------------------------------------------------- playing
 
 BLENDS = ("replace", "max", "add")
@@ -255,6 +322,45 @@ class Run:
     now: float = 0.0  # the engine's clock (drum-reactive effects read hits by it, v3.3)
     _pending: dict[str, list[Colour | None]] = field(default_factory=dict)
     mask: dict[str, frozenset[int]] = field(default_factory=dict)  # v4: pixel selections - only these pixels change
+    lit: float = 1.0  # v6: how much of the effect is lit (darkness already applied)
+    lit_exempt: float = 1.0  # the same for exempt lights (the kick light): the look's own lit, no darkness
+    exempt: frozenset[str] = frozenset()
+    edge: float = 0.0  # soft black edges, 0 = hard cut (the look's fade)
+    shift: float = 0.0  # the layer's shift, 0-1 (static black patterns move with it)
+    auto_gate: bool = False  # the effect doesn't shape its own black: Run puts a static pattern on it
+    unlit: set[tuple[str, int | None]] = field(default_factory=set)  # units blacked by lit (drum flash skips them)
+    _index: dict[tuple[str, int | None], int] | None = None
+
+    def lit_of(self, fid: str) -> float:
+        return self.lit_exempt if fid in self.exempt else self.lit
+
+    def gating(self) -> bool:
+        return self.lit < 1.0 or self.lit_exempt < 1.0
+
+    def _offset(self, n: int) -> int:
+        return round(self.shift * n)
+
+    def _gate(self, fid: str, pixel: int | None, c: Colour | None) -> Colour | None:
+        """Static black pattern for effects that don't shape their own (auto_gate)."""
+        if c is None or not self.auto_gate:
+            return c
+        lit = self.lit_of(fid)
+        if lit >= 1.0:
+            return c
+        if self._index is None:
+            units = self.units(True)
+            self._index = {(un.fid, un.pixel): k for k, un in enumerate(units)}
+            self._index.update({(un.fid, None): k for k, un in enumerate(units) if (un.fid, None) not in self._index})
+        k = self._index.get((fid, pixel), self._index.get((fid, None), 0))
+        if static_on(k, lit, self._offset(len(self._index))):
+            return c
+        self.unlit.add((fid, pixel))
+        return BLACK
+
+    def black(self, fid: str, pixel: int | None = None) -> Colour:
+        """A unit made black by lit (remembered, so a drum flash leaves it black)."""
+        self.unlit.add((fid, pixel))
+        return BLACK
 
     def _masked(self, fid: str, cols: list[Colour | None]) -> None:
         """Write a pixel selection: the selected pixels get `cols` (blended as the layer says), the
@@ -276,6 +382,10 @@ class Run:
 
     # colour out, mixed with what lower layers set (blend + level)
     def set_colour(self, fid: str, c: Colour) -> None:
+        if self.auto_gate and self.gating():
+            if self.pixels(fid) and fid not in self.mask:  # per pixel, so a bar gets the pattern along it
+                return self.set_pixels(fid, [dict(c) for _ in range(self.pixels(fid))])
+            c = self._gate(fid, None, c) or BLACK
         if fid in self.mask:
             return self._masked(fid, [c] * max(1, self.pixels(fid)))
         fl = self.fl(fid)
@@ -287,6 +397,8 @@ class Run:
             fl.colour = blend(fl.colour, c, self.blend_mode, self.level)
 
     def set_pixels(self, fid: str, cols: list[Colour]) -> None:
+        if self.auto_gate and self.gating():
+            cols = [self._gate(fid, i, c) or BLACK for i, c in enumerate(cols)]
         if fid in self.mask:
             return self._masked(fid, list(cols))
         fl = self.fl(fid)
@@ -299,12 +411,23 @@ class Run:
     def put(self, unit: Unit, c: Colour) -> None:
         """Colour one unit; whole lights at once, pixels gathered and written by flush()."""
         if unit.pixel is None:
-            self.set_colour(unit.fid, c)
+            self.set_colour(unit.fid, c)  # gated there (per pixel on a pixel light)
         else:
             row = self._pending.setdefault(unit.fid, [None] * max(1, self.pixels(unit.fid)))
             row[unit.pixel] = c
 
     def flush(self) -> None:
+        gate = self.auto_gate
+        if gate and self.gating():
+            for fid, row in self._pending.items():
+                self._pending[fid] = [self._gate(fid, i, c) if c is not None else None for i, c in enumerate(row)]
+            self.auto_gate = False  # set_pixels below mustn't gate twice
+        try:
+            self._flush()
+        finally:
+            self.auto_gate = gate
+
+    def _flush(self) -> None:
         for fid, row in self._pending.items():
             if fid in self.mask:  # only the selected pixels were coloured; the rest keep theirs
                 self._masked(fid, [dict(c) if c is not None else None for c in row])
@@ -318,6 +441,7 @@ class Effect:
     label = ""
     help = ""
     movement = False
+    lit_aware = False  # v6: shapes its own black from run.lit (else Run puts a static pattern on it)
     per_pixel = False
     params: list[Param] = []
 

@@ -80,11 +80,12 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
         return t.list_fx()
 
     @tool
-    def preview_look(pick_yaml: str, seconds: float = 10) -> str:
+    def preview_look(pick_yaml: str, seconds: float = 10, darkness: float | None = None) -> str:
         """Try an auto-show look on the rig: '{move: pan_sweep, colour: colour_chase, drum: kick_pump,
         palette: cool, feel: {speed: 1, fan: 0.5, size: 0.5}, mood: mid}'. Says what the look quality rules
-        think. Not during gig lock. Haze is never part of a look."""
-        return t.preview_look(pick_yaml, seconds)
+        think. darkness (0-100 %): see the look at that Darkness without touching the live value. Not during
+        gig lock. Haze is never part of a look."""
+        return t.preview_look(pick_yaml, seconds, darkness)
 
     @tool
     def get_quality_rules() -> str:
@@ -100,8 +101,24 @@ def build_server(tools: DmxTools | None = None):  # -> MCPServer
     @tool
     def autopilot_status(n: int = 20) -> str:
         """What the autopilot is doing and why: on/off, mood, energy, next change, control priority, and
-        the last n decisions (time, energy, mood, look, trigger, reason). Engine must be running."""
+        the last n decisions (time, energy, mood, look, trigger, reason), and Darkness: current %, its source
+        (default / set / slider / cc / claude), each set's stored value and the CC mapped to it. Engine must
+        be running."""
         return t.autopilot_status(n)
+
+    @tool
+    def set_autopilot(darkness: float) -> str:
+        """Autopilot Darkness 0-100 %: black put into the Autopilot's effects (narrower bands, black palette
+        slots, gaps), never a dimmer; the kick light is exempt; hand-made scenes and Override aren't touched.
+        Eases in over the look's fade; holds until the next LOW / MID / HIGH set change. Allowed under gig lock
+        (a live control)."""
+        return t.set_autopilot(darkness)
+
+    @tool
+    def set_set_darkness(set: str, value: float | None = None) -> str:
+        """Store the darkness (0-100 %) a set loads: set = low, mid or high; value None clears it. Saved to the
+        rig's autopilot block (set_darkness). Not under gig lock."""
+        return t.set_set_darkness(set, value)
 
     @tool
     def save_autopilot_settings(rig: str, yaml_text: str) -> str:

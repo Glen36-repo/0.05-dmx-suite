@@ -178,9 +178,29 @@ async function loadWhy() {
 
 let lastDecision = null;
 
+// v6 Darkness: the slider sends at most every 60 ms; the server eases it in over the look's fade
+let dkLast = 0, dkTimer = null, dkHeld = false;
+function sendDarkness(v) {
+  clearTimeout(dkTimer);
+  const go = () => { dkLast = performance.now(); api("POST", "/api/darkness", { value: v }).catch(() => null); };
+  if (performance.now() - dkLast > 60) go(); else dkTimer = setTimeout(go, 60);
+}
+
+function drawDarkness(dk) {
+  if (!dk) return;
+  if (!dkHeld) $("#dk-slider").value = dk.darkness;
+  $("#dk-val").textContent = `${Math.round(dk.darkness)} %`;
+  $("#dk-src").textContent = t("darkness.src_" + dk.source) + (dk.cc ? ` · ${dk.cc.describe}` : "");
+  document.querySelectorAll("#ride-darkness [data-dkset]").forEach((b) => {
+    const v = dk.set_darkness[b.dataset.dkset];
+    b.textContent = t("darkness.set_btn", { set: t("autopilot.mood_" + b.dataset.dkset), v: v === null ? t("darkness.none") : `${v} %` });
+  });
+}
+
 function update(s) {
   if (!s || !fx || !$("#page-autopilot").classList.contains("on")) return;
   const ap = s.autopilot, pick = s.ride.pick;
+  drawDarkness(ap.darkness);
   $("#ap-toggle").classList.toggle("on", ap.on);
   $("#ap-toggle").textContent = t(ap.on ? "autopilot.autopilot_on" : "autopilot.autopilot_off");
   $("#ap-hold").classList.toggle("on", ap.hold);
@@ -244,6 +264,14 @@ export function init() {
     grid.build(cat);
   });
   onState(update);
+  const dk = $("#dk-slider");
+  dk.addEventListener("pointerdown", (e) => { if (learning) { e.preventDefault(); act("darkness", {}); return; } dkHeld = true; });
+  dk.addEventListener("pointerup", () => { dkHeld = false; });
+  dk.addEventListener("input", () => sendDarkness(+dk.value));
+  document.querySelectorAll("#ride-darkness [data-dkset]").forEach((b) => (b.onclick = async () => {
+    const r = await attempt(() => api("POST", "/api/darkness/set", { set: b.dataset.dkset, value: +dk.value }));
+    if (r) toast(t("darkness.stored", { set: t("autopilot.mood_" + b.dataset.dkset), v: +dk.value }));
+  }));
   $("#ride-exclude").onclick = () => setExcluding(!excluding);
   onLeave("autopilot", () => { if (excluding) setExcluding(false); });
   onShow("autopilot", load);

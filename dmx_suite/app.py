@@ -68,6 +68,10 @@ class App:
             flash=lambda kind: self.flash_fx(kind, True, "show", length_ms=500),
             ratings=self.look_ratings, presets=self.preset_picks)
         self.router.ride = self.ride_action
+        from .darkness import Darkness
+
+        self.darkness = Darkness(self.engine.clock, lambda: self.autopilot.st.mood)  # v6
+        self.darkness.configure(files.rig.autopilot)
         self.ctl.on_manual = self._manual_pick
         self.ctl.on_setlist = self._setlist_walk
         self.ctl.on_song_auto = self._song_auto
@@ -990,6 +994,7 @@ class App:
             self.engine.swap_rig(new.rig, new.look)
             self.autopilot.cfg = new.rig.autopilot
             self.autopilot.energy.cfg = new.rig.autopilot
+            self.darkness.configure(new.rig.autopilot)
             self._loaded_sig = sig
             self.files = new
             self.ctl.files = new
@@ -1051,6 +1056,12 @@ class App:
         return out
 
     def _input_hit(self, inp: Any, m: Any, now: float) -> None:
+        if "darkness" in inp.roles and m.type in ("control_change", "osc"):  # v6: expression pedal rides darkness
+            v = m.level if getattr(m, "level", None) is not None else m.value / 127
+            lvl = inp.level(round(v * 127))
+            self.darkness.cc = {"input": inp.id, "describe": inp.describe(), "range": list(inp.range)}
+            self.darkness.set(lvl, "cc")
+            return
         if m.pressed:
             if m.type == "note" and inp.roles:
                 self.bus.add(inp.id, inp.roles, inp.strength(m.value), now)
@@ -1104,8 +1115,10 @@ class App:
         self.ride_pick = pick
         label = " + ".join(x for x in (pick.move, pick.colour, pick.drum) if x) + f" · {pick.palette}"
         prefix = "Autopilot" if by == "autopilot" else "Autopilot look"
-        self.ctl.select_ride(f"{prefix}: {label}", ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff),
-                             sc, fade, manual=by != "autopilot")
+        self.darkness.fade = pick.ride.fade  # soft black edges and easing follow the look's fade
+        player = ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff,
+                             darkness=self.darkness, edge=pick.ride.fade)  # v6: darkness for Autopilot looks only
+        self.ctl.select_ride(f"{prefix}: {label}", player, sc, fade, manual=by != "autopilot")
         return {"ok": True, "playing": label, "issues": issues, "scene": data}
 
     # ------------------------------------------------------------------ autopilot and Ride controls (v3.4)
@@ -1350,6 +1363,40 @@ class App:
         top = next((k for k, on in levels if on), "show")
         return {"levels": [k for k, on in levels if on], "top": top}
 
+    # ------------------------------------------------------------------ Autopilot darkness (v6)
+
+    def set_darkness(self, value: float, source: str = "slider") -> dict[str, Any]:
+        """Live darkness 0-100 %: eased in over the look's fade; holds until the next set (mood) change.
+        A performance control, so allowed under gig lock."""
+        v = float(value)
+        if not 0 <= v <= 100:
+            raise ValueError("darkness 0-100 (%)")
+        self.darkness.set(v / 100, source)
+        return self.darkness.status()
+
+    def set_set_darkness(self, which: str, value: float | None) -> dict[str, Any]:
+        """A set's stored darkness (LOW / MID / HIGH), loaded on that set; None clears it. Saved to the rig."""
+        from .autopilot import MOODS
+
+        which = str(which).lower()
+        if which not in MOODS:
+            raise ValueError("set is low, mid or high")
+        if value is not None and not 0 <= float(value) <= 100:
+            raise ValueError("darkness 0-100 (%)")
+        rig_name = self.names[0]
+        data = self.store.read("rig", rig_name)
+        ap = dict(data.get("autopilot") or {})
+        sd = dict(ap.get("set_darkness") or {})
+        if value is None:
+            sd.pop(which, None)
+        else:
+            sd[which] = round(float(value), 1)
+        ap["set_darkness"] = sd
+        data["autopilot"] = ap
+        bid = self.store.put("rig", rig_name, data, f"autopilot: {which} darkness on rig {rig_name}")
+        self.reload()
+        return {"backup": bid, **self.darkness.status()}
+
     def ride_action(self, action: str, p: dict[str, Any], level: float | None = None) -> str:
         """Autopilot page controls (v3 Ride page), from the page, MIDI or OSC."""
         from .fxbanks import BY_ID, RANGES
@@ -1385,6 +1432,10 @@ class App:
         if action == "preset":
             self.play_preset(str(p.get("preset")))
             return f"preset {p.get('preset')}"
+        if action == "darkness":  # v6: live, eased; the look carries on (no re-play)
+            v = level if level is not None else float(p.get("value", 0)) / 100
+            got = self.darkness.set(v, "cc" if level is not None else str(p.get("source") or "slider"))
+            return f"darkness {round(got * 100)}%"
         from .midi.map import canonical
 
         action = canonical(action)  # v3 names (ride_fx, ride_speed ...) still work
@@ -1699,7 +1750,7 @@ class App:
     # ------------------------------------------------------------------ preview
 
     def preview_scene(self, scene: str | dict, seconds: float = 10, step: int | None = None,
-                      play_from: int | None = None) -> str:
+                      play_from: int | None = None, darkness: float | None = None) -> str:
         """Play a scene for a while. step: hold that step (0-based); play_from: run the steps from there."""
         self.require_unlocked("preview")
         if isinstance(scene, str):
@@ -1712,9 +1763,13 @@ class App:
             if sc.uses_intensity and self.engine.rig.profile.master_gate:
                 raise ValueError(f"{sc.name} {INTENSITY_RULE1}")
         first = step if step is not None else (play_from or 0)
+        dk = None if darkness is None else max(0.0, min(1.0, float(darkness) / 100))
         self.engine.preview(ScenePlayer(sc, self.engine.rig, self.engine.clock(), self.ctl.tempo.eff,
-                                        first_step=first, only_step=step), seconds, sc)
+                                        first_step=first, only_step=step,
+                                        darkness=None if dk is None else (lambda now: dk)), seconds, sc)
         msg = f"previewing {sc.name} for {seconds:.0f} s, then back to {self.ctl.describe()}"
+        if dk is not None:
+            msg += f" (at darkness {round(dk * 100)} %; the live value is unchanged)"
         if self.engine.rig.profile.master_gate and not self.engine.master:
             msg += " (MASTER is off, so the rig stays dark)"
         return msg
@@ -1970,7 +2025,7 @@ class App:
             "node_setup": self.node_setup,
             "alerts": self.alerts[-5:],
             "alert_center": self.alerts_view(),
-            "autopilot": self.autopilot.status(e.clock()),
+            "autopilot": {**self.autopilot.status(e.clock()), "darkness": self.darkness.status(e.clock())},
             "ride": {"pick": self.ride_pick.to_dict(), "palette_lock": self.palette_lock},
             "priority": self.priority(),
             "learning": self.router.learning,

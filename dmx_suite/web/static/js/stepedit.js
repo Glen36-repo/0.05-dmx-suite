@@ -275,9 +275,12 @@ function colourTab(ids) {
   });
   const pals = Object.entries(fx.palettes || {}).map(([k, p]) => el("div", { class: "pal-row" }, el("span", { class: "muted", text: p.name }),
     ...p.hex.map((h, i) => el("button", { class: "sw", style: `background:${h}`, title: p.colours[i], onclick: () => put("colour", p.colours[i]) }))));
+  const litNow = shownValue("lit")?.value ?? 100; // v6: how much of the colour is lit; the rest black (colour off)
+  const lit = marked("lit", field(t("steps.lit"), el("input", { type: "range", min: 0, max: 100, step: 5, value: litNow, "data-lit": "1",
+    title: t("steps.lit_tip"), onchange: (e) => put("lit", +e.target.value) })));
   return [marked("colour", ctxRef.swatch(typeof cur === "string" ? cur : undefined, (c) => put("colour", c), true, ids)),
     el("div", { class: "row wrap" }, el("button", { class: "danger-text", "data-off": "1", onclick: () => put("colour", "off") }, t("steps.off"))),
-    ...faders, el("details", { class: "scene-more" }, el("summary", { text: t("steps.palettes") }), ...pals)];
+    ...faders, lit, el("details", { class: "scene-more" }, el("summary", { text: t("steps.palettes") }), ...pals)];
 }
 
 function positionTab(ids) {

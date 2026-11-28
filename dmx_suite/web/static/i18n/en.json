@@ -1347,5 +1347,20 @@
  "ff.a_pass": "Pass (works now)",
  "ff.a_fail": "Fail (still not)",
  "ff.a_restart": "Start again",
- "ff.locked": "Gig lock: tests are off"
+ "ff.locked": "Gig lock: tests are off",
+ "darkness.title": "Darkness",
+ "darkness.store": "Store for set:",
+ "darkness.set_btn": "{set} {v}",
+ "darkness.none": "-",
+ "darkness.stored": "{set}: darkness {v} % stored",
+ "darkness.src_default": "rig default",
+ "darkness.src_set": "set default",
+ "darkness.src_slider": "slider",
+ "darkness.src_cc": "pedal",
+ "darkness.src_claude": "Claude",
+ "info.darkness.title": "Darkness",
+ "info.darkness.text": "Puts black into the Autopilot's effects: narrower bands, black slots in palettes, gaps between colours. Not a dimmer: MASTER, dimmers and haze are untouched, the kick light keeps its look, hand-made scenes play as made. Store for set: LOW / MID / HIGH load their own value.",
+ "midi.role_darkness": "darkness (CC pedal)",
+ "steps.lit": "Lit %",
+ "steps.lit_tip": "How much of the colour is lit; the rest is black (colour off, never the dimmer): 50 = every other light / pixel"
 }

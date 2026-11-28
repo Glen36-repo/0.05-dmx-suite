@@ -52,7 +52,7 @@ CLAUDE_WRITES = ("/api/store", "/api/preview", "/api/layout/positions", "/api/st
                  "/api/routing/output", "/api/claude/haze",
                  "/api/haze/settings", "/api/devices/set",
                  "/api/nodes/assign", "/api/validate/scene", "/api/undo/claude", "/api/ride/check",
-                 "/api/autopilot/check", "/api/generate", "/api/test", "/api/cycle", "/api/faultfind")
+                 "/api/autopilot/check", "/api/generate", "/api/test", "/api/cycle", "/api/faultfind", "/api/darkness")
 SESSION_COOKIE = "dmx_session"
 FRAMES_S = 0.1  # live frame feed (Monitor, address map): 10 a second
 
@@ -432,7 +432,8 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/autopilot":  # status and the decision log (v3.4)
                 n = int(q.get("n", 50))
                 return self._json(200, {"status": app.autopilot.status(app.engine.clock()), "log": app.autopilot.log_since(n),
-                                        "priority": app.priority(), "config": app.autopilot.cfg})
+                                        "priority": app.priority(), "config": app.autopilot.cfg,
+                                        "darkness": app.darkness.status()})
             if path == "/api/kelvin":
                 from ..colourtheory import KELVIN_PRESETS, hex_of, kelvin
 
@@ -805,6 +806,13 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
             if path == "/api/outputs/latency" and method == "POST":  # set via D2XX, after the UI asked
                 return self._json(200, {"ok": True, **app.set_output_latency(int(body.get("output", -1)),
                                                                              int(body.get("ms", 1)))})
+            if path == "/api/darkness" and method == "POST":  # v6 live Darkness (slider / Claude); gig lock allows it
+                src = "claude" if self._is_claude() else str(body.get("source") or "slider")
+                return self._json(200, {"ok": True, **app.set_darkness(float(body.get("value", 0)), src)})
+            if path == "/api/darkness/set" and method == "POST":  # a set's stored darkness (saved to the rig)
+                v = body.get("value")
+                return self._json(200, {"ok": True, **app.set_set_darkness(str(body.get("set", "")),
+                                                                           None if v in (None, "") else float(v))})
             if path == "/api/faultfind" and method == "POST":  # v5 "Rig not responding" wizard
                 return self._json(200, app.fault_find(str(body.get("action", "status")), str(body.get("answer", "")),
                                                       body.get("fixture") or None, "claude" if self._is_claude() else "ui"))
@@ -832,8 +840,9 @@ def make_handler(app: App, token: str, access: Access, claude: str, on_lan: Any 
                 if not isinstance(scene, (str, dict)):
                     raise ApiError(400, "preview needs a scene name or scene data")
                 step, start = body.get("step"), body.get("play_from")
+                dk = body.get("darkness")
                 msg = app.preview_scene(scene, float(body.get("seconds", 10)), None if step is None else int(step),
-                                        None if start is None else int(start))
+                                        None if start is None else int(start), None if dk in (None, "") else float(dk))
                 return self._json(200, {"ok": True, "message": msg})
             if path in ("/api/claude/connect", "/api/claude/disconnect") and method == "POST":
                 if not self._local():  # it changes this computer's Claude settings: only from this computer

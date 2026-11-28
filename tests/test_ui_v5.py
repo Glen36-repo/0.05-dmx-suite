@@ -159,3 +159,35 @@ def test_red_dmx_badge_opens_the_wizard(open_ui):
     page.click(".tile.link[data-key^='dmx_check:']")
     page.wait_for_selector("#page-monitor.on")
     page.wait_for_selector("#ff:not(.hidden)")
+
+
+# ---------------------------------------------------------------- v6 Part A: Darkness
+
+
+def test_darkness_slider_big_and_live(ui):
+    page, app, root, _ = ui
+    go(page, "autopilot")
+    page.wait_for_selector("#dk-slider")
+    assert page.eval_on_selector("#dk-slider", "e => e.getBoundingClientRect().height") >= 44  # live control: big
+    page.eval_on_selector("#dk-slider", "e => { e.value = 40; e.dispatchEvent(new Event('input')); }")
+    for _ in range(40):
+        if app.darkness.status()["darkness"] == 40:
+            break
+        page.wait_for_timeout(50)
+    assert app.darkness.status()["darkness"] == 40 and app.darkness.status()["source"] == "slider"
+    page.wait_for_function("document.querySelector('#dk-val').textContent === '40 %'")
+    page.click("#ride-darkness [data-dkset=low]")
+    page.wait_for_function("document.querySelector('#ride-darkness [data-dkset=low]').textContent.includes('40 %')")
+    assert yaml.safe_load((root / "rigs" / "full.yaml").read_text())["autopilot"]["set_darkness"]["low"] == 40
+
+
+def test_step_editor_lit(ui):
+    from test_ui_v4 import open_steps
+
+    page, app, root, _ = ui
+    open_steps(page)
+    page.click("#scene-group-tabs [data-group=bars]")
+    page.click("#step-programmer .swatches button[title=red]")
+    page.wait_for_selector("#step-programmer input[data-lit]")
+    page.eval_on_selector("#step-programmer input[data-lit]", "e => { e.value = 50; e.dispatchEvent(new Event('change')); }")
+    page.wait_for_function("document.querySelector('#step-programmer .prog-row[data-attr=lit]').classList.contains('prog')")

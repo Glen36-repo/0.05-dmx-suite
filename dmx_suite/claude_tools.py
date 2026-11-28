@@ -97,6 +97,15 @@ FAULT-FINDING (v4): "software running, rig dark": list_outputs, then monitor_dmx
   really sent: no frames / all zero / values per channel with names), then check MASTER, blackout, grand
   master. "Pedal does nothing": monitor_midi (each event, the named input it matched, what it did or
   'unmapped'); fix the input with save_input.
+DARKNESS AND LIT (v6): darkness puts BLACK INTO THE AUTOPILOT'S EFFECTS, it is not a dimmer. Under the 0.05
+  band profile black is always colour off (RGB/W/A/UV 0), never intensity or the dimmer; MASTER keeps on/off;
+  no glow. A layer's `lit:` (0-100 %, also on a whole scene) shapes its own black: narrower bands in sweeps
+  and chases, black slots in palettes and colour cycles (50 % = colour, black ...), gaps between gradient /
+  rainbow segments, a regular black pattern on still colours (moves with shift). Autopilot looks render
+  lit x (1 - darkness); hand-made scenes and shows play as authored; Override ignores it; the kick light is
+  exempt; heads keep moving dark; drum flash (MASTER off) leaves black slots black. set_autopilot {darkness}
+  sets it live (eased over the look's fade; holds until the next LOW / MID / HIGH change), set_set_darkness
+  stores a set's value, autopilot_status shows it with its source and CC, preview_look takes darkness.
 DMX DIAGNOSTICS (v5): "rig dark, lights in auto / sound mode, frames counting" = no valid DMX reaches
   them. fault_find (start, then answer) walks the same steps as the Monitor page wizard. check_outputs:
   USB DMX (Open) checklist (VCP / D2XX, latency timer > 1 ms, port held by Daslight / QLC+ / FreeStyler,
@@ -340,17 +349,28 @@ class DmxTools:
         data = _yaml(yaml_text, "quality rules")
         return self._write("PUT", "/api/store/quality/", {"data": data}, lambda: self.local.put("quality", "", data))
 
-    def preview_look(self, pick_yaml: str, seconds: float = 10) -> str:
+    def preview_look(self, pick_yaml: str, seconds: float = 10, darkness: float | None = None) -> str:
         """Compose an FX pick for this rig, say what the quality rules think, and play it for a while."""
         pick = _yaml(pick_yaml, "pick")
         r = self._live("POST", "/api/autopilot/check", {"pick": pick, "mood": pick.get("mood", "mid")})
-        msg = self._live("POST", "/api/preview", {"scene_data": r["scene"], "seconds": seconds})["message"]
+        body: dict[str, Any] = {"scene_data": r["scene"], "seconds": seconds}
+        if darkness is not None:
+            body["darkness"] = darkness
+        msg = self._live("POST", "/api/preview", body)["message"]
         issues = r["issues"]
         return msg + (". Quality: " + "; ".join(issues) if issues else ". Quality: fine")
 
     def autopilot_status(self, n: int = 20) -> str:
         r = self._live("GET", f"/api/autopilot?n={int(n)}")
-        return _dump(r)
+        return _dump(r)  # includes darkness: {darkness, now, source, set_darkness, cc}
+
+    def set_autopilot(self, darkness: float) -> str:
+        r = self._live("POST", "/api/darkness", {"value": darkness})
+        return f"darkness {r['darkness']:g} % (eases in over the look's fade; holds until the next set change)"
+
+    def set_set_darkness(self, set: str, value: float | None) -> str:
+        r = self._live("POST", "/api/darkness/set", {"set": set, "value": value})
+        return f"saved (backup {r['backup']}): {set} darkness {'cleared' if value is None else f'{value:g} %'}"
 
     def save_autopilot_settings(self, rig: str, yaml_text: str) -> str:
         data = _yaml(yaml_text, "autopilot settings")

@@ -40,7 +40,8 @@ from typing import Any
 from ..fixtures import ConfigError
 
 TYPES = ("note", "program_change", "control_change", "osc")
-ROLES = ("kick", "snare", "tom", "cymbal", "count_in", "activity")
+ROLES = ("kick", "snare", "tom", "cymbal", "count_in", "activity", "darkness")
+CONTINUOUS_ROLES = ("darkness",)  # v6: a CC (expression pedal) that rides a live control
 ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 CURVE_POINTS = (("quiet", 0.25), ("normal", 0.6), ("loud", 1.0))  # calibrated velocity -> strength
 
@@ -62,6 +63,7 @@ class InputDef:
     roles: list[str] = field(default_factory=list)
     shared: bool = False
     colour: str | None = None
+    range: tuple[float, float] = (0.0, 100.0)  # v6: a continuous role's span in % (pedal heel -> toe)
 
     def keys(self) -> list[Key]:
         if self.type == "osc":
@@ -127,7 +129,14 @@ class InputDef:
             d["shared"] = True
         if self.colour:
             d["colour"] = self.colour
+        if self.range != (0.0, 100.0):
+            d["range"] = [self.range[0], self.range[1]]
         return d
+
+    def level(self, value: int) -> float:
+        """A continuous role's value 0-1: the curve (calibration), then the range (heel -> toe, may be reversed)."""
+        lo, hi = self.range
+        return (lo + (hi - lo) * self.strength(value)) / 100
 
 
 @dataclass
@@ -253,7 +262,7 @@ def _numbers(d: dict[str, Any], where: str) -> list[int]:
 
 
 INPUT_KEYS = {"name", "type", "channel", "notes", "number", "numbers", "address", "port", "velocity", "curve",
-              "roles", "shared", "colour"}
+              "roles", "shared", "colour", "range"}
 
 
 def parse_input(iid: str, d: Any, device: Device) -> InputDef:
@@ -308,6 +317,15 @@ def parse_input(iid: str, d: Any, device: Device) -> InputDef:
     if not isinstance(roles, list) or any(r not in ROLES for r in roles):
         raise ConfigError(f"{where}: roles are {', '.join(ROLES)}")
     i.roles = list(dict.fromkeys(roles))
+    cont = [r for r in i.roles if r in CONTINUOUS_ROLES]
+    if cont and t not in ("control_change", "osc"):
+        raise ConfigError(f"{where}: role {cont[0]} needs a CC (control_change), e.g. an expression pedal")
+    if "range" in d:
+        r = d["range"]
+        if (not isinstance(r, list) or len(r) != 2 or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in r)
+                or not all(0 <= x <= 100 for x in r)):
+            raise ConfigError(f"{where}: range is [heel, toe] in %, 0-100 (e.g. [0, 80])")
+        i.range = (float(r[0]), float(r[1]))
     i.shared = bool(d.get("shared", False))
     if d.get("colour") is not None:
         c = str(d["colour"])

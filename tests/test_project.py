@@ -126,12 +126,13 @@ def test_every_ui_text_key_exists():
     used |= {f"wizard.drv_{d}" for d in ("node", "usb_dmx_open", "usb_dmx_pro")}
     used |= {f"timing.{d}" for d in ("vcp", "d2xx", "unknown")}  # v5: driver type in the timing line
     used |= {f"ff.a_{a}" for a in ("yes", "no", "pass", "fail", "restart")}  # v5: fault-find answers
+    used |= {f"darkness.src_{s}" for s in ("default", "set", "slider", "cc", "claude")}  # v6: darkness source
     # v3.1
     used |= {f"alerts.state_{s}" for s in ("active", "dismissed", "minimised", "snoozed", "muted", "cleared")}
     used |= {f"heads.stage_{k}" for k in "xyz"}
     places = ("left", "centre", "right", "front", "middle", "back", "floor", "low", "mid", "high", "ceiling")
     used |= {f"heads.place_{p}" for p in places}
-    used |= {f"midi.role_{r}" for r in ("kick", "snare", "tom", "cymbal", "count_in", "activity")}
+    used |= {f"midi.role_{r}" for r in ("kick", "snare", "tom", "cymbal", "count_in", "activity", "darkness")}
     used |= {f"midi.level_{v}" for v in ("quiet", "normal", "loud")}
     used |= {f"midi.type_{x}" for x in ("note", "program_change", "control_change", "osc")}
     used |= {f"palettes.scheme_{x}" for x in ("analogous", "complementary", "triadic", "split", "mono")}

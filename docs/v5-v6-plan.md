@@ -54,7 +54,7 @@ Built in dependency order (test patterns before the cycle test that uses them). 
 
 Limits in this environment: no Windows, FTDI or D2XX here. Driver code is tested against fake serial/D2XX/registry objects, so timings and the cycle test need a real check on the gig laptop with COM3.
 
-## Part A (v6): Darkness (effect `lit`)
+## Part A (v6): Darkness (effect `lit`) — built 28/11/2026
 1. `lit` (0–1, YAML 0–100 %) as a layer common key (beside `shift`), carried into `Run`. Each colour effect shapes its own black:
    - Sweeps/chases (linear_wave, radial, bars, colour_chase incl. middle-out, pixel_chase, dir_sweep, comet): lit band = lit × pattern length
    - Palette / colour cycles (palette, colour_chase, colour_fade, gradient cycle): black slots interleaved evenly

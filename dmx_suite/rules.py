@@ -116,13 +116,16 @@ class RuleLayer:
             fls = st.flashes[fx.id]
             colour = fls.colour
             scale *= fls.level * masters.flash.value
+            if fl is not None and fl.unlit:  # v6 darkness: black slots of the pattern stay black
+                colour, pixels = self._flash_lit(fx, fl, fls.colour)
         elif not prof.master_gate:  # no MASTER on/off: the look decides, at its intensity
-            if fl is not None and fl.is_on():
+            if fl is not None and (fl.is_on() or fl.unlit):  # v6: black from darkness is colour off, dimmer as it was
                 colour, pixels, use_look = fl.colour, fl.pixels, True
                 if fl.intensity is not None:
                     scale *= fl.intensity
                 scale *= st.gate
-        elif st.master and fl is not None and fl.is_on():  # rule 1: MASTER owns on/off
+        elif st.master and fl is not None and (fl.is_on() or fl.unlit):  # rule 1: MASTER owns on/off
+            # (v6: a light blacked by darkness keeps its dimmer; only colour goes to 0)
             colour, pixels, use_look = fl.colour, fl.pixels, True
             scale *= st.gate
 
@@ -166,6 +169,22 @@ class RuleLayer:
                 v = getattr(fl, role)
                 if v is not None and t.has(role):
                     _write(fx, frame, role, v)
+
+    @staticmethod
+    def _flash_lit(fx: Fixture, fl: FixtureLook, c: Colour) -> tuple[Colour | None, list[Colour] | None]:
+        """A drum flash on a light the pattern has partly blacked (lit / darkness): only what's lit flashes."""
+        def black(px: Colour | None) -> bool:
+            return not px or not any(v > 0 for v in px.values())
+
+        if -1 in fl.unlit and black(fl.colour) and not fl.pixels:
+            return None, None
+        n = max((ch.pixel for ch in fx.type.channels if ch.pixel is not None), default=-1) + 1
+        if not n:
+            return (None, None) if black(fl.colour) and not fl.pixels else (c, None)
+        row = fl.pixels or [fl.colour] * n
+        out = [{} if (i in fl.unlit or -1 in fl.unlit) and black(row[i] if i < len(row) else None) else dict(c)
+               for i in range(n)]
+        return (None, None) if not any(out) else (None, out)
 
     def _position(self, fx: Fixture, fl: FixtureLook | None, frame: bytearray) -> None:
         t = fx.type

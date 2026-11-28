@@ -26,7 +26,7 @@ devices:
 - **Channel:** 1-16 as printed on the gear, or `any`; set it on the device for every input in it
 - **Port:** part of the interface's name (e.g. `H2MIDI`), on the device or one input. A port-specific input wins, so the SamplePad and the TD-25 can use the same notes
 - **Velocity range:** `velocity: [64, 127]` makes only hard hits count (soft and hard hits can be two inputs)
-- **Roles:** what the input is to the auto show: kick, snare, tom, cymbal, count_in, activity. Any device can carry them (a keyboard's low C can be the kick)
+- **Roles:** what the input is to the auto show: kick, snare, tom, cymbal, count_in, activity. Any device can carry them (a keyboard's low C can be the kick). **darkness** (a CC, e.g. the FCB1010 expression pedal) rides the Autopilot's Darkness; `range: [0, 80]` sets heel to toe in % (reverse it for toe-down = lighter), and calibrating sets its curve
 - **Shared:** two inputs can claim the same message only if both say `shared: true`; then both fire
 
 Change a note in one place and every mapping, step scene and the auto show follow. An input that's still used can't be deleted: you're told where it's used.

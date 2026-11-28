@@ -12,7 +12,7 @@ import random
 from typing import Any
 
 from ..look import Colour
-from .base import SPREAD_PARAMS, Effect, Param, ParseCtx, Run, Unit, mix, scale, seed, wave
+from .base import BLACK, SPREAD_PARAMS, Effect, Param, ParseCtx, Run, Unit, mix, scale, seed, static_on, wave, with_black
 
 # ---------------------------------------------------------------------- Move FX
 
@@ -143,12 +143,22 @@ class Palette(Effect):
     def period(self, p: dict[str, Any]) -> float | None:
         return p["period_s"] or None
 
+    lit_aware = True
+
     def render(self, p: dict[str, Any], run: Run) -> None:
-        cols = _cols(p)
+        base = _cols(p)
         units = run.units(True)
         drift = run.t / p["period_s"] if p["period_s"] else 0.0
+        off = round(run.shift * len(units))
         for un in units:
-            run.put(un, cols[int(un.u * len(units) + drift * len(cols)) % len(cols)])
+            lit = run.lit_of(un.fid)
+            if lit < 1.0 and not p["period_s"]:  # still: a regular black pattern across the lights, moving with shift
+                c = base[int(un.u * len(units)) % len(base)]
+                run.put(un, c if static_on(un.index, lit, off) else run.black(un.fid, un.pixel))
+                continue
+            cols = with_black(base, lit) if lit < 1.0 else base  # drifting: black slots between the colours
+            c = cols[int(un.u * len(units) + drift * len(cols)) % len(cols)]
+            run.put(un, run.black(un.fid, un.pixel) if lit < 1.0 and c is BLACK else c)
         run.flush()
 
 
@@ -167,13 +177,17 @@ class ColourFade(Effect):
     def period(self, p: dict[str, Any]) -> float | None:
         return p["period_s"] * len(p["colours"])
 
+    lit_aware = True
+
     def render(self, p: dict[str, Any], run: Run) -> None:
-        cols = p["colours"]
-        n = len(cols)
         for un in run.units(True):
-            x = (run.t / p["period_s"] + p["spread"] * un.u * n) % n
+            lit = run.lit_of(un.fid)
+            cols = with_black(p["colours"], lit) if lit < 1.0 else p["colours"]  # fades through black too
+            n = len(cols)
+            x = (run.t / p["period_s"] * n / len(p["colours"]) + p["spread"] * un.u * n) % n
             i = int(x)
-            run.put(un, mix(cols[i], cols[(i + 1) % n], x - i))
+            c = mix(cols[i], cols[(i + 1) % n], x - i)
+            run.put(un, run.black(un.fid, un.pixel) if lit < 1.0 and not any(c.values()) else c)
         run.flush()
 
 
@@ -192,12 +206,18 @@ class Split(Effect):
     def period(self, p: dict[str, Any]) -> float | None:
         return 2 * p["period_s"] if p["period_s"] else None
 
+    lit_aware = True
+
     def render(self, p: dict[str, Any], run: Run) -> None:
         a, b = p["colours"][0], p["colours"][1]
         swap = int(run.t / p["period_s"]) % 2 if p["period_s"] else 0
-        for un in run.units(p["mode"] == "alternate"):
+        units = run.units(p["mode"] == "alternate")
+        off = round(run.shift * len(units))
+        for un in units:
             first = (un.x < 0.5) if p["mode"] == "sides" else (un.index % 2 == 0)
-            run.put(un, a if first != bool(swap) else b)
+            lit = run.lit_of(un.fid)
+            on = lit >= 1.0 or static_on(un.index, lit, off)  # a regular black pattern across the lights
+            run.put(un, (a if first != bool(swap) else b) if on else run.black(un.fid, un.pixel))
         run.flush()
 
 
@@ -520,6 +540,7 @@ SWEEP_ORDERS = {"cycle": ("right", "left", "down", "up"), "left_right": ("right"
 
 
 class DirSweep(Effect):
+    lit_aware = True
     name = "dir_sweep"
     label = "Directional sweep"
     help = ("A band of colour crosses the rig by where the lights are, one direction per pass: left to right, "
@@ -551,12 +572,16 @@ class DirSweep(Effect):
         direction = order[math.floor(x) % len(order)]
         f = x % 1.0
         lit_part = 1.0 - p["gap"]
-        w = p["width"] / 2
-        centre = -w + (f / lit_part) * (1 + 2 * w) if f < lit_part else None  # None: the dark gap
         for un, pos in zip(units, self.position(units, direction)):
+            lit = run.lit_of(un.fid)
+            w = max(0.01, p["width"] * min(1.0, lit)) / 2  # lit narrows the band
+            centre = -w + (f / lit_part) * (1 + 2 * w) if f < lit_part else None  # None: the dark gap
             d = abs(pos - centre) if centre is not None else w
             lv = 0.5 * (1 + math.cos(math.pi * d / w)) if d < w else 0.0
-            run.put(un, mix(p["background"], p["colour"], lv))
+            if lit < 1.0:  # the rest of the rig black, not the background
+                run.put(un, mix(BLACK, p["colour"], lv) if lv > 0 else run.black(un.fid, un.pixel))
+            else:
+                run.put(un, mix(p["background"], p["colour"], lv))
         run.flush()
 
 
