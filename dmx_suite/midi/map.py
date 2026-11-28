@@ -74,6 +74,7 @@ ACTIONS: dict[str, set[str]] = {
     "autopilot_fx": {"bank", "item"},
     "autopilot_palette": {"palette"},
     "exclude_palette": {"palette", "excluded"},  # v7 palette bank
+    "autopilot_lock": {"layer", "on"},  # v7 layer lock (move / colour / palette / darkness)
     "palette_lock": set(),
     "feel_speed": set(),
     "feel_fade": set(),
@@ -86,9 +87,8 @@ ACTIONS: dict[str, set[str]] = {
 CONTINUOUS = {"grand_master", "sub_master", "flash_level", "speed", "step_speed", "step_fade",
               "feel_speed", "feel_fade", "feel_fan", "feel_size", "feel_shift", "darkness"}  # need a CC or OSC
 AUTOPILOT_ACTIONS = {"autopilot", "hold", "look_next", "look_prev", "mood", "walk_on", "walk_off", "autopilot_fx",
-                     "autopilot_palette", "exclude_palette", "palette_lock", "feel_speed", "feel_fade", "feel_fan", "feel_size",
-                     "feel_shift",
-                     "darkness", "preset"}
+                     "autopilot_palette", "exclude_palette", "autopilot_lock", "palette_lock", "feel_speed", "feel_fade",
+                     "feel_fan", "feel_size", "feel_shift", "darkness", "preset"}
 RIDE_ACTIONS = AUTOPILOT_ACTIONS  # v3 name
 # v3 action names (Ride page, busking) still load; v4 writes the new ones (show file format 6)
 ACTION_ALIASES = {"busk": "override", "ride_fx": "autopilot_fx", "ride_palette": "autopilot_palette",
@@ -223,6 +223,8 @@ def validate(m: Mapping, input_type: str | None = None) -> None:
         raise ConfigError(f"{where}: haze_preset needs preset (a haze preset's name)")
     if m.action == "preset" and not m.params.get("preset"):
         raise ConfigError(f"{where}: preset needs preset (a preset's name)")
+    if m.action == "autopilot_lock" and m.params.get("layer") not in ("move", "colour", "palette", "darkness"):
+        raise ConfigError(f"{where}: autopilot_lock needs layer move, colour, palette or darkness")
     if m.action in ("autopilot_palette", "exclude_palette") and not m.params.get("palette"):
         raise ConfigError(f"{where}: {m.action} needs palette")
     if m.action == "override" and (not m.params.get("panel") or not m.params.get("widget")):

@@ -55,18 +55,17 @@ class App:
 
         self.bus = BUS  # named input hits by role: drum-reactive effects, autopilot energy
         self.ride_pick = Pick()  # what the Ride page shows / last played (v3.3)
-        self.palette_lock = False
         from .autopilot import Autopilot
         from .classify import auto_rig
 
         self.autopilot = Autopilot(
-            play=lambda pick, fade: self.ride_play(self._locked_palette(pick).to_dict(), fade, by="autopilot"),
+            play=lambda pick, fade: self.ride_play(pick.to_dict(), fade, by="autopilot"),
             rig_auto=lambda: auto_rig(self.engine.rig),
             palettes=lambda: self.files.palettes.sets,
             quality=self.quality, bus=self.bus, cfg=files.rig.autopilot, log_dir=log_dir,
             master_off=lambda: self.engine.rig.profile.master_gate and not self.engine.master,
             flash=lambda kind: self.flash_fx(kind, True, "show", length_ms=500),
-            ratings=self.look_ratings, presets=self.preset_picks)
+            ratings=self.look_ratings, presets=self.preset_picks, playing=lambda: self.ride_pick)
         self.router.ride = self.ride_action
         from .darkness import Darkness
 
@@ -1136,12 +1135,6 @@ class App:
 
     # ------------------------------------------------------------------ autopilot and Ride controls (v3.4)
 
-    def _locked_palette(self, pick: Any) -> Any:
-        """Palette lock: the autopilot keeps the palette the Ride page chose."""
-        if self.palette_lock:
-            pick.palette = self.ride_pick.palette
-        return pick
-
     def _manual_pick(self) -> None:
         """The band picked a look, scene or show by hand: the autopilot steps aside."""
         if self.autopilot.st.on:
@@ -1702,9 +1695,10 @@ class App:
                 on = pal not in auto_rig(self.engine.rig).excluded_palettes
             self.exclude_palette(pal, bool(on))
             return f"palette {pal} {'left out' if on else 'put back'}"
-        elif action == "palette_lock":
-            self.palette_lock = not self.palette_lock if p.get("on") is None else bool(p["on"])
-            return f"palette lock {'on' if self.palette_lock else 'off'}"
+        elif action in ("autopilot_lock", "palette_lock"):  # v7 layer lock (palette_lock: the v3 palette one)
+            layer = "palette" if action == "palette_lock" else str(p.get("layer") or "")
+            on = self.autopilot.set_lock(layer, None if p.get("on") is None else bool(p["on"]))
+            return f"{layer} lock {'on' if on else 'off'}"
         elif action.startswith("feel_") and action[5:] in RANGES:
             key = action[5:]
             lo, hi = RANGES[key]
@@ -2279,7 +2273,7 @@ class App:
             "alerts": self.alerts[-5:],
             "alert_center": self.alerts_view(),
             "autopilot": {**self.autopilot.status(e.clock()), "darkness": self.darkness.status(e.clock())},
-            "ride": {"pick": self.ride_pick.to_dict(), "palette_lock": self.palette_lock},
+            "ride": {"pick": self.ride_pick.to_dict(), "palette_lock": self.autopilot.locked("palette")},
             "priority": self.priority(),
             "learning": self.router.learning,
             "rig": e.rig.name,

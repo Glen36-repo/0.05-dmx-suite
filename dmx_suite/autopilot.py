@@ -92,7 +92,18 @@ DEFAULTS: dict[str, Any] = {
     "seed": "",
     "darkness": 0,  # v6: % black put into the Autopilot's effects (not a dimmer)
     "set_darkness": {},  # v6: per set {low, mid, high} %, loaded on a set (mood) change
+    # v7 layer timing: together = every layer changes on each look change (v6); staggered = a clock per layer
+    "timing": "together",
+    "layers": {
+        "move": {"every_looks": 1.0, "spread": 25, "locked": False},
+        "colour": {"every_looks": 1.0, "spread": 25, "locked": False},
+        "palette": {"every_looks": 1.5, "spread": 25, "locked": False},
+        "darkness": {"every_looks": 0.5, "spread": 25, "locked": False},
+    },
 }
+LAYERS: tuple[str, ...] = ("move", "colour", "palette", "darkness")  # v7; the drum FX item rides with colour
+PICK_LAYERS = ("move", "colour", "palette")
+SCHEDULE_KEYS = ("every_s", "every_looks", "on")
 TARGET_BUSY = {"low": 0.3, "mid": 0.75, "high": 1.15}
 
 
@@ -115,7 +126,22 @@ def parse_config(d: Any) -> dict[str, Any]:
         raise ConfigError(f"autopilot between: settings are {', '.join(DEFAULTS['between'])}")
     if isinstance(d.get("between"), dict) and "look" in d["between"]:
         d["between"] = {**d["between"], "look": _norm_look(d["between"]["look"], "autopilot between look", norm_pick)}
+    lay = d.get("layers")
+    if lay is not None:
+        if not isinstance(lay, dict) or set(lay) - set(LAYERS):
+            raise ConfigError(f"autopilot layers: {', '.join(LAYERS)}")
+        fixed = {}
+        for k, v in lay.items():
+            if not isinstance(v, dict):
+                raise ConfigError(f"autopilot layers {k}: {{every_s | every_looks | on: song|set, spread, locked}}")
+            base = DEFAULTS["layers"][k]
+            if any(x in v for x in SCHEDULE_KEYS):  # a new schedule replaces the default one
+                base = {x: y for x, y in base.items() if x not in SCHEDULE_KEYS}
+            fixed[k] = {**base, **v}
+        d = {**d, "layers": {**DEFAULTS["layers"], **fixed}}
     out = merge(DEFAULTS, d)
+    if lay is not None:
+        out["layers"] = copy.deepcopy(d["layers"])
     # a scene replaces the default look (a generated look still merges over it, as in v6)
     if isinstance(d.get("between"), dict) and isinstance(d["between"].get("look"), dict) and "scene" in d["between"]["look"]:
         out["between"]["look"] = d["between"]["look"]
@@ -138,6 +164,25 @@ def parse_config(d: Any) -> dict[str, Any]:
         raise ConfigError("autopilot variation: 0-0.9")
     if not isinstance(out["no_repeat"], int) or not 0 <= out["no_repeat"] <= 50:
         raise ConfigError("autopilot no_repeat: 0-50 looks")
+    if out["timing"] not in TIMINGS:
+        raise ConfigError("autopilot timing: together or staggered")
+    for k, v in out["layers"].items():
+        bad = set(v) - {*SCHEDULE_KEYS, "spread", "locked"}
+        if bad:
+            raise ConfigError(f"autopilot layers {k}: settings are every_s, every_looks, on, spread, locked")
+        sched = [x for x in SCHEDULE_KEYS if x in v]
+        if len(sched) != 1:
+            raise ConfigError(f"autopilot layers {k}: one of every_s, every_looks or on")
+        if "every_s" in v and (_num(v["every_s"]) is None or not 2 <= v["every_s"] <= 3600):
+            raise ConfigError(f"autopilot layers {k} every_s: 2-3600 s")
+        if "every_looks" in v and (_num(v["every_looks"]) is None or not 0.1 <= v["every_looks"] <= 50):
+            raise ConfigError(f"autopilot layers {k} every_looks: 0.1-50 looks")
+        if "on" in v and v["on"] not in ("song", "set"):
+            raise ConfigError(f"autopilot layers {k} on: song or set")
+        if _num(v.get("spread", 0)) is None or not 0 <= v.get("spread", 0) <= 50:
+            raise ConfigError(f"autopilot layers {k} spread: 0-50 (%)")
+        if not isinstance(v.get("locked", False), bool):
+            raise ConfigError(f"autopilot layers {k} locked: true or false")
     b = out["between"]
     if not isinstance(b["on"], bool):
         raise ConfigError("autopilot between on: true or false")
@@ -168,6 +213,7 @@ def parse_config(d: Any) -> dict[str, Any]:
 
 
 START_MODES = ("first_hit", "count_in")
+TIMINGS = ("together", "staggered")
 OLD_BETWEEN = {"gap_s": "gap_s", "count_in": "count_in", "talking": "look"}  # format 6 top-level keys
 
 
@@ -266,10 +312,14 @@ class Decision:
     candidates: int = 0
     rejected: int = 0
     score: float = 0.0
+    layers: tuple[str, ...] = ()  # v7: the layers this change swapped (empty = a whole look)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"time": self.time, "energy": self.energy, "mood": self.mood, "trigger": self.trigger, "look": self.look,
-                "why": self.why, "candidates": self.candidates, "rejected": self.rejected, "score": round(self.score, 3)}
+        d = {"time": self.time, "energy": self.energy, "mood": self.mood, "trigger": self.trigger, "look": self.look,
+             "why": self.why, "candidates": self.candidates, "rejected": self.rejected, "score": round(self.score, 3)}
+        if self.layers:
+            d["layers"] = list(self.layers)
+        return d
 
 
 @dataclass
@@ -285,6 +335,8 @@ class State:
     pick: Any = None
     history: list[Any] = field(default_factory=list)  # picks played, newest last
     allowed: list[str] | None = None  # preset ids the autopilot may use (V3.5 presets), None = any
+    layer_next: dict[str, float] = field(default_factory=dict)  # v7 staggered: when each clocked layer changes
+    locks: dict[str, bool] = field(default_factory=dict)  # v7: live lock per layer (over the rig's `locked`)
 
 
 class Autopilot:
@@ -294,7 +346,9 @@ class Autopilot:
                  quality: Callable[[], Any], bus: Any, cfg: dict[str, Any] | None = None, log_dir: Path | None = None,
                  master_off: Callable[[], bool] | None = None, flash: Callable[[str], Any] | None = None,
                  ratings: Callable[[], dict[str, int]] | None = None,
-                 presets: Callable[[], dict[str, Any]] | None = None) -> None:
+                 presets: Callable[[], dict[str, Any]] | None = None,
+                 darkness_step: Callable[[float, str], Any] | None = None,
+                 playing: Callable[[], Any] | None = None) -> None:
         self.play = play
         self.rig_auto = rig_auto
         self.palettes = palettes  # key -> {name, tags, resolved}
@@ -307,6 +361,8 @@ class Autopilot:
         self.flash = flash
         self.ratings = ratings or (lambda: {})  # look key -> +1 liked / -1 disliked / -2 banned (V3.5)
         self.presets = presets or (lambda: {})  # preset id -> pick dict (V3.5)
+        self.darkness_step = darkness_step  # v7: the Darkness layer's change (Auto darkness moves on it)
+        self.playing = playing or (lambda: None)  # v7: the look on the page before the autopilot played one
         self.st = State()
         self.decisions: deque[Decision] = deque(maxlen=500)
         self.rng = random.Random(zlib.crc32(str(self.cfg.get("seed") or "autopilot").encode()))
@@ -368,6 +424,20 @@ class Autopilot:
             self.st.between = which == "walk_off"
             self._play(pick, now, which, f"{which.replace('_', '-')} look", 0, 0, 0.0, fade=self.cfg["fade"]["low"])
 
+    def locked(self, layer: str) -> bool:
+        """v7: a layer held while the others change (live lock over the rig's `locked`)."""
+        v = self.st.locks.get(layer)
+        return bool(self.cfg["layers"][layer].get("locked")) if v is None else v
+
+    def set_lock(self, layer: str, on: bool | None = None) -> bool:
+        """Lock or unlock a layer (None toggles). Live only; the rig's `locked` is the start-up value."""
+        if layer not in LAYERS:
+            raise ValueError(f"layer is one of {', '.join(LAYERS)}")
+        with self._lock:
+            on = not self.locked(layer) if on is None else bool(on)
+            self.st.locks[layer] = on
+            return on
+
     def limit_to(self, preset_ids: list[str] | None) -> None:
         """Only these presets ("only these looks for this song"); None = any look."""
         with self._lock:
@@ -386,6 +456,8 @@ class Autopilot:
                 self._follow_energy(e)
             if self.master_off():  # MASTER off: drum flash owns the rig; the autopilot waits
                 st.next_change = max(st.next_change, now + 1.0)
+                for k in st.layer_next:
+                    st.layer_next[k] = max(st.layer_next[k], now + 1.0)
                 self._last_tick = now
                 return None
             since = self._last_tick or now
@@ -420,9 +492,80 @@ class Autopilot:
                 return self.change(now, "build", extra=f"energy up {tr:+.2f}")
             if tr <= -0.35 and now - st.last_change > 6:
                 return self.change(now, "breakdown", extra=f"energy down {tr:+.2f}")
+            if self.staggered:
+                return self._layer_timers(now)
             if now >= st.next_change:
                 return self.change(now, "timer")
             return None
+
+    # ------------------------------------------------------------------ v7 layer timing
+
+    @property
+    def staggered(self) -> bool:
+        return self.cfg.get("timing") == "staggered" and not self.st.allowed  # presets play whole looks
+
+    def _base_s(self, layer: str) -> float | None:
+        """A clocked layer's interval before spread; None for song / set layers."""
+        lay = self.cfg["layers"][layer]
+        if "every_s" in lay:
+            return float(lay["every_s"])
+        if "every_looks" in lay:
+            return float(lay["every_looks"]) * float(self.cfg["moods"][self.st.mood])
+        return None
+
+    def _schedule(self, layer: str, now: float, part: float = 1.0) -> None:
+        base = self._base_s(layer)
+        if base is None:
+            self.st.layer_next.pop(layer, None)
+            return
+        sp = float(self.cfg["layers"][layer].get("spread", 0)) / 100
+        self.st.layer_next[layer] = now + base * part * (1 + self.rng.uniform(-sp, sp))
+
+    def _schedule_all(self, now: float, layers: tuple[str, ...] = LAYERS) -> None:
+        """After a whole-look change: the clocks start a quarter apart, so they never line up."""
+        clocked = [k for k in LAYERS if self._base_s(k) is not None]
+        for k in layers:
+            self._schedule(k, now, (clocked.index(k) + 1) / len(clocked) if k in clocked else 1.0)
+
+    def _layer_timers(self, now: float) -> Decision | None:
+        st = self.st
+        for k in LAYERS:
+            if k not in st.layer_next and self._base_s(k) is not None:
+                self._schedule(k, now)
+        due = [k for k in LAYERS if k in st.layer_next and now >= st.layer_next[k]]
+        if not due:
+            return None
+        k = min(due, key=lambda x: st.layer_next[x])  # one layer a tick: never a hard cut
+        self._schedule(k, now)
+        if self.locked(k):
+            return None
+        if k == "darkness":
+            self._darkness(now, "timer")
+            return None
+        return self.change(now, "timer", layers=(k,))
+
+    def _event_layers(self, trigger: str) -> tuple[str, ...]:
+        """Which layers a change on this trigger swaps (locked layers never)."""
+        if not self.staggered or trigger in ("start", "preset"):
+            out = LAYERS
+        else:
+            lay = self.cfg["layers"]
+            if trigger == "song_start":
+                out = tuple(k for k in LAYERS if lay[k].get("on") != "set")
+            elif trigger == "mood":
+                out = tuple(k for k in LAYERS if lay[k].get("on") != "song")
+            elif trigger == "timer":
+                out = LAYERS
+            else:  # next, fill_crash, build, breakdown: the clocked layers
+                out = tuple(k for k in LAYERS if "on" not in lay[k])
+        return tuple(k for k in out if not self.locked(k))
+
+    def _darkness(self, now: float, why: str) -> None:
+        if self.darkness_step is not None:
+            try:
+                self.darkness_step(now, why)
+            except Exception:  # darkness must never stop the autopilot
+                log.exception("darkness step failed")
 
     def _follow_energy(self, e: float) -> None:
         m = self.st.mood
@@ -447,8 +590,9 @@ class Autopilot:
         tagged = [k for k, v in usable.items() if mood in (v.get("tags") or [])]
         return tagged or list(usable)
 
-    def choose(self, now: float, trigger: str) -> tuple[Any, int, int, float]:
-        """(pick, candidates looked at, rejected by the rules, score)."""
+    def choose(self, now: float, trigger: str, layers: tuple[str, ...] | None = None) -> tuple[Any, int, int, float]:
+        """(pick, candidates looked at, rejected by the rules, score). `layers`: the pick layers to change
+        (v7; None = all); the rest stay as playing. Every candidate still passes the quality rules."""
         from .fxbanks import Pick, RideSettings, available
 
         mood = self.st.mood
@@ -480,9 +624,22 @@ class Autopilot:
             drums = [None, None] + ([i.id for i in available(ar, "drum", mood, skip_excluded=True)] if mood != "low" else [])
             pals = self._palettes_for(mood)
             cands = []
-            for _ in range(320):
-                cands.append(Pick(self.rng.choice(moves), self.rng.choice(colours), self.rng.choice(drums),
-                                  self.rng.choice(pals), ride))
+            cur: Any = self.st.pick or self.playing()
+            keep = set() if layers is None or cur is None else {k for k in PICK_LAYERS if k not in layers}
+            if not keep:  # a whole look (v6 order of random draws, so seeded runs replay identically)
+                for _ in range(320):
+                    cands.append(Pick(self.rng.choice(moves), self.rng.choice(colours), self.rng.choice(drums),
+                                      self.rng.choice(pals), ride))
+            else:  # v7: swap only some layers (a staggered clock keeps the playing feel; an event sets its own)
+                if trigger == "timer":
+                    ride = cur.ride
+                for _ in range(320):
+                    p = Pick(cur.move if "move" in keep else self.rng.choice(moves),
+                             cur.colour if "colour" in keep else self.rng.choice(colours),
+                             cur.drum if "colour" in keep else self.rng.choice(drums),
+                             cur.palette if "palette" in keep else self.rng.choice(pals), ride,
+                             dict(cur.bank_ride))
+                    cands.append(p)
         best: Any = None
         best_score = -1e9
         rejected = 0
@@ -512,17 +669,32 @@ class Autopilot:
             best = cands[0] if cands else Pick(colour="static", ride=ride)
         return best, seen, rejected, best_score
 
-    def change(self, now: float, trigger: str, extra: str = "") -> Decision:
-        pick, seen, rejected, score = self.choose(now, trigger)
+    def change(self, now: float, trigger: str, extra: str = "", layers: tuple[str, ...] | None = None) -> Decision:
+        """A new look. `layers` (v7): only these layers; None = what this trigger changes (see _event_layers)."""
+        whole = layers is None
+        if layers is None:
+            layers = self._event_layers(trigger)
+        pick_layers = tuple(k for k in layers if k in PICK_LAYERS)
+        full = set(pick_layers) == set(PICK_LAYERS)
+        pick, seen, rejected, score = self.choose(now, trigger, None if full else pick_layers)
         reasons = {"timer": f"{self.st.mood} timer", "fill_crash": "drum fill then a crash",
                    "mood": f"mood set to {self.st.mood}",
                    "build": "energy building", "breakdown": "energy dropping", "song_start": "song starting",
                    "next": "next look (pedal)", "start": "autopilot on", "preset": "preset"}
         why = reasons.get(trigger, trigger) + (f" ({extra})" if extra else "")
-        return self._play(pick, now, trigger, why, seen, rejected, score)
+        part = () if full else pick_layers
+        if part:
+            why += f": {', '.join(part)} only"
+        if "darkness" in layers:
+            self._darkness(now, trigger)
+        d = self._play(pick, now, trigger, why, seen, rejected, score, layers=part)
+        if self.staggered:
+            if whole:
+                self._schedule_all(now, layers)
+        return d
 
     def _play(self, pick: Any, now: float, trigger: str, why: str, seen: int, rejected: int, score: float,
-              fade: float | None = None) -> Decision:
+              fade: float | None = None, layers: tuple[str, ...] = ()) -> Decision:
         st = self.st
         fade_s = float(self.cfg["fade"][st.mood]) if fade is None else fade
         try:
@@ -538,7 +710,7 @@ class Autopilot:
         base = float(self.cfg["moods"][st.mood])
         var = float(self.cfg["variation"])
         st.next_change = now + base * (1 + self.rng.uniform(-var, var))
-        d = Decision(now, self.energy.level(now), st.mood, trigger, pick.to_dict(), why, seen, rejected, score)
+        d = Decision(now, self.energy.level(now), st.mood, trigger, pick.to_dict(), why, seen, rejected, score, layers)
         self.decisions.append(d)
         self._log(d)
         return d
@@ -560,7 +732,18 @@ class Autopilot:
         return {"on": st.on, "hold": st.hold, "mood": st.mood, "mood_manual": st.mood_manual, "between": st.between,
                 "energy": self.energy.level(now), "next_change_s": round(max(0.0, st.next_change - now), 1) if st.on else None,
                 "paused": st.on and self.master_off(), "pick": st.pick.to_dict() if st.pick else None,
-                "allowed": st.allowed, "last": self.decisions[-1].to_dict() if self.decisions else None}
+                "allowed": st.allowed, "last": self.decisions[-1].to_dict() if self.decisions else None,
+                "timing": self.cfg.get("timing", "together"), "layers": self._layer_status(now)}
+
+    def _layer_status(self, now: float) -> dict[str, Any]:
+        st, out = self.st, {}
+        for k in LAYERS:
+            lay = self.cfg["layers"][k]
+            nxt = st.layer_next.get(k) if self.staggered else st.next_change  # together: all on the look clock
+            out[k] = {"locked": self.locked(k), "on": lay.get("on"),
+                      "next_s": round(max(0.0, nxt - now), 1) if (st.on and nxt is not None and not lay.get("on")
+                                                                  and not self.locked(k)) else None}
+        return out
 
     def log_since(self, n: int = 50) -> list[dict[str, Any]]:
         return [d.to_dict() for d in list(self.decisions)[-n:]]
